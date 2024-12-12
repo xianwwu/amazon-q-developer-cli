@@ -371,21 +371,24 @@ mod tests {
         let endpoint = Endpoint::load_codewhisperer();
         let client = Client::new_consolas_client(&endpoint).await.unwrap();
 
-        tokio::try_join!(
+        let (recommendation_output, customizations) = tokio::try_join!(
             client.generate_recommendations(RecommendationsInput {
                 file_context: FileContext {
-                    left_file_content: "left".into(),
-                    right_file_content: "right".into(),
-                    filename: "filename".into(),
+                    left_file_content: "echo \"Hello,".into(),
+                    right_file_content: "".into(),
+                    filename: "test.sh".into(),
                     programming_language: ProgrammingLanguage {
-                        language_name: LanguageName::Rust,
+                        language_name: LanguageName::Shell,
                     },
                 },
-                max_results: 0,
+                max_results: 1,
                 next_token: None,
             }),
             client.list_customizations(),
         )
         .unwrap();
+
+        println!("{:?}", recommendation_output);
+        println!("{:?}", customizations);
     }
 }
