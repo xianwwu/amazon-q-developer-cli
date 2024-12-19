@@ -717,6 +717,34 @@ importers:
       eslint:
         specifier: ^9.16.0
         version: 9.16.0(jiti@1.21.6)
+      type-fest:
+        specifier: ^4.30.2
+        version: 4.30.2
+      typescript:
+        specifier: ^5.4.5
+        version: 5.7.2
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.8(@types/node@22.10.2)(@vitest/ui@2.1.8)(jsdom@24.1.0)(terser@5.37.0)
+
+  packages/ipc-backend-local:
+    dependencies:
+      '@aws/amazon-q-developer-cli-ipc-backend-core':
+        specifier: workspace:^
+        version: link:../ipc-backend-core
+      '@aws/amazon-q-developer-cli-proto':
+        specifier: workspace:^
+        version: link:../../proto
+    devDependencies:
+      '@amzn/eslint-config':
+        specifier: workspace:^
+        version: link:../eslint-config
+      '@amzn/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      eslint:
+        specifier: ^9.16.0
+        version: 9.16.0(jiti@1.21.6)
       typescript:
         specifier: ^5.4.5
         version: 5.7.2
@@ -5786,6 +5814,10 @@ packages:
     resolution: {integrity: sha512-4dbzIzqvjtgiM5rw1k5rEHtBANKmdudhGyBEajN01fEyhaAIhsoKNy6y7+IN93IfpFtwY9iqi7kD+xwKhQsNJA==}
     engines: {node: '>=8'}
 
+  type-fest@4.30.2:
+    resolution: {integrity: sha512-UJShLPYi1aWqCdq9HycOL/gwsuqda1OISdBO3t8RlXQC4QvtuIz4b5FCfe2dQIWEpmlRExKmcTBfP1r9bhY7ig==}
+    engines: {node: '>=16'}
+
   typed-array-buffer@1.0.2:
     resolution: {integrity: sha512-gEymJYKZtKXzzBzM4jqa9w6Q1Jjm7x2d+sh19AdsD4wqnMPDYyvwpsIc2Q/835kHuo3BEQ7CjelGhfTsoBb2MQ==}
     engines: {node: '>= 0.4'}
@@ -8809,7 +8841,7 @@ snapshots:
       sirv: 3.0.0
       tinyglobby: 0.2.10
       tinyrainbow: 1.2.0
-      vitest: 2.1.8(@types/node@22.10.1)(@vitest/ui@2.1.8)(jsdom@24.1.0)(terser@5.37.0)
+      vitest: 2.1.8(@types/node@22.10.2)(@vitest/ui@2.1.8)(jsdom@24.1.0)(terser@5.37.0)
 
   '@vitest/utils@2.1.8':
     dependencies:
@@ -12264,6 +12296,8 @@ snapshots:
   type-fest@0.6.0: {}
 
   type-fest@0.8.1: {}
+
+  type-fest@4.30.2: {}
 
   typed-array-buffer@1.0.2:
     dependencies:
