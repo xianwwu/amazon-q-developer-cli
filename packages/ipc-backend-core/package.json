@@ -22,8 +22,8 @@
     "@aws/amazon-q-developer-cli-proto": "workspace:^"
   },
   "devDependencies": {
-    "@aws/amazon-q-developer-cli-eslint-config": "workspace:^",
-    "@aws/amazon-q-developer-cli-tsconfig": "workspace:^",
+    "@amzn/eslint-config": "workspace:^",
+    "@amzn/tsconfig": "workspace:^",
     "eslint": "^9.16.0",
     "typescript": "^5.4.5",
     "vitest": "^2.1.8"
