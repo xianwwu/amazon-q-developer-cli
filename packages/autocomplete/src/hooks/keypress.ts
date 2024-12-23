@@ -1,11 +1,20 @@
 import { useCallback } from "react";
 import logger from "loglevel";
 import { Keybindings } from "@aws/amazon-q-developer-cli-api-bindings";
-import { SETTINGS, getSetting } from "@aws/amazon-q-developer-cli-api-bindings-wrappers";
+import {
+  SETTINGS,
+  getSetting,
+} from "@aws/amazon-q-developer-cli-api-bindings-wrappers";
 import { ACTIONS, AutocompleteAction } from "../actions";
 import { useAutocompleteStore } from "../state";
 import { Visibility } from "../state/types";
 import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
+import { create } from "@bufbuild/protobuf";
+import {
+  InsertTextRequestSchema,
+  InterceptRequest_SetFigjsInterceptsSchema,
+  InterceptRequestSchema,
+} from "@aws/amazon-q-developer-cli-proto/figterm";
 
 export const setInterceptKeystrokes = (
   intercept: boolean,
@@ -25,18 +34,21 @@ export const setInterceptKeystrokesBackend = (
   interceptGlobalKeystrokes: boolean = false,
   currentTerminalSessionId?: string,
 ) =>
-  ipcBackend?.intercept(currentTerminalSessionId ?? "", {
-    interceptCommand: {
-      $case: "setFigjsIntercepts",
-      setFigjsIntercepts: {
-        // actions: ACTIONS,
-        actions: [],
-        interceptBoundKeystrokes,
-        interceptGlobalKeystrokes,
-        overrideActions: false,
+  ipcBackend?.intercept(
+    currentTerminalSessionId ?? "",
+    create(InterceptRequestSchema, {
+      interceptCommand: {
+        case: "setFigjsIntercepts",
+        value: create(InterceptRequest_SetFigjsInterceptsSchema, {
+          // actions: ACTIONS,
+          actions: [],
+          interceptBoundKeystrokes,
+          interceptGlobalKeystrokes,
+          overrideActions: false,
+        }),
       },
-    },
-  });
+    }),
+  );
 // Keybindings.setInterceptKeystrokes(
 //   ACTIONS,
 //   intercept,
@@ -161,9 +173,12 @@ export const useAutocompleteKeypressCallback = (
           insertTextForItem(ipcBackend, selectedItem, true);
           break;
         case AutocompleteAction.EXECUTE:
-          ipcBackend?.insertText(figState.shellContext?.sessionId ?? "", {
-            insertion: "\n",
-          });
+          ipcBackend?.insertText(
+            figState.shellContext?.sessionId ?? "",
+            create(InsertTextRequestSchema, {
+              insertion: "\n",
+            }),
+          );
           break;
         case AutocompleteAction.HIDE_AUTOCOMPLETE:
           setVisibleState(Visibility.HIDDEN_UNTIL_SHOWN);

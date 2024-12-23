@@ -20,6 +20,9 @@ import {
 import { updateAutocompleteIndexFromUserInsert } from "../suggestions/sorting";
 import { InsertPrefixError } from "./errors";
 import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
+import { trackEvent } from "../telemetry";
+import { create } from "@bufbuild/protobuf";
+import { InsertTextRequestSchema } from "@aws/amazon-q-developer-cli-proto/figterm";
 
 const sendTextToTerminal = (
   state: AutocompleteState,
@@ -84,10 +87,13 @@ const sendTextToTerminal = (
   //   state.figState.shellContext?.sessionId,
   // );
 
-  ipcBackend?.insertText(state.figState.shellContext?.sessionId ?? "", {
-    insertion: finalStringToInsert,
-    // insertionBuffer: buffer,
-  });
+  ipcBackend?.insertText(
+    state.figState.shellContext?.sessionId ?? "",
+    create(InsertTextRequestSchema, {
+      insertion: finalStringToInsert,
+      // insertionBuffer: buffer,
+    }),
+  );
 
   return {
     insertedChars: valToInsert.length,

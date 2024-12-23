@@ -28,7 +28,6 @@ import { useAutocompleteStore } from "./state";
 // import { Visibility } from "./state/types";
 import {
   useAutocompleteKeypressCallback,
-  setInterceptKeystrokes,
   Direction,
   setInterceptKeystrokesBackend,
 } from "./hooks/keypress";
@@ -40,7 +39,6 @@ import {
 
 import Suggestion from "./components/Suggestion";
 import Description, { DescriptionPosition } from "./components/Description";
-import Preview from "./components/Preview";
 import { setFontFamily, setFontSize, setTheme } from "./fig/themes";
 import LoadingIcon from "./components/LoadingIcon";
 import {
@@ -65,6 +63,7 @@ export interface IpcBackendProps {
 export interface AutocompleteProps {
   ipcBackend: IpcBackendProps;
   enableMocks?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSelect?: (ipcBackend: IpcBackend, item: any) => void;
 }
 
@@ -135,7 +134,6 @@ function Autocomplete({
     [SETTINGS.HEIGHT]: settingsHeight,
     [SETTINGS.ALWAYS_SHOW_DESCRIPTION]: alwaysShowDescription,
     [SETTINGS.DEV_MODE_NPM]: devMode,
-    [SETTINGS.HIDE_PREVIEW]: hidePreview,
   } = settings;
 
   const [size, setSize] = useState({
@@ -387,15 +385,6 @@ function Autocomplete({
     />
   );
 
-  const selectedItem = (enableMocks ? suggestionsMock : suggestions)[
-    selectedIndex
-  ];
-  // TODO: re-enable preview
-  // eslint-disable-next-line no-constant-binary-expression
-  const preview = false && Boolean(selectedItem && !hidePreview) && (
-    <Preview selectedItem={selectedItem} position={previewPosition} />
-  );
-
   const hasBottomDescription =
     descriptionPosition === "unknown" && description !== null;
   const listClasses = [
@@ -448,7 +437,6 @@ function Autocomplete({
         {windowState.isAboveCursor && devModeWarning}
         <div className="flex flex-row gap-1.5 p-1">
           {descriptionPosition === "left" && description}
-          {previewPosition === "left" && preview}
           <div
             className="bg-main-bg relative flex flex-none flex-col items-stretch overflow-hidden rounded shadow-[0px_0px_3px_0px_rgb(85,_85,_85)]"
             style={
@@ -509,7 +497,6 @@ function Autocomplete({
               )}
             </div>
           </div>
-          {previewPosition === "right" && preview}
           {descriptionPosition === "right" && description}
         </div>
         {!windowState.isAboveCursor && devModeWarning}

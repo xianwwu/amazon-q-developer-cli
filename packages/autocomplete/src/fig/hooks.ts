@@ -16,6 +16,8 @@ import { clearSpecIndex } from "@aws/amazon-q-developer-cli-autocomplete-parser"
 import { updateSelectSuggestionKeybindings } from "../actions";
 import { generatorCache } from "../generators/helpers";
 import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
+import { create } from "@bufbuild/protobuf";
+import { KeybindingPressedNotificationSchema } from "@aws/amazon-q-developer-cli-proto/fig";
 
 // TODO(sean) expose Subscription type from API binding library
 type Unwrap<T> = T extends Promise<infer U> ? U : T;
@@ -47,7 +49,7 @@ export const initialFigState: FigState = {
 
 export const useFigSubscriptionEffect = (
   getSubscription: () => Promise<Subscription> | undefined,
-  deps?: React.DependencyList
+  deps?: React.DependencyList,
 ) => {
   useEffect(() => {
     let unsubscribe: () => void;
@@ -66,7 +68,7 @@ export const useFigSubscriptionEffect = (
 };
 
 export const useFigSettings = (
-  _setSettings: React.Dispatch<React.SetStateAction<Record<string, unknown>>>
+  _setSettings: React.Dispatch<React.SetStateAction<Record<string, unknown>>>,
 ) => {
   // useEffect(() => {
   //   Settings.current().then((settings) => {
@@ -75,7 +77,6 @@ export const useFigSettings = (
   //     updateSelectSuggestionKeybindings(settings as SettingsMap);
   //   });
   // }, []);
-
   // useFigSubscriptionEffect(
   //   () =>
   //     Settings.didChange.subscribe((notification) => {
@@ -91,16 +92,21 @@ export const useFigSettings = (
 
 export const useFigKeypress = (
   keypressCallback: Parameters<typeof Keybindings.pressed>[0],
-  ipcBackend: IpcBackend
+  ipcBackend: IpcBackend,
 ) => {
   ipcBackend.onInterceptedKey((keyHook) => {
-    keypressCallback(keyHook)
-  })
+    keypressCallback(
+      create(KeybindingPressedNotificationSchema, {
+        action: keyHook.action,
+        context: keyHook.context,
+      }),
+    );
+  });
 };
 
 export const useFigAutocomplete = (
   setFigState: React.Dispatch<React.SetStateAction<FigState>>,
-  ipcBackend?: IpcBackend
+  ipcBackend?: IpcBackend,
 ) => {
   console.log("useFigAutocomplete");
   // useFigSubscriptionEffect(
@@ -125,8 +131,8 @@ export const useFigAutocomplete = (
 
   useEffect(() => {
     ipcBackend?.onEditBufferChange((notification) => {
-      const buffer = notification.buffer ?? "";
-      const cursorLocation = notification.cursor ?? buffer.length;
+      const buffer = notification.text ?? "";
+      const cursorLocation = Number(notification.cursor);
 
       const cwd = notification.context?.currentWorkingDirectory ?? null;
       const shellContext = notification.context;
@@ -138,7 +144,7 @@ export const useFigAutocomplete = (
         shellContext,
       }));
     });
-  }, [ipcBackend]);
+  }, [ipcBackend, setFigState]);
 
   // useFigSubscriptionEffect(
   //   () =>
