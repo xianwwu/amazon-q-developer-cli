@@ -15,12 +15,13 @@
     "build": "tsc",
     "test": "vitest",
     "lint": "eslint src && prettier --check src",
-    "lint:fix": "eslint --fix src tests && prettier --write src tests",
+    "lint:fix": "eslint --fix src && prettier --write src",
     "clean": "rm -rf dist/ && rm -rf node_modules/"
   },
   "dependencies": {
     "@aws/amazon-q-developer-cli-ipc-backend-core": "workspace:^",
-    "@aws/amazon-q-developer-cli-proto": "workspace:^"
+    "@aws/amazon-q-developer-cli-proto": "workspace:^",
+    "@bufbuild/protobuf": "2.2.3"
   },
   "devDependencies": {
     "@amzn/eslint-config": "workspace:^",

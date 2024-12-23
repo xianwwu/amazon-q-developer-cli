@@ -760,6 +760,9 @@ importers:
       '@aws/amazon-q-developer-cli-proto':
         specifier: workspace:^
         version: link:../../proto
+      '@bufbuild/protobuf':
+        specifier: 2.2.3
+        version: 2.2.3
     devDependencies:
       '@amzn/eslint-config':
         specifier: workspace:^

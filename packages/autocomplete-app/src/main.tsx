@@ -4,8 +4,6 @@ import ReactDOM from "react-dom/client";
 import { State } from "@aws/amazon-q-developer-cli-api-bindings-wrappers";
 import { preloadSpecs } from "@aws/amazon-q-developer-cli-autocomplete-parser";
 import App from "./App";
-import { captureError } from "./sentry";
-import ErrorBoundary from "./components/ErrorBoundary";
 
 State.watch();
 
@@ -16,10 +14,6 @@ setTimeout(
   },
   1000 * 60 * 60 * 24,
 );
-
-window.onerror = (message, source, lineno, colno, error) => {
-  captureError(error ?? new Error(`${source}:${lineno}:${colno}: ${message}`));
-};
 
 window.globalCWD = "";
 window.globalSSHString = "";
@@ -34,8 +28,6 @@ setTimeout(() => {
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
+    <App />
   </React.StrictMode>,
 );

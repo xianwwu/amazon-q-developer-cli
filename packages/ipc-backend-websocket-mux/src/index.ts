@@ -1,5 +1,4 @@
 import type {
-  EditBufferChangedNotification,
   InsertTextRequest,
   InterceptRequest,
   IpcBackend,
@@ -10,29 +9,26 @@ import type {
   PreExecHook,
   PromptHook,
 } from "@aws/amazon-q-developer-cli-ipc-backend-core";
-import {
-  Clientbound,
-  Hostbound,
-} from "@aws/amazon-q-developer-cli-proto/mux";
+import { Clientbound, Hostbound } from "@aws/amazon-q-developer-cli-proto/mux";
 import { PacketStream } from "./packetStream.js";
 import { CsWebsocket, Socket } from "./socket.js";
 import { clientboundToPacket, packetToHostbound } from "./mux.js";
+import { EditBufferHook } from "@aws/amazon-q-developer-cli-proto/local";
+import { create } from "@bufbuild/protobuf";
+import { RunProcessResponseSchema } from "@aws/amazon-q-developer-cli-proto/fig";
 
-export {
-  CsWebsocket,
-}
+export { CsWebsocket };
 
 type SubscriptionStorage<T> = ((notification: T) => void)[];
 
 export class WebsocketMuxBackend implements IpcBackend {
-  editBufferSubscriptions: SubscriptionStorage<EditBufferChangedNotification> =
-    [];
+  editBufferSubscriptions: SubscriptionStorage<EditBufferHook> = [];
   promptSubscriptions: SubscriptionStorage<PromptHook> = [];
   preExecSubscriptions: SubscriptionStorage<PreExecHook> = [];
   postExecSubscriptions: SubscriptionStorage<PostExecHook> = [];
   interceptedKeySubscriptions: SubscriptionStorage<InterceptedKeyHook> = [];
 
-  packetStream: PacketStream
+  packetStream: PacketStream;
 
   constructor(websocket: CsWebsocket) {
     const socket = Socket.cs(websocket);
@@ -46,46 +42,42 @@ export class WebsocketMuxBackend implements IpcBackend {
 
         if (value) {
           const hostbound = await packetToHostbound(value);
-          this.handleHostbound(hostbound)
+          this.handleHostbound(hostbound);
         }
 
         if (done) break;
       }
     })();
-
-
   }
 
   private handleHostbound(message: Hostbound) {
     const submessage = message.submessage;
     console.log(submessage);
-    switch (submessage?.$case) {
+    switch (submessage?.case) {
       case "editBuffer":
         this.editBufferSubscriptions.forEach((callback) => {
-          callback(submessage.editBuffer);
+          callback(submessage.value);
         });
         break;
       case "interceptedKey":
         this.interceptedKeySubscriptions.forEach((callback) => {
-          callback(submessage.interceptedKey);
+          callback(submessage.value);
         });
         break;
       case "postExec":
         this.postExecSubscriptions.forEach((callback) => {
-          callback(submessage.postExec);
+          callback(submessage.value);
         });
         break;
       case "preExec":
         this.preExecSubscriptions.forEach((callback) => {
-          callback(submessage.preExec);
+          callback(submessage.value);
         });
         break;
       case "prompt":
         this.promptSubscriptions.forEach((callback) => {
-          callback(submessage.prompt);
+          callback(submessage.value);
         });
-        break;
-      case "pseudoterminalExecuteResponse":
         break;
       case "runProcessResponse":
         break;
@@ -94,28 +86,30 @@ export class WebsocketMuxBackend implements IpcBackend {
 
   // Helper requests
 
-  private async sendRequest(sessionId: string, clientbound: Clientbound["submessage"]) {
+  private async sendRequest(
+    sessionId: string,
+    clientbound: Clientbound["submessage"],
+  ) {
     const packet = await clientboundToPacket({
       sessionId,
-      submessage: clientbound
+      submessage: clientbound,
     });
     this.packetStream.getWriter().write(packet);
-
   }
 
   insertText(sessionId: string, request: InsertTextRequest): void {
     console.log("insertText");
     this.sendRequest(sessionId, {
-      $case: "insertText",
-      insertText: request,
+      case: "insertText",
+      value: request,
     });
   }
 
   intercept(sessionId: string, request: InterceptRequest): void {
     console.log("intercept");
     this.sendRequest(sessionId, {
-      $case: "intercept",
-      intercept: request,
+      case: "intercept",
+      value: request,
     });
   }
 
@@ -124,20 +118,18 @@ export class WebsocketMuxBackend implements IpcBackend {
     request: RunProcessRequest,
   ): RunProcessResponse {
     this.sendRequest(sessionId, {
-      $case: "runProcess",
-      runProcess: request,
+      case: "runProcess",
+      value: request,
     });
 
-    return {
+    return create(RunProcessResponseSchema, {
       stdout: "",
       stderr: "",
       exitCode: 0,
-    };
+    });
   }
 
-  onEditBufferChange(
-    callback: (notification: EditBufferChangedNotification) => void,
-  ): void {
+  onEditBufferChange(callback: (notification: EditBufferHook) => void): void {
     this.editBufferSubscriptions.push(callback);
   }
 

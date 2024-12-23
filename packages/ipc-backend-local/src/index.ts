@@ -8,6 +8,7 @@ import type {
   EditBufferChangedNotification,
 } from "@aws/amazon-q-developer-cli-proto/fig";
 import type {
+  EditBufferHook,
   InterceptedKeyHook,
   PostExecHook,
   PreExecHook,
@@ -39,7 +40,7 @@ export interface IpcBackend {
 
   // Notifications
   onEditBufferChange: (
-    callback: (notification: EditBufferChangedNotification) => void,
+    callback: (notification: EditBufferHook) => void,
   ) => void;
 
   onPrompt: (callback: (notification: PromptHook) => void) => void;

@@ -15,7 +15,7 @@
     "build": "tsc",
     "test": "vitest",
     "lint": "eslint src && prettier --check src",
-    "lint:fix": "eslint --fix src tests && prettier --write src tests",
+    "lint:fix": "eslint --fix src && prettier --write src",
     "clean": "rm -rf dist/ && rm -rf node_modules/"
   },
   "dependencies": {

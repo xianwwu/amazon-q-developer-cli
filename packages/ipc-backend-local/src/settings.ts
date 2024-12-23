@@ -1,4 +1,1 @@
-import { 
-
-    
-} from "@aws/amazon-q-developer-cli-ipc-backend-core"
+import {} from "@aws/amazon-q-developer-cli-ipc-backend-core";

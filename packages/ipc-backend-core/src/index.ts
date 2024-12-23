@@ -8,6 +8,7 @@ import type {
   EditBufferChangedNotification,
 } from "@aws/amazon-q-developer-cli-proto/fig";
 import type {
+  EditBufferHook,
   InterceptedKeyHook,
   PostExecHook,
   PreExecHook,
@@ -27,12 +28,12 @@ export type {
   PreExecHook,
   PromptHook,
   State,
-  Settings
+  Settings,
 };
 
 export interface IpcBackend {
-  state?: State,
-  settings?: Settings,
+  state?: State;
+  settings?: Settings;
 
   // Request
   insertText: (sessionId: string, request: InsertTextRequest) => void;
@@ -46,7 +47,7 @@ export interface IpcBackend {
 
   // Notifications
   onEditBufferChange: (
-    callback: (notification: EditBufferChangedNotification) => void,
+    callback: (notification: EditBufferHook) => void,
   ) => void;
 
   onPrompt: (callback: (notification: PromptHook) => void) => void;
@@ -59,9 +60,3 @@ export interface IpcBackend {
     callback: (notification: InterceptedKeyHook) => void,
   ) => void;
 }
-
-interface FigtermCommands { 
-
-}
-
-interface LocalCommands { }
