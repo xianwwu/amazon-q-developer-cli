@@ -8,11 +8,9 @@ export function subscribe<T>(
   return _subscribe(
     { type: NotificationType.NOTIFY_ON_EVENT },
     (notification) => {
-      switch (notification?.type?.$case) {
-        case "eventNotification":
-          // eslint-disable-next-line no-case-declarations
-          const { eventName: name, payload } =
-            notification.type.eventNotification;
+      switch (notification?.type?.case) {
+        case "eventNotification": {
+          const { eventName: name, payload } = notification.type.value;
           if (name === eventName) {
             try {
               return handler(payload ? JSON.parse(payload) : null);
@@ -21,6 +19,7 @@ export function subscribe<T>(
             }
           }
           break;
+        }
         default:
           break;
       }

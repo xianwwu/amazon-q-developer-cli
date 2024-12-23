@@ -1,7 +1,10 @@
 import logger from "loglevel";
 import { StoreApi } from "zustand";
 import { SpecLocationSource } from "@fig/autocomplete-shared";
-import { SpecLocation, Suggestion } from "@aws/amazon-q-developer-cli-shared/internal";
+import {
+  SpecLocation,
+  Suggestion,
+} from "@aws/amazon-q-developer-cli-shared/internal";
 import {
   makeArray,
   longestCommonPrefix,
@@ -137,9 +140,17 @@ const insertString = (
       }
     : null;
 
-  if (metadata && specLocation?.location.privateNamespaceId) {
-    metadata.specNamespaceId = `${specLocation.location.privateNamespaceId}`;
-  }
+  trackEvent("autocomplete-insert", {
+    ...metadata,
+    rootCommand,
+    suggestion_type: item.type ?? null,
+    insertionLength: `${inserted.insertedChars}`,
+    // Includes backspaces and cursor adjustments.
+    insertionLengthFull: `${inserted.insertedCharsFull}`,
+    app: fig.constants?.version || "",
+    terminal: state.figState.shellContext?.terminal ?? null,
+    shell: state.figState.shellContext?.shellPath?.split("/")?.at(-1) ?? null,
+  });
 
   logger.info("Inserted string, updating visibility");
   updateVisibilityPostInsert(item, isFullCompletion);

@@ -54,8 +54,14 @@ message Clientbound {
       fig.ReadFileRequest read_file = 105;
 
       RunProcessRequest run_process = 104;
-      PseudoterminalExecuteRequest pseudoterminal_execute = 106;
     }
+  }
+
+  message RunProcessRequest {
+    string executable = 1;
+    repeated string arguments = 2;
+    optional string working_directory = 3;
+    repeated fig_common.EnvironmentVariable env = 4;
   }
 
   message Response {
@@ -117,7 +123,6 @@ message Hostbound {
       figterm.DiagnosticsResponse diagnostics = 101;
 
       fig.RunProcessResponse run_process = 102;
-      fig.PseudoterminalExecuteResponse pseudoterminal_execute = 104;
 
       ReadFileResponse read_file = 103;
     }

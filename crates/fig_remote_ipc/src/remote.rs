@@ -26,12 +26,11 @@ use fig_proto::remote::clientbound::request::Request;
 use fig_proto::remote::clientbound::{
     self,
     HandshakeResponse,
+    RunProcessRequest,
 };
 use fig_proto::remote::{
     Clientbound,
     Hostbound,
-    PseudoterminalExecuteRequest,
-    RunProcessRequest,
     hostbound,
 };
 use fig_util::PTY_BINARY_NAME;
@@ -458,23 +457,6 @@ async fn handle_commands(
                     executable,
                     arguments,
                     working_directory,
-                    env,
-                }),
-                Some(channel),
-            ),
-            FigtermCommand::PseudoterminalExecute {
-                channel,
-                command,
-                working_directory,
-                background_job,
-                is_pipelined,
-                env,
-            } => (
-                Request::PseudoterminalExecute(PseudoterminalExecuteRequest {
-                    command,
-                    working_directory,
-                    background_job,
-                    is_pipelined,
                     env,
                 }),
                 Some(channel),

@@ -33,7 +33,6 @@ message Hostbound {
 
     // responses
     fig.RunProcessResponse run_process_response = 105;
-    fig.PseudoterminalExecuteResponse pseudoterminal_execute_response = 106;
   }
 }
 

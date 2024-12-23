@@ -24,12 +24,6 @@ export enum Visibility {
   HIDDEN_BY_INSERTION = "insertion",
 }
 
-export type ComponentMap = Record<
-  string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  React.LazyExoticComponent<React.ComponentType<any>>
->;
-
 type AutocompleteActions = {
   setParserResult: (
     parserResult: ArgumentParserResult,
@@ -53,7 +47,6 @@ type AutocompleteActions = {
   setHistoryModeEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setUserFuzzySearchEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setSettings: React.Dispatch<React.SetStateAction<SettingsMap>>;
-  setComponents: React.Dispatch<React.SetStateAction<ComponentMap>>;
 };
 
 export type AutocompleteState = {
@@ -81,10 +74,6 @@ export type AutocompleteState = {
    */
   fuzzySearchEnabled: boolean;
   settings: SettingsMap;
-
-  components: ComponentMap;
-
-  ipcBackend: IpcBackend;
 } & AutocompleteActions;
 
 export declare type NamedSetState<T> = {

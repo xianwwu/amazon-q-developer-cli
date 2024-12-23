@@ -1,27 +1,23 @@
-import { TelemetryProperty } from "@aws/amazon-q-developer-cli-proto/fig";
 import {
-  sendTelemetryIdentifyRequest,
+  TelemetryProperty,
+  TelemetryPropertySchema,
+} from "@aws/amazon-q-developer-cli-proto/fig";
+import {
   sendTelemetryPageRequest,
   sendTelemetryTrackRequest,
 } from "./requests.js";
+import { create } from "@bufbuild/protobuf";
 
 type Property = string | boolean | number | null;
-type NamespaceSpecifier =
-  | { username: string; id?: number }
-  | { id: number; username?: string };
 
-export function track(
-  event: string,
-  properties: Record<string, Property>,
-  namespace?: NamespaceSpecifier,
-) {
+export function track(event: string, properties: Record<string, Property>) {
   // convert to internal type 'TelemetryProperty'
   const props = Object.keys(properties).reduce(
     (array, key) => {
-      const entry: TelemetryProperty = {
+      const entry: TelemetryProperty = create(TelemetryPropertySchema, {
         key,
         value: JSON.stringify(properties[key]),
-      };
+      });
       array.push(entry);
       return array;
     },
@@ -32,13 +28,7 @@ export function track(
     event,
     properties: props,
     jsonBlob: JSON.stringify(properties),
-    namespace: namespace?.username,
-    namespaceId: namespace?.id,
   });
-}
-
-export function identify(traits: Record<string, Property>) {
-  return sendTelemetryIdentifyRequest({ jsonBlob: JSON.stringify(traits) });
 }
 
 export function page(

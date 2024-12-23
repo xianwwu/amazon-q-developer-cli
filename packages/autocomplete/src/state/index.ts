@@ -22,12 +22,7 @@ import {
 import { type Types } from "@aws/amazon-q-developer-cli-api-bindings";
 import { detailedDiff } from "deep-object-diff";
 import { FigState, initialFigState } from "../fig/hooks";
-import {
-  AutocompleteState,
-  ComponentMap,
-  NamedSetState,
-  Visibility,
-} from "./types";
+import { AutocompleteState, NamedSetState, Visibility } from "./types";
 
 import { updatePriorities } from "../suggestions/sorting";
 import {
@@ -60,8 +55,6 @@ const initialState: Partial<AutocompleteState> = {
   fuzzySearchEnabled: false,
   userFuzzySearchEnabled: getSetting(SETTINGS.FUZZY_SEARCH, false) as boolean,
   settings: {} as SettingsMap,
-
-  components: {},
 };
 
 const getCommandMemoized = memoizeOne(getCommand);
@@ -329,11 +322,11 @@ export const useAutocompleteStore = createWithEqualityFn<AutocompleteState>(
 
             const originalVisibleState = visibleState;
             switch (originalVisibleState) {
-              case Visibility.HIDDEN_UNTIL_KEYPRESS:
+              case Visibility.HIDDEN_UNTIL_KEYPRESS: {
                 visibleState = Visibility.VISIBLE;
                 break;
-              case Visibility.HIDDEN_BY_INSERTION:
-                // eslint-disable-next-line no-case-declarations
+              }
+              case Visibility.HIDDEN_BY_INSERTION: {
                 const insertionTriggeredGenerator = state.generatorStates.some(
                   (oldState, idx) =>
                     oldState.generator ===
@@ -346,6 +339,7 @@ export const useAutocompleteStore = createWithEqualityFn<AutocompleteState>(
                     ? Visibility.VISIBLE
                     : Visibility.HIDDEN_UNTIL_KEYPRESS;
                 break;
+              }
               default:
                 break;
             }
@@ -506,14 +500,6 @@ export const useAutocompleteStore = createWithEqualityFn<AutocompleteState>(
               return error(`Failed to get token array: ${err}`);
             }
           }),
-
-        setComponents: (components: React.SetStateAction<ComponentMap>) =>
-          setNamed("setComponents", (state) => ({
-            components:
-              typeof components === "function"
-                ? components(state.components)
-                : components,
-          })),
 
         error: (error: string) =>
           setNamed("error", (state) => {
