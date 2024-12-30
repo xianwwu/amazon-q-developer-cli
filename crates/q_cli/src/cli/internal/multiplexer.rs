@@ -43,7 +43,6 @@ use fig_proto::mux::{
 };
 use fig_proto::remote;
 use fig_proto::remote::{
-    PseudoterminalExecuteRequest,
     RunProcessRequest,
 };
 use fig_remote_ipc::figterm::{
@@ -128,7 +127,7 @@ async fn accept_connection(
                     }
                 },
                 Err(broadcast::error::RecvError::Lagged(lag)) => {
-                    warn!(%lag, %addr, "clientbound_rx lagged")
+                    warn!(%lag, %addr, "clientbound_rx lagged");
                 },
                 Err(broadcast::error::RecvError::Closed) => {
                     info!("clientbound_rx closed");
@@ -383,39 +382,6 @@ async fn handle_client_bound_message(
                 let hostbound = mux::Hostbound {
                     session_id,
                     submessage: Some(mux::hostbound::Submessage::RunProcessResponse(response)),
-                };
-                host_sender.send(hostbound)?;
-                None
-            } else {
-                bail!("invalid response type");
-            }
-        },
-        mux::clientbound::Submessage::PseudoterminalExecute(PseudoterminalExecuteRequest {
-            command,
-            working_directory,
-            background_job,
-            is_pipelined,
-            env,
-        }) => {
-            let (message, rx) =
-                FigtermCommand::pseudoterminal_execute(command, working_directory, background_job, is_pipelined, env);
-
-            let session = state.most_recent().context("most recent 3")?;
-            let sender = session.sender.clone();
-            let session_id = session.id.to_string();
-            drop(session);
-
-            sender.send(message)?;
-
-            let response = timeout(Duration::from_secs(10), rx)
-                .await
-                .context("Qterm response timed out after 10 sec")?
-                .context("Qterm response failed to receive from sender")?;
-
-            if let remote::hostbound::response::Response::PseudoterminalExecute(response) = response {
-                let hostbound = mux::Hostbound {
-                    session_id,
-                    submessage: Some(mux::hostbound::Submessage::PseudoterminalExecuteResponse(response)),
                 };
                 host_sender.send(hostbound)?;
                 None

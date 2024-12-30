@@ -47,7 +47,6 @@ message Clientbound {
     figterm.DiagnosticsRequest diagnostics = 103;
     figterm.InsertOnNewCmdRequest insert_on_new_cmd = 107;
     remote.RunProcessRequest run_process = 108;
-    remote.PseudoterminalExecuteRequest pseudoterminal_execute = 109;
 
     // responses
     fig.ReadFileRequest read_file = 105;

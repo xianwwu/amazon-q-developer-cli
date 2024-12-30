@@ -14,7 +14,7 @@ use tokio_util::codec::{
     Encoder,
 };
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct FigCodec {
     _internal: (),
 }

@@ -22,6 +22,12 @@ pub struct Base64LineCodec<T: Message> {
     _a: PhantomData<T>,
 }
 
+impl<T: Message> Default for Base64LineCodec<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Message> Base64LineCodec<T> {
     pub fn new() -> Base64LineCodec<T> {
         Base64LineCodec {
