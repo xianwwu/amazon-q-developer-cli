@@ -236,9 +236,6 @@ importers:
       deep-object-diff:
         specifier: ^1.1.9
         version: 1.1.9
-      events:
-        specifier: ^3.3.0
-        version: 3.3.0
       exponential-backoff:
         specifier: ^3.1.1
         version: 3.1.1
@@ -248,24 +245,15 @@ importers:
       loglevel:
         specifier: ^1.9.2
         version: 1.9.2
-      prop-types:
-        specifier: ^15.8.1
-        version: 15.8.1
       react:
         specifier: ^18.3.1
         version: 18.3.1
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
-      react-shadow:
-        specifier: ^20.5.0
-        version: 20.5.0(prop-types@15.8.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-window:
         specifier: ^1.8.10
         version: 1.8.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      semver:
-        specifier: ^7.6.3
-        version: 7.6.3
       tailwind-merge:
         specifier: ^2.5.5
         version: 2.5.5
@@ -485,7 +473,7 @@ importers:
   packages/autocomplete-parser:
     dependencies:
       '@aws/amazon-q-developer-cli-api-bindings':
-        specifier: workspace:~
+        specifier: workspace:^
         version: link:../api-bindings
       '@aws/amazon-q-developer-cli-api-bindings-wrappers':
         specifier: workspace:^
