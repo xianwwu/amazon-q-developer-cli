@@ -88,7 +88,7 @@ export class WebsocketMuxBackend implements IpcBackend {
       sessionId,
       submessage: clientbound,
     });
-    this.packetStream.getWriter().write(packet);
+    this.packetStream.write(packet);
   }
 
   insertText(sessionId: string, request: InsertTextRequest): void {

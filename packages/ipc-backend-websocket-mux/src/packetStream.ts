@@ -1,15 +1,15 @@
-import { Packet } from "@aws/amazon-q-developer-cli-proto/mux";
+import { Packet, PacketSchema } from "@aws/amazon-q-developer-cli-proto/mux";
 import { PacketReader } from "./reader.js";
 import { Socket } from "./socket.js";
-import { PacketWriter } from "./writer.js";
+import { toBinary } from "@bufbuild/protobuf";
 
 export class PacketStream {
+  private socket: Socket;
   private readable: PacketReader;
-  private writable: PacketWriter;
 
   constructor(socket: Socket) {
+    this.socket = socket;
     this.readable = new PacketReader(socket);
-    this.writable = new PacketWriter(socket);
   }
 
   onPacket(listener: (packet: Packet) => void | Promise<void>) {
@@ -17,6 +17,8 @@ export class PacketStream {
   }
 
   write(packet: Packet) {
-    this.writable.write(packet);
+    const bytes = toBinary(PacketSchema, packet);
+    const base64 = btoa(String.fromCharCode(...bytes));
+    this.socket.send(base64 + "\n");
   }
 }
