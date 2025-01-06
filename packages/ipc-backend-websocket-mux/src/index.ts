@@ -32,22 +32,16 @@ export class WebsocketMuxBackend implements IpcBackend {
 
   constructor(websocket: CsWebsocket) {
     const socket = Socket.cs(websocket);
-    const packetStream = new PacketStream(socket);
-    this.packetStream = packetStream;
-
-    (async () => {
-      const stream = packetStream.getReader().getReader();
-      while (true) {
-        const { done, value } = await stream.read();
-
-        if (value) {
-          const hostbound = await packetToHostbound(value);
-          this.handleHostbound(hostbound);
-        }
-
-        if (done) break;
-      }
-    })();
+    console.log("1. socket created");
+    this.packetStream = new PacketStream(socket);
+    console.log("2. packet stream created");
+    this.packetStream.onPacket(async (packet) => {
+      console.log("3. packet received");
+      const hostbound = await packetToHostbound(packet);
+      console.log("4. decoded hostbound", { hostbound });
+      this.handleHostbound(hostbound);
+      console.log("5. hostbound handled");
+    });
   }
 
   private handleHostbound(message: Hostbound) {

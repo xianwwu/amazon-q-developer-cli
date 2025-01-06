@@ -763,6 +763,9 @@ importers:
       '@bufbuild/protobuf':
         specifier: 2.2.3
         version: 2.2.3
+      emittery:
+        specifier: ^1.0.3
+        version: 1.0.3
     devDependencies:
       '@amzn/eslint-config':
         specifier: workspace:^
@@ -3654,6 +3657,10 @@ packages:
 
   electron-to-chromium@1.5.66:
     resolution: {integrity: sha512-pI2QF6+i+zjPbqRzJwkMvtvkdI7MjVbSh2g8dlMguDJIXEPw+kwasS1Jl+YGPEBfGVxsVgGUratAKymPdPo2vQ==}
+
+  emittery@1.0.3:
+    resolution: {integrity: sha512-tJdCJitoy2lrC2ldJcqN4vkqJ00lT+tOWNT1hBJjO/3FDMJa5TTIiYGCKGkn/WfCyOzUMObeohbVTj00fhiLiA==}
+    engines: {node: '>=14.16'}
 
   emoji-regex@10.4.0:
     resolution: {integrity: sha512-EC+0oUMY1Rqm4O6LLrgjtYDvcVYTy7chDnM4Q7030tP4Kwj3u/pR6gP9ygnp2CJMK5Gq+9Q2oqmrFJAz01DXjw==}
@@ -8945,7 +8952,7 @@ snapshots:
       sirv: 3.0.0
       tinyglobby: 0.2.10
       tinyrainbow: 1.2.0
-      vitest: 2.1.8(@types/node@22.10.1)(@vitest/ui@2.1.8)(jsdom@24.1.0)(terser@5.37.0)
+      vitest: 2.1.8(@types/node@22.10.2)(@vitest/ui@2.1.8)(jsdom@24.1.0)(terser@5.37.0)
 
   '@vitest/utils@2.1.8':
     dependencies:
@@ -9639,6 +9646,8 @@ snapshots:
       jake: 10.9.2
 
   electron-to-chromium@1.5.66: {}
+
+  emittery@1.0.3: {}
 
   emoji-regex@10.4.0: {}
 

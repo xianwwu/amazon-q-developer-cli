@@ -1,30 +1,58 @@
 import { Packet, PacketSchema } from "@aws/amazon-q-developer-cli-proto/mux";
 import { Socket } from "./socket.js";
 import { fromBinary } from "@bufbuild/protobuf";
+import Emittery from "emittery";
 
 export class PacketReader {
-  private reader: ReadableStream<string>;
-  private transformStream: TransformStream<string, Packet>;
+  private buffer: string;
+  private emitter: Emittery;
 
   constructor(socket: Socket) {
-    this.reader = new ReadableStream({
-      start(controller) {
-        socket.onMessage((data) => {
-          if (typeof data === "string") {
-            controller.enqueue(data);
-          }
-        });
+    this.buffer = "";
+    this.emitter = new Emittery();
 
-        socket.onClose(() => controller.close());
-      },
+    socket.onMessage((data) => {
+      if (typeof data === "string") {
+        this.buffer += data;
+        this.parse();
+      }
     });
-    this.transformStream = new TransformStream(
-      new StringParserTransform(parseBase64Line),
-    );
   }
 
-  getReader() {
-    return this.reader.pipeThrough(this.transformStream);
+  onPacket(listener: (packet: Packet) => void | Promise<void>) {
+    this.emitter.on("packet", listener);
+  }
+
+  parse() {
+    // Keep trying to parse while we have data
+    while (this.buffer.length > 0) {
+      const result = parseBase64Line(this.buffer);
+
+      switch (result.type) {
+        case "success": {
+          // Enqueue the parsed value and remove consumed characters
+          this.emitter.emit("packet", result.value);
+          this.buffer = this.buffer.slice(result.charsConsumed);
+          break;
+        }
+        case "needs_more": {
+          // Not enough data yet, wait for more
+          if (result.minimumCharsNeeded > this.buffer.length) {
+            return;
+          }
+          // If we have enough chars but parse still failed, there might be an issue
+          console.error(
+            "Parser reported needs more characters but buffer contains requested amount",
+          );
+          return;
+        }
+        case "error": {
+          // Forward parse errors to stream consumer
+          console.error(result.error);
+          return;
+        }
+      }
+    }
   }
 }
 
@@ -47,61 +75,6 @@ type ParseError = {
 };
 
 type ParseResult<T> = ParseSuccess<T> | ParseNeedsMore | ParseError;
-
-class StringParserTransform<T> implements Transformer<string, T> {
-  private buffer: string;
-
-  constructor(private parse: (input: string) => ParseResult<T>) {
-    this.buffer = "";
-  }
-
-  transform(chunk: string, controller: TransformStreamDefaultController<T>) {
-    // Decode and append new chunk to existing buffer
-    this.buffer += chunk;
-
-    // Keep trying to parse while we have data
-    while (this.buffer.length > 0) {
-      const result = this.parse(this.buffer);
-
-      switch (result.type) {
-        case "success":
-          // Enqueue the parsed value and remove consumed characters
-          controller.enqueue(result.value);
-          this.buffer = this.buffer.slice(result.charsConsumed);
-          break;
-
-        case "needs_more":
-          // Not enough data yet, wait for more
-          if (result.minimumCharsNeeded > this.buffer.length) {
-            return;
-          }
-          // If we have enough chars but parse still failed, there might be an issue
-          throw new Error(
-            "Parser reported needs more characters but buffer contains requested amount",
-          );
-
-        case "error":
-          // Forward parse errors to stream consumer
-          controller.error(result.error);
-          return;
-      }
-    }
-  }
-
-  flush(controller: TransformStreamDefaultController<T>) {
-    // Handle any remaining text
-    if (this.buffer.length > 0) {
-      const result = this.parse(this.buffer);
-      if (result.type === "success") {
-        controller.enqueue(result.value);
-      }
-      // Ignore needs_more on flush since no more data is coming
-      else if (result.type === "error") {
-        controller.error(result.error);
-      }
-    }
-  }
-}
 
 function parseBase64Line(input: string): ParseResult<Packet> {
   // Look for either CRLF or LF
