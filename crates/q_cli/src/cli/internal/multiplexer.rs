@@ -211,12 +211,13 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
         });
 
         tokio::spawn(async move {
-            let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), args.port.unwrap_or(8080));
+            let addr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), args.port.unwrap_or(8080));
             let try_socket = TcpListener::bind(&addr).await;
             let listener = try_socket.expect("Failed to bind");
             info!("Listening on: {addr}");
 
-            while let Ok((tcp_stream, _)) = listener.accept().await {
+            while let Ok((tcp_stream, stream_addr)) = listener.accept().await {
+                info!(%stream_addr, "Accepted stream");
                 let clientbound_rx = clientbound_tx_clone.subscribe();
                 tokio::spawn(accept_connection(tcp_stream, hostbound_tx.clone(), clientbound_rx));
             }
@@ -229,7 +230,7 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
     let socket_path = directories::local_remote_socket_path()?;
     if let Some(parent) = socket_path.parent() {
         if !parent.exists() {
-            info!("creating parent socket");
+            info!(?parent, "creating socket parent dir");
             std::fs::create_dir_all(parent).context("Failed creating socket path")?;
         }
 
@@ -237,19 +238,19 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
         {
             use std::fs::Permissions;
             use std::os::unix::fs::PermissionsExt;
-            info!("setting permissions");
+            info!(?parent, "setting permissions");
             std::fs::set_permissions(parent, Permissions::from_mode(0o700))?;
         }
     }
 
     // Remove the socket file if it already exists
-    info!("removing socket");
+    info!(?socket_path, "removing socket");
     if let Err(err) = tokio::fs::remove_file(&socket_path).await {
         error!(%err, "Error removing socket");
     };
 
     // Create the socket
-    info!("binding to socket");
+    info!(?socket_path, "binding to socket");
     let listener = UnixListener::bind(&socket_path)?;
 
     let (read_half, write_half) = tokio::io::split(internal_stream);
