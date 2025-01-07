@@ -117,11 +117,6 @@ async fn accept_connection(
 
     let (mut write, mut read) = ws_stream.split();
 
-    write
-        .send(Message::Binary(Payload::Vec(b"ab\r\n".into())))
-        .await
-        .unwrap();
-
     let clientbound_join: JoinHandle<Result<(), ()>> = tokio::spawn(async move {
         loop {
             match clientbound_rx.recv().await {
@@ -177,11 +172,10 @@ async fn accept_connection(
     info!("Websocket connection closed");
 }
 
-async fn handle_stdio_stream<S: AsyncWrite + AsyncRead + Unpin>(mut stream: S) {
+async fn handle_stdio_stream<S: AsyncWrite + AsyncRead + Unpin>(mut stream: S) -> std::io::Result<()> {
     let mut stdio_stream = tokio::io::join(tokio::io::stdin(), tokio::io::stdout());
-    tokio::io::copy_bidirectional(&mut stream, &mut stdio_stream)
-        .await
-        .unwrap();
+    tokio::io::copy_bidirectional(&mut stream, &mut stdio_stream).await?;
+    Ok(())
 }
 
 pub async fn execute(args: MultiplexerArgs) -> Result<()> {
@@ -200,7 +194,7 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
 
     let (external_stream, internal_stream) = tokio::io::duplex(1024 * 4);
 
-    if args.websocket {
+    let _join = if args.websocket {
         let (clientbound_tx, _) = broadcast::channel::<Bytes>(10);
         let (hostbound_tx, mut clientbound_rx) = mpsc::channel::<Bytes>(10);
         let clientbound_tx_clone = clientbound_tx.clone();
@@ -235,10 +229,11 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
                 let clientbound_rx = clientbound_tx_clone.subscribe();
                 tokio::spawn(accept_connection(tcp_stream, hostbound_tx.clone(), clientbound_rx));
             }
-        });
+            Ok(())
+        })
     } else {
-        tokio::spawn(handle_stdio_stream(external_stream));
-    }
+        tokio::spawn(handle_stdio_stream(external_stream))
+    };
 
     // Ensure the socket path exists and has correct permissions
     let socket_path = directories::local_remote_socket_path()?;
@@ -291,12 +286,23 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
             packet = reader.next() => match packet {
                 Some(Ok(packet)) => {
                     info!("received packet");
-                    let message = packet_to_message(packet).unwrap();
+                    let message = match packet_to_message(packet) {
+                        Ok(message) => message,
+                        Err(err) => {
+                            error!(?err, "error decoding packet");
+                            continue;
+                        }
+                    };
                     match handle_client_bound_message(message, &figterm_state, &host_sender).await {
                         Ok(Some(msg)) => {
-                            let session = figterm_state.most_recent().context("most recent 1")?;
-                            info!("sending to session {}", session.id);
-                            session.sender.send(msg)?;
+                            if let Some(session) = figterm_state.most_recent() {
+                                info!("sending to session {}", session.id);
+                                if let Err(err) = session.sender.send(msg) {
+                                    error!(?err, "error sending to session");
+                                }
+                            } else {
+                                warn!("no session to send to");
+                            }
                         }
                         Ok(None) => {}
                         Err(err) => error!(?err, "error")
@@ -314,7 +320,9 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
                 Some(hostbound) => {
                     info!("sending packet");
                     let packet = message_to_packet(hostbound, &PacketOptions { gzip: true });
-                    writer.send(packet).await.unwrap();
+                    if let Err(err) = writer.send(packet).await {
+                        error!(?err, "error sending packet");
+                    }
                 },
                 None => bail!("host recv none"),
             },
