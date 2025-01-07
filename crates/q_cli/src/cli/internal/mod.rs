@@ -855,8 +855,8 @@ impl InternalSubcommand {
                 Ok(inline_shell_completion_accept(buffer, suggestion).await)
             },
             InternalSubcommand::Multiplexer(args) => match multiplexer::execute(args).await {
-                Ok(_) => {
-                    error!("quitting multiplexer");
+                Ok(()) => {
+                    info!("quitting multiplexer");
                     Ok(ExitCode::SUCCESS)
                 },
                 Err(err) => {

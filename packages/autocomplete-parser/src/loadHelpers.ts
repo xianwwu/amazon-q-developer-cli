@@ -80,7 +80,8 @@ export async function importSpecFromFile(
 /**
  * Specs can only be loaded from non "secure" contexts, so we can't load from https
  */
-export const canLoadSpecProtocol = () => window.location.protocol !== "https:";
+export const canLoadSpecProtocol = () =>
+  window?.fig?.constants && window.location.protocol !== "https:";
 
 // TODO: this is a problem for diff-versioned specs
 export async function importFromPublicCDN<T = SpecFileImport>(

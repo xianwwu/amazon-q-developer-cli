@@ -42,9 +42,7 @@ use fig_proto::mux::{
     packet_to_message,
 };
 use fig_proto::remote;
-use fig_proto::remote::{
-    RunProcessRequest,
-};
+use fig_proto::remote::RunProcessRequest;
 use fig_remote_ipc::figterm::{
     FigtermCommand,
     FigtermSessionId,
@@ -91,6 +89,8 @@ use tracing::{
     warn,
 };
 
+use crate::util::pid_file::PidLock;
+
 #[derive(Debug, PartialEq, Eq, Args)]
 pub struct MultiplexerArgs {
     #[arg(long, default_value_t = false)]
@@ -116,6 +116,11 @@ async fn accept_connection(
     info!("New WebSocket connection: {addr}");
 
     let (mut write, mut read) = ws_stream.split();
+
+    write
+        .send(Message::Binary(Payload::Vec(b"ab\r\n".into())))
+        .await
+        .unwrap();
 
     let clientbound_join: JoinHandle<Result<(), ()>> = tokio::spawn(async move {
         loop {
@@ -180,6 +185,15 @@ async fn handle_stdio_stream<S: AsyncWrite + AsyncRead + Unpin>(mut stream: S) {
 }
 
 pub async fn execute(args: MultiplexerArgs) -> Result<()> {
+    #[cfg(unix)]
+    let pid_lock = match fig_util::directories::runtime_dir() {
+        Ok(dir) => Some(PidLock::new(dir.join("mux.lock")).await.ok()).flatten(),
+        Err(err) => {
+            error!(%err, "Failed to get runtime dir");
+            None
+        },
+    };
+
     // DO NOT REMOVE, this is needed such that CloudShell does not time out!
     info!("starting multiplexer");
     eprintln!("Starting multiplexer, this is required for AWS CloudShell.");
@@ -303,9 +317,16 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
                     writer.send(packet).await.unwrap();
                 },
                 None => bail!("host recv none"),
-            }
+            },
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("\nExiting multiplexer: ctrl-c");
+                break;
+            },
         }
     }
+
+    #[cfg(unix)]
+    let _ = pid_lock.map(|l| l.release());
 
     Ok(())
 }

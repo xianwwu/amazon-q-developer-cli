@@ -57,7 +57,7 @@ export const executeLoginShell = async ({
       throw new LoginShellError(`Could not find executable for ${shell}`);
     }
   }
-  const flags = window.fig.constants?.os === "linux" ? "-lc" : "-lic";
+  const flags = window?.fig?.constants?.os === "linux" ? "-lc" : "-lic";
 
   const process = Process.run({
     executable: exe,

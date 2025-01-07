@@ -273,7 +273,7 @@ const getTitle = (
 };
 
 const Suggestion = ({
-  // style,
+  style,
   suggestion,
   commonPrefix,
   searchTerm,
@@ -281,7 +281,7 @@ const Suggestion = ({
   iconPath,
   isActive,
   onClick,
-  // iconSize,
+  iconSize,
   ipcBackend,
 }: SuggestionProps) => {
   const onSuggestionClick = useCallback(() => {
@@ -299,21 +299,20 @@ const Suggestion = ({
 
   return (
     <div
-      // style={style}
+      style={style}
       className={`suggestion-item flex items-center overflow-hidden pl-1.5 ${
         isActive ? "bg-selected-bg brightness-95" : ""
       }`}
       onClick={onSuggestionClick}
     >
       <SuggestionIcon
-        style={{}}
-        // style={{
-        //   height: iconSize,
-        //   display: "flex",
-        //   width: iconSize,
-        //   minWidth: iconSize,
-        //   marginRight: 5,
-        // }}
+        style={{
+          height: iconSize,
+          display: "flex",
+          width: iconSize,
+          minWidth: iconSize,
+          marginRight: 5,
+        }}
         suggestion={suggestion}
         iconPath={iconPath}
       />

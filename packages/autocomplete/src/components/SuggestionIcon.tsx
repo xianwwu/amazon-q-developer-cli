@@ -19,7 +19,7 @@ const transformIconUri = (icon: URL): URL => {
     return icon;
   }
 
-  if (host === "" && fig.constants?.newUriFormat) {
+  if (host === "" && window?.fig?.constants?.newUriFormat) {
     host = "path";
   }
 
@@ -34,7 +34,7 @@ const transformIconUri = (icon: URL): URL => {
     }
   }
 
-  if (window.fig.constants?.os === "windows") {
+  if (window?.fig?.constants?.os === "windows") {
     return new URL(
       `https://fig.${host}${icon.pathname}${icon.search}${icon.hash}`,
     );

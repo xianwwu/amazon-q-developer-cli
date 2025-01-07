@@ -49,7 +49,8 @@ export class PacketReader {
         case "error": {
           // Forward parse errors to stream consumer
           console.error(result.error);
-          return;
+          this.buffer = this.buffer.slice(result.charsConsumed);
+          break;
         }
       }
     }
@@ -72,6 +73,7 @@ type ParseNeedsMore = {
 type ParseError = {
   type: "error";
   error: Error;
+  charsConsumed: number;
 };
 
 type ParseResult<T> = ParseSuccess<T> | ParseNeedsMore | ParseError;
@@ -109,6 +111,7 @@ function parseBase64Line(input: string): ParseResult<Packet> {
     return {
       type: "error",
       error: new Error("Invalid base64 string"),
+      charsConsumed: lineEndIndex + lineEndLength,
     };
   }
 
@@ -131,6 +134,7 @@ function parseBase64Line(input: string): ParseResult<Packet> {
     return {
       type: "error",
       error: new Error(`Failed to decode line: ${error}`),
+      charsConsumed: lineEndIndex + lineEndLength,
     };
   }
 }

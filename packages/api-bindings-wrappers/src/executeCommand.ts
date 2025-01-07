@@ -18,7 +18,7 @@ export const cleanOutput = (output: string) =>
 
 export const executeCommandTimeout = async (
   input: Fig.ExecuteCommandInput,
-  timeout = window.fig.constants?.os === "windows" ? 20000 : 5000,
+  timeout = window?.fig?.constants?.os === "windows" ? 20000 : 5000,
 ): Promise<Fig.ExecuteCommandOutput> => {
   const command = [input.command, ...input.args].join(" ");
   try {

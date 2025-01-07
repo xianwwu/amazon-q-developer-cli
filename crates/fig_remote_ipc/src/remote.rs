@@ -125,7 +125,7 @@ pub async fn handle_remote_ipc(
             }
             message = reader.recv_message::<Hostbound>() => match message {
                 Ok(Some(message)) => {
-                    debug!(?message, "Received remote message");
+                    trace!(?message, "Received remote message");
                     if let Some(response) = match message.packet {
                         Some(hostbound::Packet::Handshake(handshake)) => {
                             let result = if session_id.is_some() {

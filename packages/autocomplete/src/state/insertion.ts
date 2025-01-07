@@ -91,7 +91,7 @@ const sendTextToTerminal = (
     state.figState.shellContext?.sessionId ?? "",
     create(InsertTextRequestSchema, {
       insertion: finalStringToInsert,
-      // insertionBuffer: buffer,
+      insertionBuffer: buffer,
     }),
   );
 
@@ -153,7 +153,7 @@ const insertString = (
     insertionLength: `${inserted.insertedChars}`,
     // Includes backspaces and cursor adjustments.
     insertionLengthFull: `${inserted.insertedCharsFull}`,
-    app: fig.constants?.version || "",
+    app: window?.fig?.constants?.version ?? "",
     terminal: state.figState.shellContext?.terminal ?? null,
     shell: state.figState.shellContext?.shellPath?.split("/")?.at(-1) ?? null,
   });
