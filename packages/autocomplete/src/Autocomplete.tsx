@@ -365,13 +365,6 @@ function Autocomplete({
       ? windowState.descriptionPosition
       : "unknown";
 
-  const previewPosition: DescriptionPosition =
-    hasSuggestions &&
-    (enableMocks ? suggestionsMock : suggestions)[selectedIndex]
-      ?.previewComponent
-      ? windowState.previewPosition
-      : "unknown";
-
   const description = (
     <Description
       currentArg={currentArg}

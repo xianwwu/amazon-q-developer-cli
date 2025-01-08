@@ -30,7 +30,6 @@ use fig_proto::local::{
 use fig_proto::prost::Message;
 use fig_proto::remote::clientbound;
 use fig_remote_ipc::figterm::{
-    FigtermSessionId,
     FigtermState,
     SessionMetrics,
 };
@@ -39,6 +38,7 @@ use tracing::{
     debug,
     error,
 };
+use uuid::Uuid;
 
 use crate::event::{
     EmitEventName,
@@ -65,7 +65,7 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
     async fn edit_buffer(
         &mut self,
         hook: &EditBufferHook,
-        session_id: &FigtermSessionId,
+        session_id: Uuid,
         figterm_state: &Arc<FigtermState>,
         // notifications_state: &WebviewNotificationsState,
         // proxy: &EventLoopProxy,
@@ -144,7 +144,7 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
                             context: hook.context,
                             buffer: Some(hook.text),
                             cursor: utf16_cursor_position,
-                            session_id: Some(session_id.into_string()),
+                            session_id: Some(session_id.into()),
                         },
                     )),
                 })),
@@ -189,12 +189,12 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
     async fn prompt(
         &mut self,
         hook: &PromptHook,
-        session_id: &FigtermSessionId,
+        session_id: Uuid,
         figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<clientbound::response::Response>> {
         let mut cwd_changed = false;
         let mut new_cwd = None;
-        figterm_state.with(session_id, |session| {
+        figterm_state.with(&session_id, |session| {
             if let (Some(old_context), Some(new_context)) = (&session.context, &hook.context) {
                 cwd_changed = old_context.current_working_directory != new_context.current_working_directory;
                 new_cwd.clone_from(&new_context.current_working_directory);
@@ -256,7 +256,7 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
     async fn pre_exec(
         &mut self,
         hook: &PreExecHook,
-        session_id: &FigtermSessionId,
+        session_id: Uuid,
         figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<clientbound::response::Response>> {
         figterm_state.with_update(session_id.clone(), |session| {
@@ -295,7 +295,7 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
     async fn post_exec(
         &mut self,
         hook: &PostExecHook,
-        session_id: &FigtermSessionId,
+        session_id: Uuid,
         figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<clientbound::response::Response>> {
         figterm_state.with_update(session_id.clone(), |session| {
@@ -330,7 +330,7 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
     async fn intercepted_key(
         &mut self,
         InterceptedKeyHook { action, context, .. }: InterceptedKeyHook,
-        _session_id: &FigtermSessionId,
+        _session_id: Uuid,
     ) -> Result<Option<clientbound::response::Response>> {
         debug!(%action, "Intercepted Key Action");
 

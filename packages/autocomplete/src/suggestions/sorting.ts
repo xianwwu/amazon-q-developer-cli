@@ -57,7 +57,7 @@ export const updatePriorities = (
     if (getSetting(SETTINGS.SORT_METHOD) !== "alphabetical") {
       idxToUse = recencyIndex;
     }
-  } catch (error) {
+  } catch (_err) {
     idxToUse = recencyIndex;
   }
 

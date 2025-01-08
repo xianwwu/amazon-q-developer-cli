@@ -11,6 +11,7 @@ import { Visibility } from "../state/types";
 import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
 import { create } from "@bufbuild/protobuf";
 import {
+  ActionSchema,
   InsertTextRequestSchema,
   InterceptRequest_SetFigjsInterceptsSchema,
   InterceptRequestSchema,
@@ -40,8 +41,12 @@ export const setInterceptKeystrokesBackend = (
       interceptCommand: {
         case: "setFigjsIntercepts",
         value: create(InterceptRequest_SetFigjsInterceptsSchema, {
-          // actions: ACTIONS,
-          actions: [],
+          actions: ACTIONS.map((action) =>
+            create(ActionSchema, {
+              identifier: action.identifier,
+              bindings: action.defaultBindings,
+            }),
+          ),
           interceptBoundKeystrokes,
           interceptGlobalKeystrokes,
           overrideActions: false,
@@ -110,8 +115,9 @@ export const useAutocompleteKeypressCallback = (
     [
       selectedIndex,
       visibleState,
-      suggestions.length,
       scrollWrapAround,
+      scrollToIndex,
+      suggestions.length,
       setHistoryModeEnabled,
     ],
   );
@@ -151,21 +157,21 @@ export const useAutocompleteKeypressCallback = (
         case AutocompleteAction.INSERT_COMMON_PREFIX:
           try {
             insertCommonPrefix(ipcBackend);
-          } catch (err) {
+          } catch (_err) {
             shake();
           }
           break;
         case AutocompleteAction.INSERT_COMMON_PREFIX_OR_NAVIGATE_DOWN:
           try {
             insertCommonPrefix(ipcBackend);
-          } catch (err) {
+          } catch (_err) {
             navigate(1);
           }
           break;
         case AutocompleteAction.INSERT_COMMON_PREFIX_OR_INSERT_SELECTED:
           try {
             insertCommonPrefix(ipcBackend);
-          } catch (err) {
+          } catch (_err) {
             insertTextForItem(ipcBackend, selectedItem);
           }
           break;

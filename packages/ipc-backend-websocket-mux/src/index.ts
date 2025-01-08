@@ -16,18 +16,18 @@ import { clientboundToPacket, packetToHostbound } from "./mux.js";
 import { EditBufferHook } from "@aws/amazon-q-developer-cli-proto/local";
 import { create } from "@bufbuild/protobuf";
 import { RunProcessResponseSchema } from "@aws/amazon-q-developer-cli-proto/fig";
+import Emittery from "emittery";
 
 export { CsWebsocket };
 
-type SubscriptionStorage<T> = ((notification: T) => void)[];
+const EditBufferHookSymbol = Symbol("EditBufferHook");
+const PromptHookSymbol = Symbol("PromptHook");
+const PreExecHookSymbol = Symbol("PreExecHook");
+const PostExecHookSymbol = Symbol("PostExecHook");
+const InterceptedKeyHookSymbol = Symbol("InterceptedKeyHook");
 
 export class WebsocketMuxBackend implements IpcBackend {
-  editBufferSubscriptions: SubscriptionStorage<EditBufferHook> = [];
-  promptSubscriptions: SubscriptionStorage<PromptHook> = [];
-  preExecSubscriptions: SubscriptionStorage<PreExecHook> = [];
-  postExecSubscriptions: SubscriptionStorage<PostExecHook> = [];
-  interceptedKeySubscriptions: SubscriptionStorage<InterceptedKeyHook> = [];
-
+  emitter: Emittery = new Emittery();
   packetStream: PacketStream;
 
   constructor(websocket: CsWebsocket) {
@@ -49,29 +49,19 @@ export class WebsocketMuxBackend implements IpcBackend {
     console.log(submessage);
     switch (submessage?.case) {
       case "editBuffer":
-        this.editBufferSubscriptions.forEach((callback) => {
-          callback(submessage.value);
-        });
+        this.emitter.emit(EditBufferHookSymbol, submessage.value);
         break;
       case "interceptedKey":
-        this.interceptedKeySubscriptions.forEach((callback) => {
-          callback(submessage.value);
-        });
+        this.emitter.emit(InterceptedKeyHookSymbol, submessage.value);
         break;
       case "postExec":
-        this.postExecSubscriptions.forEach((callback) => {
-          callback(submessage.value);
-        });
+        this.emitter.emit(PostExecHookSymbol, submessage.value);
         break;
       case "preExec":
-        this.preExecSubscriptions.forEach((callback) => {
-          callback(submessage.value);
-        });
+        this.emitter.emit(PreExecHookSymbol, submessage.value);
         break;
       case "prompt":
-        this.promptSubscriptions.forEach((callback) => {
-          callback(submessage.value);
-        });
+        this.emitter.emit(PromptHookSymbol, submessage.value);
         break;
       case "runProcessResponse":
         break;
@@ -124,22 +114,24 @@ export class WebsocketMuxBackend implements IpcBackend {
   }
 
   onEditBufferChange(callback: (notification: EditBufferHook) => void): void {
-    this.editBufferSubscriptions.push(callback);
+    this.emitter.on(EditBufferHookSymbol, () => {
+      console.log(callback);
+    });
   }
 
   onPrompt(callback: (notification: PromptHook) => void): void {
-    this.promptSubscriptions.push(callback);
+    this.emitter.on(PromptHookSymbol, callback);
   }
 
   onPreExec(callback: (notification: PreExecHook) => void): void {
-    this.preExecSubscriptions.push(callback);
+    this.emitter.on(PreExecHookSymbol, callback);
   }
 
   onPostExec(callback: (notification: PostExecHook) => void): void {
-    this.postExecSubscriptions.push(callback);
+    this.emitter.on(PostExecHookSymbol, callback);
   }
 
   onInterceptedKey(callback: (notification: InterceptedKeyHook) => void): void {
-    this.interceptedKeySubscriptions.push(callback);
+    this.emitter.on(InterceptedKeyHookSymbol, callback);
   }
 }

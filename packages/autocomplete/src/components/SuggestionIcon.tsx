@@ -5,6 +5,7 @@ import {
 } from "@aws/amazon-q-developer-cli-shared/internal";
 import { localProtocol } from "@aws/amazon-q-developer-cli-shared/utils";
 import { icons } from "../fig/icons";
+import { useClassName } from "../state/style";
 
 type SuggestionIconProps = {
   suggestion: Suggestion;
@@ -43,7 +44,12 @@ const transformIconUri = (icon: URL): URL => {
   return new URL(`fig://${host}${icon.pathname}${icon.search}${icon.hash}`);
 };
 
-function renderIcon(icon: URL, height: string | number) {
+function IconImg(icon: URL, height: string | number) {
+  const iconClassName = useClassName(
+    "icon-img",
+    "grid overflow-hidden bg-contain bg-no-repeat",
+  );
+
   const isFigProtocol = icon.protocol === "fig:";
 
   const isTemplate = isFigProtocol ? icon.host.endsWith("template") : false;
@@ -62,7 +68,7 @@ function renderIcon(icon: URL, height: string | number) {
             ? "Template icon"
             : `Icon for ${icon.pathname}`
       }
-      className="grid overflow-hidden bg-contain bg-no-repeat"
+      className={iconClassName}
       style={{
         height,
         width: height,
@@ -129,7 +135,7 @@ const SuggestionIcon = ({
   if (!img && icon && typeof icon === "string") {
     try {
       const iconUri = new URL(icon);
-      img = renderIcon(transformIconUri(iconUri), height ?? 0);
+      img = IconImg(transformIconUri(iconUri), height ?? 0);
     } catch (_err) {
       if (typeof height === "number") {
         height *= 0.8;
@@ -163,7 +169,7 @@ const SuggestionIcon = ({
       (type && srcMap[type] ? srcMap[type] : undefined) ??
       new URL(localProtocol("icon", "?type=box"));
 
-    img = renderIcon(src, height ?? 0);
+    img = IconImg(src, height ?? 0);
   }
 
   return <div style={style}>{img}</div>;

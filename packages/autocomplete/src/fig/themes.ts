@@ -307,9 +307,10 @@ export async function setTheme(
 
     // All themes fallback to the dark theme if values are missing
     setCSSProperties({ ...builtInThemes.dark, ...parsedTheme }, "dark");
-  } catch (e) {
-    logger.info(
+  } catch (error) {
+    logger.warn(
       "There was an error parsing the theme. Using default dark theme",
+      { error },
     );
     setCSSProperties(builtInThemes.dark, "dark");
   }

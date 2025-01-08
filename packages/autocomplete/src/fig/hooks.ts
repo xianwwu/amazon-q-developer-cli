@@ -1,20 +1,10 @@
 import React, { useEffect } from "react";
 import {
   EditBufferNotifications,
-  Event,
   Keybindings,
-  Settings,
-  Shell,
   Types,
 } from "@aws/amazon-q-developer-cli-api-bindings";
 import { AliasMap } from "@aws/amazon-q-developer-cli-shell-parser";
-import {
-  SettingsMap,
-  updateSettings,
-} from "@aws/amazon-q-developer-cli-api-bindings-wrappers";
-import { clearSpecIndex } from "@aws/amazon-q-developer-cli-autocomplete-parser";
-import { updateSelectSuggestionKeybindings } from "../actions";
-import { generatorCache } from "../generators/helpers";
 import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
 import { create } from "@bufbuild/protobuf";
 import { KeybindingPressedNotificationSchema } from "@aws/amazon-q-developer-cli-proto/fig";

@@ -12,13 +12,15 @@ class WebsocktShim {
           ...event,
           data: await event.data.text(),
         };
-        console.log("message", message.data);
-        this.emitter.emit("message2", message);
+        this.emitter.emit("autocompleteMessage", message);
       }
     };
   }
 
-  public on(event: "message2", listener: (data: { data: string }) => void) {
+  public on(
+    event: "autocompleteMessage",
+    listener: (data: { data: string }) => void,
+  ) {
     this.emitter.on(event, listener);
     return this;
   }
@@ -33,7 +35,7 @@ class WebsocktShim {
 }
 
 export function Test() {
-  const [ws, setWs] = useState<WebsocktShim | undefined>();
+  const [websocket, setWebsocket] = useState<WebsocktShim | undefined>();
 
   console.log("hi");
 
@@ -42,7 +44,7 @@ export function Test() {
     inner.onopen = () => console.log("ws opened");
     inner.onclose = () => console.log("ws closed");
 
-    setWs(new WebsocktShim(inner));
+    setWebsocket(new WebsocktShim(inner));
 
     return () => {
       inner.close();
@@ -51,13 +53,12 @@ export function Test() {
 
   return (
     <div className="">
-      {ws && (
+      {websocket && (
         <Autocomplete
           ipcBackend={{
             type: "",
-            websocket: ws,
+            websocket,
           }}
-          // enableMocks={true}
         />
       )}
     </div>

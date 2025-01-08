@@ -21,12 +21,13 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@aws/amazon-q-developer-cli-api-bindings": "workspace:^",
     "@aws/amazon-q-developer-cli-api-bindings-wrappers": "workspace:^",
+    "@aws/amazon-q-developer-cli-api-bindings": "workspace:^",
     "@aws/amazon-q-developer-cli-shell-parser": "workspace:^",
     "@fig/autocomplete-generators": "^2.4.0",
-    "@fig/autocomplete-helpers": "^1.0.7",
+    "@fig/autocomplete-helpers": "2.0.0",
     "@fig/autocomplete-shared": "^1.1.2",
+    "@withfig/autocomplete": "2.690.4",
     "loglevel": "^1.9.2",
     "semver": "^7.6.3",
     "zod": "^3.24.1"

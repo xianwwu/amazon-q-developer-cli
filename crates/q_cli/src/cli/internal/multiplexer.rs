@@ -45,7 +45,6 @@ use fig_proto::remote;
 use fig_proto::remote::RunProcessRequest;
 use fig_remote_ipc::figterm::{
     FigtermCommand,
-    FigtermSessionId,
     FigtermState,
 };
 use fig_remote_ipc::remote::handle_remote_ipc;
@@ -88,6 +87,7 @@ use tracing::{
     info,
     warn,
 };
+use uuid::Uuid;
 
 use crate::util::pid_file::PidLock;
 
@@ -172,10 +172,11 @@ async fn accept_connection(
     info!("Websocket connection closed");
 }
 
-async fn handle_stdio_stream<S: AsyncWrite + AsyncRead + Unpin>(mut stream: S) -> std::io::Result<()> {
+async fn handle_stdio_stream<S: AsyncWrite + AsyncRead + Unpin>(mut stream: S, error_tx: mpsc::Sender<std::io::Error>) {
     let mut stdio_stream = tokio::io::join(tokio::io::stdin(), tokio::io::stdout());
-    tokio::io::copy_bidirectional(&mut stream, &mut stdio_stream).await?;
-    Ok(())
+    if let Err(err) = tokio::io::copy_bidirectional(&mut stream, &mut stdio_stream).await {
+        let _ = error_tx.send(err);
+    }
 }
 
 pub async fn execute(args: MultiplexerArgs) -> Result<()> {
@@ -194,7 +195,8 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
 
     let (external_stream, internal_stream) = tokio::io::duplex(1024 * 4);
 
-    let _join = if args.websocket {
+    let (error_tx, mut error_rx) = tokio::sync::mpsc::channel::<std::io::Error>(1);
+    if args.websocket {
         let (clientbound_tx, _) = broadcast::channel::<Bytes>(10);
         let (hostbound_tx, mut clientbound_rx) = mpsc::channel::<Bytes>(10);
         let clientbound_tx_clone = clientbound_tx.clone();
@@ -212,27 +214,39 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
             }
         });
 
-        tokio::spawn(async move {
-            while let Some(msg) = clientbound_rx.recv().await {
-                external_write.write_all(&msg).await.unwrap();
+        tokio::spawn({
+            let error_tx = error_tx.clone();
+            async move {
+                while let Some(msg) = clientbound_rx.recv().await {
+                    if let Err(err) = external_write.write_all(&msg).await {
+                        let _ = error_tx.send(err);
+                    }
+                }
             }
         });
 
-        tokio::spawn(async move {
-            let addr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), args.port.unwrap_or(8080));
-            let try_socket = TcpListener::bind(&addr).await;
-            let listener = try_socket.expect("Failed to bind");
-            info!("Listening on: {addr}");
+        tokio::spawn({
+            let error_tx = error_tx.clone();
+            async move {
+                let addr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), args.port.unwrap_or(8080));
+                let listener = match TcpListener::bind(&addr).await {
+                    Ok(listener) => listener,
+                    Err(err) => {
+                        let _ = error_tx.send(err);
+                        return;
+                    },
+                };
+                info!("Listening on: {addr}");
 
-            while let Ok((tcp_stream, stream_addr)) = listener.accept().await {
-                info!(%stream_addr, "Accepted stream");
-                let clientbound_rx = clientbound_tx_clone.subscribe();
-                tokio::spawn(accept_connection(tcp_stream, hostbound_tx.clone(), clientbound_rx));
+                while let Ok((tcp_stream, stream_addr)) = listener.accept().await {
+                    info!(%stream_addr, "Accepted stream");
+                    let clientbound_rx = clientbound_tx_clone.subscribe();
+                    tokio::spawn(accept_connection(tcp_stream, hostbound_tx.clone(), clientbound_rx));
+                }
             }
-            Ok(())
-        })
+        });
     } else {
-        tokio::spawn(handle_stdio_stream(external_stream))
+        tokio::spawn(handle_stdio_stream(external_stream, error_tx));
     };
 
     // Ensure the socket path exists and has correct permissions
@@ -326,6 +340,18 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
                 },
                 None => bail!("host recv none"),
             },
+            error_opt = error_rx.recv() => {
+                match error_opt {
+                    Some(err) => {
+                        error!(?err, "error in multiplexer");
+                        break;
+                    },
+                    None => {
+                        error!("error_rx closed");
+                        break;
+                    }
+                }
+            },
             _ = tokio::signal::ctrl_c() => {
                 eprintln!("\nExiting multiplexer: ctrl-c");
                 break;
@@ -392,14 +418,12 @@ async fn handle_client_bound_message(
             working_directory,
             env,
         }) => {
-            let (message, rx) = FigtermCommand::run_process(executable, arguments, working_directory, env);
+            let (command, rx) = FigtermCommand::run_process(executable, arguments, working_directory, env);
 
-            let session = state.most_recent().context("most recent 3")?;
-            let sender = session.sender.clone();
-            let session_id = session.id.to_string();
-            drop(session);
+            let session_id = Uuid::parse_str(&message.session_id).context("msg")?;
+            let sender = state.get(&session_id).context("abc")?.sender.clone();
 
-            sender.send(message).context("Failed sending command to figterm")?;
+            sender.send(command).context("Failed sending command to figterm")?;
 
             let timeout_duration = Duration::from_secs(10);
 
@@ -410,7 +434,7 @@ async fn handle_client_bound_message(
 
             if let remote::hostbound::response::Response::RunProcess(response) = response {
                 let hostbound = mux::Hostbound {
-                    session_id,
+                    session_id: session_id.to_string(),
                     submessage: Some(mux::hostbound::Submessage::RunProcessResponse(response)),
                 };
                 host_sender.send(hostbound)?;
@@ -430,11 +454,7 @@ struct SimpleHookHandler {
 }
 
 impl SimpleHookHandler {
-    fn resererialize_send(
-        &mut self,
-        session_id: &FigtermSessionId,
-        submessage: mux::hostbound::Submessage,
-    ) -> eyre::Result<()> {
+    fn resererialize_send(&mut self, session_id: Uuid, submessage: mux::hostbound::Submessage) -> eyre::Result<()> {
         info!("sending on sender");
         let hostbound = mux::Hostbound {
             session_id: session_id.to_string(),
@@ -452,7 +472,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
     async fn edit_buffer(
         &mut self,
         edit_buffer_hook: &EditBufferHook,
-        session_id: &FigtermSessionId,
+        session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
         self.resererialize_send(
@@ -465,7 +485,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
     async fn prompt(
         &mut self,
         prompt_hook: &PromptHook,
-        session_id: &FigtermSessionId,
+        session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
         self.resererialize_send(session_id, mux::hostbound::Submessage::Prompt(prompt_hook.clone()))?;
@@ -475,7 +495,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
     async fn pre_exec(
         &mut self,
         pre_exec_hook: &PreExecHook,
-        session_id: &FigtermSessionId,
+        session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
         self.resererialize_send(session_id, mux::hostbound::Submessage::PreExec(pre_exec_hook.clone()))?;
@@ -485,7 +505,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
     async fn post_exec(
         &mut self,
         post_exec_hook: &PostExecHook,
-        session_id: &FigtermSessionId,
+        session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
         self.resererialize_send(session_id, mux::hostbound::Submessage::PostExec(post_exec_hook.clone()))?;
@@ -495,7 +515,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
     async fn intercepted_key(
         &mut self,
         intercepted_key: InterceptedKeyHook,
-        session_id: &FigtermSessionId,
+        session_id: Uuid,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
         self.resererialize_send(
             session_id,
@@ -524,6 +544,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
 #[cfg(test)]
 mod tests {
     use fig_proto::fig::ShellContext;
+    use uuid::Uuid;
 
     use super::*;
 
@@ -559,7 +580,7 @@ mod tests {
             let state = Arc::new(FigtermState::new());
             let (sender, _) = mpsc::unbounded_channel();
             let message = mux::Clientbound {
-                session_id: "abcdef".into(),
+                session_id: Uuid::new_v4().to_string(),
                 submessage: Some(message),
             };
 
@@ -585,9 +606,7 @@ mod tests {
             histno: 2,
             terminal_cursor_coordinates: None,
         });
-        handler
-            .resererialize_send(&FigtermSessionId::new("abcdef"), message)
-            .unwrap();
+        handler.resererialize_send(Uuid::new_v4(), message).unwrap();
 
         let received = receiver.try_recv().unwrap();
         println!("{received:?}");

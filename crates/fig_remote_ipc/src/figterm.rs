@@ -1,5 +1,3 @@
-mod session_id;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -20,13 +18,13 @@ use parking_lot::{
     RawFairMutex,
 };
 use serde::Serialize;
-pub use session_id::FigtermSessionId;
 use time::OffsetDateTime;
 use tokio::sync::{
     broadcast,
     oneshot,
 };
 use tokio::time::Instant;
+use uuid::Uuid;
 
 #[derive(Clone, Default, Debug)]
 pub struct EditBuffer {
@@ -56,9 +54,9 @@ impl SessionMetrics {
 #[derive(Debug, Default, Serialize)]
 pub struct InnerFigtermState {
     /// All current sessions of [FigtermSession]'s.
-    pub linked_sessions: HashMap<FigtermSessionId, FigtermSession>,
+    pub linked_sessions: HashMap<Uuid, FigtermSession>,
     /// The most recent figterm session
-    pub most_recent: Option<FigtermSessionId>,
+    pub most_recent: Option<Uuid>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -80,7 +78,7 @@ impl FigtermState {
     }
 
     /// Gets mutable reference to the given session id and sets the most recent session id
-    pub fn with_update<T>(&self, key: FigtermSessionId, f: impl FnOnce(&mut FigtermSession) -> T) -> Option<T> {
+    pub fn with_update<T>(&self, key: Uuid, f: impl FnOnce(&mut FigtermSession) -> T) -> Option<T> {
         let mut guard = self.inner.lock();
         let res = guard
             .linked_sessions
@@ -110,9 +108,17 @@ impl FigtermState {
     }
 
     /// Gets mutable reference to the given session id
-    pub fn with<T>(&self, session_id: &FigtermSessionId, f: impl FnOnce(&mut FigtermSession) -> T) -> Option<T> {
+    pub fn with<T>(&self, session_id: &Uuid, f: impl FnOnce(&mut FigtermSession) -> T) -> Option<T> {
         let mut guard = self.inner.lock();
         guard.linked_sessions.get_mut(session_id).map(f)
+    }
+
+    pub fn get(&self, session_id: &Uuid) -> Option<MappedFairMutexGuard<'_, FigtermSession>> {
+        MutexGuard::<'_, RawFairMutex, InnerFigtermState>::try_map(
+            self.inner.lock(),
+            |guard: &mut InnerFigtermState| guard.linked_sessions.get_mut(session_id),
+        )
+        .ok()
     }
 
     pub fn most_recent(&self) -> Option<MappedFairMutexGuard<'_, FigtermSession>> {
@@ -128,18 +134,14 @@ impl FigtermState {
         .ok()
     }
 
-    pub fn with_maybe_id<T>(
-        &self,
-        session_id: &Option<FigtermSessionId>,
-        f: impl FnOnce(&mut FigtermSession) -> T,
-    ) -> Option<T> {
+    pub fn with_maybe_id<T>(&self, session_id: &Option<Uuid>, f: impl FnOnce(&mut FigtermSession) -> T) -> Option<T> {
         match session_id {
             Some(session_id) => self.with(session_id, f),
             None => self.with_most_recent(f),
         }
     }
 
-    pub fn remove_id(&self, session_id: &FigtermSessionId) -> Option<FigtermSession> {
+    pub fn remove_id(&self, session_id: &Uuid) -> Option<FigtermSession> {
         let mut guard = self.inner.lock();
         if guard.most_recent.as_ref() == Some(session_id) {
             guard.most_recent = None;
@@ -175,7 +177,9 @@ impl From<InterceptMode> for bool {
 
 #[derive(Debug, Serialize)]
 pub struct FigtermSession {
-    pub id: FigtermSessionId,
+    pub id: Uuid,
+    // This is the ID provided by the figterm session
+    pub external_id: String,
     pub secret: String,
     #[serde(skip)]
     pub sender: flume::Sender<FigtermCommand>,

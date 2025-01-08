@@ -169,7 +169,7 @@ export const createGeneratorState = (
           runPipingConsoleMethods(() => {
             shouldTrigger = triggerFn(searchTerm, previousSearchTerm);
           });
-        } catch (err) {
+        } catch (_err) {
           shouldTrigger = true;
         }
       }

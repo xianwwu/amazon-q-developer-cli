@@ -24,6 +24,8 @@ export enum Visibility {
   HIDDEN_BY_INSERTION = "insertion",
 }
 
+export type StyleType = "tailwind" | "class";
+
 type AutocompleteActions = {
   setParserResult: (
     parserResult: ArgumentParserResult,
@@ -74,6 +76,8 @@ export type AutocompleteState = {
    */
   fuzzySearchEnabled: boolean;
   settings: SettingsMap;
+
+  styleType: StyleType;
 } & AutocompleteActions;
 
 export declare type NamedSetState<T> = {

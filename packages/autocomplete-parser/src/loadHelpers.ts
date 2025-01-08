@@ -2,8 +2,8 @@ import logger, { Logger } from "loglevel";
 import * as semver from "semver";
 import {
   ensureTrailingSlash,
-  withTimeout,
   exponentialBackoff,
+  withTimeout,
 } from "@aws/amazon-q-developer-cli-shared/utils";
 import {
   executeCommand,
@@ -13,6 +13,8 @@ import {
 import z from "zod";
 import { MOST_USED_SPECS } from "./constants.js";
 import { LoadLocalSpecError, SpecCDNError } from "./errors.js";
+import * as autocompleteIndex from "@withfig/autocomplete";
+import autocompleteDynamic from "@withfig/autocomplete/dynamic";
 
 export type SpecFileImport =
   | {
@@ -23,6 +25,10 @@ export type SpecFileImport =
       default: Fig.Subcommand;
       versions: Fig.VersionDiffMap;
     };
+
+function loadBundled(): boolean {
+  return true;
+}
 
 const makeCdnUrlFactory =
   (baseUrl: string) =>
@@ -97,6 +103,10 @@ export async function importFromPublicCDN<T = SpecFileImport>(
     );
   }
 
+  if (loadBundled()) {
+    return (await autocompleteDynamic[name]()) as T;
+  }
+
   // Total of retries in the worst case should be close to previous timeout value
   // 500ms * 2^5 + 5 * 1000ms + 5 * 100ms = 21500ms, before the timeout was 20000ms
   try {
@@ -107,11 +117,10 @@ export async function importFromPublicCDN<T = SpecFileImport>(
         maxRetries: 5,
         jitter: 100,
       },
-
       () => import(/* @vite-ignore */ cdnUrlFactory(name)),
     );
   } catch {
-    /**/
+    /* empty */
   }
 
   throw new SpecCDNError("Unable to load from a CDN");
@@ -120,6 +129,13 @@ export async function importFromPublicCDN<T = SpecFileImport>(
 async function jsonFromPublicCDN(path: string): Promise<unknown> {
   if (canLoadSpecProtocol()) {
     return fetch(`spec://localhost/${path}.json`).then((res) => res.json());
+  }
+
+  if (loadBundled()) {
+    return {
+      completions: autocompleteIndex.default,
+      diffVersionedCompletions: autocompleteIndex.diffVersionedCompletions,
+    };
   }
 
   return exponentialBackoff(

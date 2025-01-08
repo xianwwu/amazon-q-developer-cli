@@ -1,5 +1,3 @@
-import { fs } from "@aws/amazon-q-developer-cli-api-bindings";
- 
 import { isInDevMode } from "@aws/amazon-q-developer-cli-api-bindings-wrappers";
 
 // Logging functions
