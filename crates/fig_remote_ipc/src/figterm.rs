@@ -73,8 +73,8 @@ impl FigtermState {
     /// Inserts a new session id
     pub fn insert(&self, session: FigtermSession) {
         let mut figterm_state = self.inner.lock();
-        figterm_state.most_recent = Some(session.id.clone());
-        figterm_state.linked_sessions.insert(session.id.clone(), session);
+        figterm_state.most_recent = Some(session.id);
+        figterm_state.linked_sessions.insert(session.id, session);
     }
 
     /// Gets mutable reference to the given session id and sets the most recent session id
@@ -97,7 +97,7 @@ impl FigtermState {
 
     pub fn with_most_recent<T>(&self, f: impl FnOnce(&mut FigtermSession) -> T) -> Option<T> {
         let mut guard = self.inner.lock();
-        let id = guard.most_recent.clone()?;
+        let id = guard.most_recent?;
         guard
             .linked_sessions
             .get_mut(&id)

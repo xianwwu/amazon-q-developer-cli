@@ -172,7 +172,7 @@ async fn accept_connection(
 async fn handle_stdio_stream<S: AsyncWrite + AsyncRead + Unpin>(mut stream: S, error_tx: mpsc::Sender<std::io::Error>) {
     let mut stdio_stream = tokio::io::join(tokio::io::stdin(), tokio::io::stdout());
     if let Err(err) = tokio::io::copy_bidirectional(&mut stream, &mut stdio_stream).await {
-        let _ = error_tx.send(err);
+        let _ = error_tx.send(err).await;
     }
 }
 
@@ -216,7 +216,7 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
             async move {
                 while let Some(msg) = clientbound_rx.recv().await {
                     if let Err(err) = external_write.write_all(&msg).await {
-                        let _ = error_tx.send(err);
+                        let _ = error_tx.send(err).await;
                     }
                 }
             }
@@ -229,7 +229,7 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
                 let listener = match TcpListener::bind(&addr).await {
                     Ok(listener) => listener,
                     Err(err) => {
-                        let _ = error_tx.send(err);
+                        let _ = error_tx.send(err).await;
                         return;
                     },
                 };

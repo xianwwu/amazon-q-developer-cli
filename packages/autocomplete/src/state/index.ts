@@ -37,7 +37,6 @@ import { getFullHistorySuggestions } from "../history";
 import { createGeneratorState } from "./generators";
 import { createInsertionState } from "./insertion";
 
-
 const initialState: Partial<AutocompleteState> = {
   figState: initialFigState,
   parserResult: initialParserState,
@@ -57,7 +56,7 @@ const initialState: Partial<AutocompleteState> = {
   userFuzzySearchEnabled: getSetting(SETTINGS.FUZZY_SEARCH, false) as boolean,
   settings: {} as SettingsMap,
 
-  styleType: "tailwind"
+  styleType: "tailwind",
 };
 
 const getCommandMemoized = memoizeOne(getCommand);

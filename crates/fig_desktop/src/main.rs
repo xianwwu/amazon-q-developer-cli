@@ -16,7 +16,7 @@ mod utils;
 mod webview;
 
 use std::path::Path;
-use std::process::exit;
+use std::process::ExitCode;
 use std::sync::{
     Arc,
     RwLock,
@@ -84,7 +84,7 @@ pub type EventLoopProxy = WryEventLoopProxy<Event>;
 pub type EventLoopWindowTarget = WryEventLoopWindowTarget<Event>;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     let cli = cli::Cli::parse();
 
     let _log_guard = initialize_logging(LogArgs {
@@ -109,38 +109,20 @@ async fn main() {
     }
 
     if cli.is_startup && !fig_settings::settings::get_bool_or("app.launchOnStartup", true) {
-        std::process::exit(0);
+        return ExitCode::SUCCESS;
     }
 
-    let page = cli
-        .url_link
-        .as_ref()
-        .and_then(|url| match Url::parse(url) {
-            Ok(url) => Some(url),
-            Err(err) => {
-                error!(%err, %url, "Failed to parse url");
-                exit(1)
-            },
-        })
-        .and_then(|url| {
-            if url.scheme() != URL_SCHEMA {
-                error!(scheme = %url.scheme(), %url, "Invalid scheme");
-                exit(1)
-            }
-
-            url.host_str().and_then(|s| match s {
-                "dashboard" => Some(url.path().to_owned()),
-                _ => {
-                    error!("Invalid deep link");
-                    None
-                },
-            })
-        });
+    let page = match parse_url_page(cli.url_link.as_deref()) {
+        Ok(page) => page,
+        Err(exit_code) => return exit_code,
+    };
 
     if !cli.allow_multiple {
         match get_current_pid() {
             Ok(current_pid) => {
-                allow_multiple_running_check(current_pid, cli.kill_old, page.clone()).await;
+                if let Some(exit_code) = allow_multiple_running_check(current_pid, cli.kill_old, page.clone()).await {
+                    return exit_code;
+                };
             },
             Err(err) => warn!(%err, "Failed to get pid"),
         }
@@ -157,7 +139,7 @@ async fn main() {
                     )
                     .show();
 
-                return;
+                return ExitCode::SUCCESS;
             }
         }
     }
@@ -226,18 +208,50 @@ async fn main() {
 
     webview_manager.run().await.unwrap();
     fig_telemetry::finish_telemetry().await;
+
+    ExitCode::SUCCESS
+}
+
+fn parse_url_page(url: Option<&str>) -> Result<Option<String>, ExitCode> {
+    let Some(url) = url else {
+        return Ok(None);
+    };
+
+    let url = match Url::parse(url) {
+        Ok(url) => url,
+        Err(err) => {
+            error!(%err, %url, "Failed to parse url");
+            return Err(ExitCode::FAILURE);
+        },
+    };
+
+    if url.scheme() != URL_SCHEMA {
+        error!(scheme = %url.scheme(), %url, "Invalid scheme");
+        return Err(ExitCode::FAILURE);
+    }
+
+    Ok(url.host_str().and_then(|s| match s {
+        "dashboard" => Some(url.path().to_owned()),
+        _ => {
+            error!("Invalid deep link");
+            None
+        },
+    }))
 }
 
 #[cfg(target_os = "linux")]
-async fn allow_multiple_running_check(current_pid: sysinfo::Pid, kill_old: bool, page: Option<String>) {
+async fn allow_multiple_running_check(
+    current_pid: sysinfo::Pid,
+    kill_old: bool,
+    page: Option<String>,
+) -> Option<ExitCode> {
     use std::ffi::OsString;
 
     use tracing::debug;
 
     if kill_old {
         eprintln!("Option kill-old is not supported on Linux.");
-        #[allow(clippy::exit)]
-        exit(0);
+        return Some(ExitCode::SUCCESS);
     }
 
     let system = System::new_with_specifics(
@@ -278,29 +292,27 @@ async fn allow_multiple_running_check(current_pid: sysinfo::Pid, kill_old: bool,
                     eprintln!("Failed to open Fig: {err}");
                 }
 
-                #[allow(clippy::exit)]
-                exit(0);
+                return Some(ExitCode::SUCCESS);
             },
             _ => (),
         }
     }
+
+    None
 }
 
 #[cfg(target_os = "macos")]
-async fn allow_multiple_running_check(current_pid: sysinfo::Pid, kill_old: bool, page: Option<String>) {
+async fn allow_multiple_running_check(
+    current_pid: sysinfo::Pid,
+    kill_old: bool,
+    page: Option<String>,
+) -> Option<ExitCode> {
     use std::ffi::OsString;
 
     let app_process_name = OsString::from(APP_PROCESS_NAME);
     let system = System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
     let processes = system.processes_by_name(&app_process_name);
-
-    cfg_if::cfg_if! {
-        if #[cfg(unix)] {
-            let current_user_id = Some(nix::unistd::getuid().as_raw());
-        } else {
-            let current_user_id = None;
-        }
-    };
+    let current_user_id = Some(nix::unistd::getuid().as_raw());
 
     for process in processes {
         let pid = process.pid();
@@ -342,20 +354,21 @@ async fn allow_multiple_running_check(current_pid: sysinfo::Pid, kill_old: bool,
                         eprintln!("Failed to open Fig: {err}");
                     }
 
-                    #[allow(clippy::exit)]
-                    exit(0);
+                    return Some(ExitCode::SUCCESS);
                 };
 
-                match (process.user_id().map(|uid| uid as &u32), current_user_id.as_ref()) {
-                    (Some(uid), Some(current_uid)) if uid == current_uid => {
-                        on_match.await;
-                    },
-                    (_, None) => {
-                        on_match.await;
-                    },
-                    _ => {},
+                let exit_code = match (process.user_id().map(|uid| uid as &u32), current_user_id.as_ref()) {
+                    (Some(uid), Some(current_uid)) if uid == current_uid => on_match.await,
+                    (_, None) => on_match.await,
+                    _ => None,
+                };
+
+                if let Some(exit_code) = exit_code {
+                    return Some(exit_code);
                 }
             }
         }
     }
+
+    None
 }

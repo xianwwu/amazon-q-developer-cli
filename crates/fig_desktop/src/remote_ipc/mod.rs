@@ -68,7 +68,7 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
         session_id: Uuid,
         figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<clientbound::response::Response>> {
-        let _old_metrics = figterm_state.with_update(session_id.clone(), |session| {
+        let _old_metrics = figterm_state.with_update(session_id, |session| {
             session.edit_buffer.text.clone_from(&hook.text);
             session.edit_buffer.cursor.clone_from(&hook.cursor);
             session
@@ -106,7 +106,6 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
             };
 
             let hook = hook.clone();
-            let session_id = session_id.clone();
             let message = ServerOriginatedMessage {
                 id: Some(message_id),
                 submessage: Some(ServerOriginatedSubMessage::Notification(Notification {
@@ -230,7 +229,7 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
         session_id: Uuid,
         figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<clientbound::response::Response>> {
-        figterm_state.with_update(session_id.clone(), |session| {
+        figterm_state.with_update(session_id, |session| {
             session.context.clone_from(&hook.context);
         });
 
@@ -269,7 +268,7 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
         session_id: Uuid,
         figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<clientbound::response::Response>> {
-        figterm_state.with_update(session_id.clone(), |session| {
+        figterm_state.with_update(session_id, |session| {
             session.context.clone_from(&hook.context);
         });
 

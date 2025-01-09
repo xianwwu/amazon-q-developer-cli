@@ -1,5 +1,8 @@
 import logger from "loglevel";
-import { Annotation, TokenType } from "@aws/amazon-q-developer-cli-autocomplete-parser";
+import {
+  Annotation,
+  TokenType,
+} from "@aws/amazon-q-developer-cli-autocomplete-parser";
 import { makeArray, findLast } from "@aws/amazon-q-developer-cli-shared/utils";
 import { GeneratorContext } from "./helpers";
 import { getHistoryArgSuggestions } from "../history";
@@ -69,8 +72,10 @@ export async function getTemplateSuggestions(
         currentProcess,
       );
       suggestions.push(...historySuggestions);
-    } catch (err) {
-      logger.error("template suggestion did not work for template: history");
+    } catch (error) {
+      logger.error("template suggestion did not work for template: history", {
+        error,
+      });
     }
   }
 
