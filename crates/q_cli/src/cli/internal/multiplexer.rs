@@ -76,7 +76,6 @@ use tokio::sync::mpsc::{
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::tungstenite::protocol::frame::Payload;
 use tokio_util::codec::{
     FramedRead,
     FramedWrite,
@@ -121,7 +120,7 @@ async fn accept_connection(
         loop {
             match clientbound_rx.recv().await {
                 Ok(bytes) => {
-                    if let Err(err) = write.send(Message::Binary(Payload::Shared(bytes))).await {
+                    if let Err(err) = write.send(Message::Binary(bytes)).await {
                         error!(%err, "error sending to WebSocketStream");
                         return Err(());
                     }
@@ -142,10 +141,8 @@ async fn accept_connection(
             match read.next().await {
                 Some(Ok(message)) => {
                     let bytes = match message {
-                        Message::Binary(Payload::Owned(bytes_mut)) => Some(bytes_mut.freeze()),
-                        Message::Binary(Payload::Shared(bytes)) => Some(bytes),
-                        Message::Binary(Payload::Vec(vec)) => Some(vec.into()),
-                        Message::Text(payload) => Some(payload.as_slice().to_vec().into()),
+                        Message::Binary(bytes) => Some(bytes),
+                        Message::Text(bytes) => Some(bytes.as_bytes().to_vec().into()),
                         _ => continue,
                     };
                     if let Some(bytes) = bytes {

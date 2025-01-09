@@ -12,13 +12,13 @@ pub mod util;
 use std::fmt::Debug;
 use std::mem::size_of;
 use std::num::TryFromIntError;
+use std::sync::LazyLock;
 
 use bytes::{
     Buf,
     Bytes,
     BytesMut,
 };
-use once_cell::sync::Lazy;
 pub use prost;
 use prost::{
     DecodeError,
@@ -38,7 +38,7 @@ pub mod remote {
 
 // This is not used explicitly, but it must be here for the derive
 // impls on the protos for dynamic message
-static DESCRIPTOR_POOL: Lazy<DescriptorPool> = Lazy::new(|| {
+static DESCRIPTOR_POOL: LazyLock<DescriptorPool> = LazyLock::new(|| {
     DescriptorPool::decode(include_bytes!(concat!(env!("OUT_DIR"), "/file_descriptor_set.bin")).as_ref()).unwrap()
 });
 

@@ -67,7 +67,6 @@ mime = "0.3.17"
 moka = { version = "0.12.1", features = ["future"] }
 muda = { version = "0.15.3", default-features = false }
 notify = "7.0.0"
-once_cell.workspace = true
 parking_lot = { version = "0.12.1", features = ["serde"] }
 paste = "1.0.11"
 percent-encoding.workspace = true
@@ -136,9 +135,10 @@ core-graphics.workspace = true
 libc.workspace = true
 macos-utils = { path = "../macos-utils" }
 objc.workspace = true
+objc2.workspace = true
+objc2-app-kit = { workspace = true, features = ["NSApplication"] }
+objc2-foundation.workspace = true
 system-configuration = "0.6.0"
-objc-foundation = "0.1.1"
-objc_id = "0.1.1"
 
 [build-dependencies]
 image = "0.25.1"
