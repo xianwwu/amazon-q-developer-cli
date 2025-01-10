@@ -1,10 +1,10 @@
-import { useAutocompleteStore } from ".";
+import { useAutocomplete } from ".";
 
 export function useClassName(
   className?: string,
   tailwind?: string,
 ): string | undefined {
-  const { styleType } = useAutocompleteStore();
+  const { styleType } = useAutocomplete();
   switch (styleType) {
     case "class":
       return className;

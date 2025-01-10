@@ -22,6 +22,7 @@ message Packet {
 
 message Hostbound {
   string session_id = 1;
+  string message_id = 2;
 
   oneof submessage {
     // requests
@@ -38,6 +39,7 @@ message Hostbound {
 
 message Clientbound {
   string session_id = 1;
+  string message_id = 2;
 
   oneof submessage {
     // requests

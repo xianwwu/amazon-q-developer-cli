@@ -6,9 +6,9 @@ import {
   getSetting,
 } from "@aws/amazon-q-developer-cli-api-bindings-wrappers";
 import { ACTIONS, AutocompleteAction } from "../actions";
-import { useAutocompleteStore } from "../state";
+import { useAutocomplete } from "../state";
 import { Visibility } from "../state/types";
-import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
+import { IpcClient } from "@aws/amazon-q-developer-cli-ipc-client-core";
 import { create } from "@bufbuild/protobuf";
 import {
   ActionSchema,
@@ -30,13 +30,17 @@ export const setInterceptKeystrokes = (
   );
 
 export const setInterceptKeystrokesBackend = (
-  ipcBackend: IpcBackend,
+  ipcClient: IpcClient | undefined,
   interceptBoundKeystrokes: boolean,
   interceptGlobalKeystrokes: boolean = false,
   currentTerminalSessionId?: string,
-) =>
-  ipcBackend?.intercept(
-    currentTerminalSessionId ?? "",
+) => {
+  if (!currentTerminalSessionId) {
+    return;
+  }
+  console.log("intercept ->", currentTerminalSessionId);
+  ipcClient?.intercept(
+    currentTerminalSessionId,
     create(InterceptRequestSchema, {
       interceptCommand: {
         case: "setFigjsIntercepts",
@@ -54,6 +58,7 @@ export const setInterceptKeystrokesBackend = (
       },
     }),
   );
+};
 // Keybindings.setInterceptKeystrokes(
 //   ACTIONS,
 //   intercept,
@@ -74,7 +79,6 @@ export const useAutocompleteKeypressCallback = (
   toggleDescriptionPopout: () => void,
   shake: () => void,
   changeSize: (direction: Direction) => void,
-  ipcBackend: IpcBackend,
 ): Parameters<typeof Keybindings.pressed>[0] => {
   const {
     suggestions,
@@ -92,7 +96,8 @@ export const useAutocompleteKeypressCallback = (
 
     figState,
     setFigState,
-  } = useAutocompleteStore();
+    ipcClient,
+  } = useAutocomplete();
 
   const selectedItem = suggestions[selectedIndex];
   const scrollWrapAround = settings[SETTINGS.SCROLL_WRAP_AROUND];
@@ -135,7 +140,7 @@ export const useAutocompleteKeypressCallback = (
         visibleState !== Visibility.VISIBLE
       ) {
         if (suggestions.length === 1) {
-          insertTextForItem(ipcBackend, suggestions[0]);
+          insertTextForItem(suggestions[0]);
           return undefined;
         }
         setVisibleState(Visibility.VISIBLE);
@@ -152,34 +157,34 @@ export const useAutocompleteKeypressCallback = (
           navigate(1);
           break;
         case AutocompleteAction.INSERT_SELECTED:
-          insertTextForItem(ipcBackend, selectedItem);
+          insertTextForItem(selectedItem);
           break;
         case AutocompleteAction.INSERT_COMMON_PREFIX:
           try {
-            insertCommonPrefix(ipcBackend);
+            insertCommonPrefix();
           } catch (_err) {
             shake();
           }
           break;
         case AutocompleteAction.INSERT_COMMON_PREFIX_OR_NAVIGATE_DOWN:
           try {
-            insertCommonPrefix(ipcBackend);
+            insertCommonPrefix();
           } catch (_err) {
             navigate(1);
           }
           break;
         case AutocompleteAction.INSERT_COMMON_PREFIX_OR_INSERT_SELECTED:
           try {
-            insertCommonPrefix(ipcBackend);
+            insertCommonPrefix();
           } catch (_err) {
-            insertTextForItem(ipcBackend, selectedItem);
+            insertTextForItem(selectedItem);
           }
           break;
         case AutocompleteAction.INSERT_SELECTED_AND_EXECUTE:
-          insertTextForItem(ipcBackend, selectedItem, true);
+          insertTextForItem(selectedItem, true);
           break;
         case AutocompleteAction.EXECUTE:
-          ipcBackend?.insertText(
+          ipcClient?.insertText(
             figState.shellContext?.sessionId ?? "",
             create(InsertTextRequestSchema, {
               insertion: "\n",
@@ -243,7 +248,7 @@ export const useAutocompleteKeypressCallback = (
       return undefined;
     },
     [
-      ipcBackend,
+      ipcClient,
       navigate,
       insertCommonPrefix,
       insertTextForItem,

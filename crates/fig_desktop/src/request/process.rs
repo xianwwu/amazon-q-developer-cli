@@ -55,6 +55,7 @@ pub async fn run(request: RunProcessRequest, state: &FigtermState) -> RequestRes
             request.arguments,
             request.working_directory,
             request.env,
+            request.timeout.map(Into::into),
         );
         session_sender
             .send(message)

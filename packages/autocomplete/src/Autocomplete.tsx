@@ -24,7 +24,7 @@ import {
 
 import { getCommonSuggestionPrefix } from "./suggestions/helpers";
 
-import { useAutocompleteStore } from "./state";
+import { createAutocompleteStore } from "./state";
 // import { Visibility } from "./state/types";
 import {
   useAutocompleteKeypressCallback,
@@ -41,13 +41,14 @@ import Suggestion from "./components/Suggestion";
 import Description, { DescriptionPosition } from "./components/Description";
 import { setFontFamily, setFontSize, setTheme } from "./fig/themes";
 import LoadingIcon from "./components/LoadingIcon";
-import {
-  CsWebsocket,
-  WebsocketMuxBackend,
-} from "@aws/amazon-q-developer-cli-ipc-backend-websocket-mux";
-import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
+import { CsWebsocket } from "@aws/amazon-q-developer-cli-ipc-client-websocket-mux";
 
 import "./index.css";
+import { InterceptRequestSchema } from "@aws/amazon-q-developer-cli-proto/figterm";
+import { create } from "@bufbuild/protobuf";
+import { AutocompleteContext } from "./state/context";
+import { useAutocomplete } from "./state/useAutocomplete";
+import { Visibility } from "./state/types";
 
 const getIconPath = (cwd: string): string => {
   const home = window?.fig?.constants?.home;
@@ -55,28 +56,22 @@ const getIconPath = (cwd: string): string => {
   return path.startsWith("//") ? path.slice(1) : path;
 };
 
-export interface IpcBackendProps {
+export interface IpcClientProps {
   type: string;
   websocket?: CsWebsocket;
 }
 
 export interface AutocompleteProps {
-  ipcBackend: IpcBackendProps;
+  ipcClient: IpcClientProps;
   enableMocks?: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onSelect?: (ipcBackend: IpcBackend, item: any) => void;
 }
 
-function Autocomplete({
-  ipcBackend: ipcBackendProps,
-  enableMocks,
-  onSelect,
-}: AutocompleteProps) {
+function AutocompleteInner({ enableMocks }: AutocompleteProps) {
   const {
     generatorStates,
     suggestions,
     selectedIndex,
-    // visibleState,
+    visibleState,
     figState: { cwd, shellContext },
     parserResult: { searchTerm, currentArg },
     settings,
@@ -86,16 +81,15 @@ function Autocomplete({
     fuzzySearchEnabled,
     setUserFuzzySearchEnabled,
     setFigState,
-  } = useAutocompleteStore();
+
+    ipcClient,
+    // setIpcClient,
+  } = useAutocomplete();
 
   useMemo(() => {
     logger.enableAll();
   }, []);
 
-  const ipcBackend = useMemo(
-    () => new WebsocketMuxBackend(ipcBackendProps.websocket!),
-    [ipcBackendProps.websocket],
-  );
   const suggestionsMock: Fig.Suggestion[] = [
     {
       name: "ec2",
@@ -184,7 +178,7 @@ function Autocomplete({
         selectedIndex,
         enableMocks ? suggestionsMock : suggestions,
       ),
-    [selectedIndex, suggestions],
+    [enableMocks, selectedIndex, suggestions, suggestionsMock],
   );
 
   useEffect(() => {
@@ -230,7 +224,6 @@ function Autocomplete({
     toggleDescriptionPopout,
     shake,
     changeSize,
-    ipcBackend,
   );
 
   useEffect(() => {
@@ -239,10 +232,10 @@ function Autocomplete({
     window.globalSSHString = "";
   }, []);
 
-  useFigAutocomplete(setFigState, ipcBackend);
-  useParseArgumentsEffect(setIsLoadingSuggestions);
+  useFigAutocomplete(setFigState, ipcClient);
+  useParseArgumentsEffect(setIsLoadingSuggestions, ipcClient);
   useFigSettings(setSettings);
-  useFigKeypress(keypressCallback, ipcBackend);
+  useFigKeypress(keypressCallback, ipcClient);
   useFigClearCache();
 
   // useEffect(() => {
@@ -272,29 +265,24 @@ function Autocomplete({
   }, [generatorStates]);
 
   // Make sure fig dimensions align with our desired dimensions.
-  // const isHidden = visibleState !== Visibility.VISIBLE;
-  const isHidden = false;
+  const isHidden = visibleState !== Visibility.VISIBLE;
+  const anySuggestions =
+    (enableMocks ? suggestionsMock : suggestions).length > 0;
   const interceptKeystrokes = Boolean(
     !isHidden && (enableMocks ? suggestionsMock : suggestions).length > 0,
   );
 
   useEffect(() => {
     logger.info("Setting intercept keystrokes", {
-      suggestions,
       interceptKeystrokes,
     });
     setInterceptKeystrokesBackend(
-      ipcBackend,
+      ipcClient,
       interceptKeystrokes,
-      (enableMocks ? suggestionsMock : suggestions).length > 0,
+      anySuggestions,
       shellContext?.sessionId,
     );
-  }, [
-    ipcBackend,
-    interceptKeystrokes,
-    suggestions.length,
-    shellContext?.sessionId,
-  ]);
+  }, [ipcClient, interceptKeystrokes, anySuggestions, shellContext?.sessionId]);
   useEffect(() => {
     setTheme(systemTheme, theme as string);
   }, [theme, systemTheme]);
@@ -353,12 +341,28 @@ function Autocomplete({
 
   const { ref: autocompleteWindowRef } = useDynamicResizeObserver({ onResize });
 
+  const hasSuggestions =
+    (enableMocks ? suggestionsMock : suggestions).length > 0;
+
+  useEffect(() => {
+    if (shellContext?.sessionId) {
+      ipcClient?.intercept(
+        shellContext.sessionId,
+        create(InterceptRequestSchema, {
+          interceptCommand: {
+            case: "setFigjsVisible",
+            value: {
+              visible: hasSuggestions,
+            },
+          },
+        }),
+      );
+    }
+  }, [hasSuggestions, ipcClient, shellContext?.sessionId]);
+
   if (isHidden) {
     return <div ref={autocompleteWindowRef} id="autocompleteWindow" />;
   }
-
-  const hasSuggestions =
-    (enableMocks ? suggestionsMock : suggestions).length > 0;
 
   const descriptionPosition: DescriptionPosition =
     hasSuggestions && windowState.isDescriptionSeparate
@@ -462,18 +466,13 @@ function Autocomplete({
                     (enableMocks ? suggestionsMock : suggestions)[index]
                   }
                   commonPrefix={commonPrefix || ""}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  onClick={(ipcBackend: IpcBackend, item: any) => {
-                    return onSelect
-                      ? onSelect(ipcBackend, item)
-                      : insertTextForItem(ipcBackend, item);
-                  }}
+                  onClick={(item) => insertTextForItem(item)}
                   isActive={selectedIndex === index}
                   searchTerm={searchTerm}
                   fuzzySearchEnabled={fuzzySearchEnabled}
                   iconPath={iconPath}
                   iconSize={size.itemSize * 0.75}
-                  ipcBackend={ipcBackend}
+                  ipcClient={ipcClient}
                 />
               )}
             </AutoSizedList>
@@ -505,6 +504,15 @@ function Autocomplete({
     >
       {contents}
     </div>
+  );
+}
+
+function Autocomplete(props: AutocompleteProps) {
+  const store = useRef(createAutocompleteStore(props)).current;
+  return (
+    <AutocompleteContext.Provider value={store}>
+      <AutocompleteInner {...props} />
+    </AutocompleteContext.Provider>
   );
 }
 

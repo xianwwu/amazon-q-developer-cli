@@ -4,7 +4,7 @@ import { Command } from "@aws/amazon-q-developer-cli-shell-parser";
 import { SettingsMap } from "@aws/amazon-q-developer-cli-api-bindings-wrappers";
 import { FigState } from "../fig/hooks";
 import { GeneratorState } from "../generators/helpers";
-import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
+import { IpcClient } from "@aws/amazon-q-developer-cli-ipc-client-core";
 
 export enum Visibility {
   VISIBLE = "visible",
@@ -36,16 +36,13 @@ type AutocompleteActions = {
   setVisibleState: (visibleState: Visibility) => void;
   scroll: (index: number, visibleState: Visibility) => void;
   setFigState: React.Dispatch<React.SetStateAction<FigState>>;
+  setIpcClient: (ipcClient: IpcClient | undefined) => void;
   updateVisibilityPostInsert: (
     suggestion: Suggestion,
     isFullCompletion: boolean,
   ) => void;
-  insertTextForItem: (
-    ipcBackend: IpcBackend,
-    item: Suggestion,
-    execute?: boolean,
-  ) => void;
-  insertCommonPrefix: (ipcBackend: IpcBackend) => void;
+  insertTextForItem: (item: Suggestion, execute?: boolean) => void;
+  insertCommonPrefix: () => void;
   setHistoryModeEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setUserFuzzySearchEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setSettings: React.Dispatch<React.SetStateAction<SettingsMap>>;
@@ -57,8 +54,10 @@ export type AutocompleteState = {
   generatorStates: GeneratorState[];
   command: Command | null;
 
+  ipcClient: IpcClient | undefined;
+
   visibleState: Visibility;
-  lastInsertedSuggestion: Suggestion | null;
+  lastInsertedSuggestion: Suggestion | undefined;
   justInserted: boolean;
 
   suggestions: Suggestion[];

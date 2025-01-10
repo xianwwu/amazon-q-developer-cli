@@ -1,22 +1,20 @@
 import type {
   InsertTextRequest,
   InterceptRequest,
-  IpcBackend,
+  IpcClient,
   RunProcessRequest,
   RunProcessResponse,
   InterceptedKeyHook,
   PostExecHook,
   PreExecHook,
   PromptHook,
-} from "@aws/amazon-q-developer-cli-ipc-backend-core";
+} from "@aws/amazon-q-developer-cli-ipc-client-core";
 import { Clientbound, Hostbound } from "@aws/amazon-q-developer-cli-proto/mux";
 import { PacketStream } from "./packetStream.js";
 import { CsWebsocket, Socket } from "./socket.js";
 import { clientboundToPacket, packetToHostbound } from "./mux.js";
 import { EditBufferHook } from "@aws/amazon-q-developer-cli-proto/local";
-import { create } from "@bufbuild/protobuf";
-import { RunProcessResponseSchema } from "@aws/amazon-q-developer-cli-proto/fig";
-import Emittery from "emittery";
+import Emittery, { UnsubscribeFunction } from "emittery";
 
 export { CsWebsocket };
 
@@ -26,7 +24,7 @@ const PreExecHookSymbol = Symbol("PreExecHook");
 const PostExecHookSymbol = Symbol("PostExecHook");
 const InterceptedKeyHookSymbol = Symbol("InterceptedKeyHook");
 
-export class WebsocketMuxBackend implements IpcBackend {
+export class WebsocketMuxBackend implements IpcClient {
   emitter: Emittery = new Emittery();
   packetStream: PacketStream;
 
@@ -48,6 +46,7 @@ export class WebsocketMuxBackend implements IpcBackend {
     const submessage = message.submessage;
     console.log(submessage);
     switch (submessage?.case) {
+      // Hooks
       case "editBuffer":
         this.emitter.emit(EditBufferHookSymbol, submessage.value);
         break;
@@ -63,7 +62,9 @@ export class WebsocketMuxBackend implements IpcBackend {
       case "prompt":
         this.emitter.emit(PromptHookSymbol, submessage.value);
         break;
+      // Request -> Response
       case "runProcessResponse":
+        this.emitter.emit(message.messageId, submessage.value);
         break;
     }
   }
@@ -72,10 +73,12 @@ export class WebsocketMuxBackend implements IpcBackend {
 
   private async sendRequest(
     sessionId: string,
+    messageId: string | undefined,
     clientbound: Clientbound["submessage"],
   ) {
     const packet = await clientboundToPacket({
       sessionId,
+      messageId: messageId ?? crypto.randomUUID(),
       submessage: clientbound,
     });
     this.packetStream.write(packet);
@@ -83,7 +86,7 @@ export class WebsocketMuxBackend implements IpcBackend {
 
   insertText(sessionId: string, request: InsertTextRequest): void {
     console.log("insertText");
-    this.sendRequest(sessionId, {
+    this.sendRequest(sessionId, undefined, {
       case: "insertText",
       value: request,
     });
@@ -91,47 +94,49 @@ export class WebsocketMuxBackend implements IpcBackend {
 
   intercept(sessionId: string, request: InterceptRequest): void {
     console.log("intercept");
-    this.sendRequest(sessionId, {
+    this.sendRequest(sessionId, undefined, {
       case: "intercept",
       value: request,
     });
   }
 
-  runProcess(
+  async runProcess(
     sessionId: string,
     request: RunProcessRequest,
-  ): RunProcessResponse {
-    this.sendRequest(sessionId, {
+  ): Promise<RunProcessResponse> {
+    const messageId = crypto.randomUUID();
+    this.sendRequest(sessionId, messageId, {
       case: "runProcess",
       value: request,
     });
-
-    return create(RunProcessResponseSchema, {
-      stdout: "",
-      stderr: "",
-      exitCode: 0,
-    });
+    return await this.emitter.once(messageId);
   }
 
-  onEditBufferChange(callback: (notification: EditBufferHook) => void): void {
-    this.emitter.on(EditBufferHookSymbol, () => {
-      console.log(callback);
-    });
+  onEditBufferChange(
+    callback: (notification: EditBufferHook) => void | Promise<void>,
+  ): UnsubscribeFunction {
+    return this.emitter.on(EditBufferHookSymbol, callback);
   }
 
-  onPrompt(callback: (notification: PromptHook) => void): void {
-    this.emitter.on(PromptHookSymbol, callback);
+  onPrompt(callback: (notification: PromptHook) => void): UnsubscribeFunction {
+    return this.emitter.on(PromptHookSymbol, callback);
   }
 
-  onPreExec(callback: (notification: PreExecHook) => void): void {
-    this.emitter.on(PreExecHookSymbol, callback);
+  onPreExec(
+    callback: (notification: PreExecHook) => void | Promise<void>,
+  ): UnsubscribeFunction {
+    return this.emitter.on(PreExecHookSymbol, callback);
   }
 
-  onPostExec(callback: (notification: PostExecHook) => void): void {
-    this.emitter.on(PostExecHookSymbol, callback);
+  onPostExec(
+    callback: (notification: PostExecHook) => void | Promise<void>,
+  ): UnsubscribeFunction {
+    return this.emitter.on(PostExecHookSymbol, callback);
   }
 
-  onInterceptedKey(callback: (notification: InterceptedKeyHook) => void): void {
-    this.emitter.on(InterceptedKeyHookSymbol, callback);
+  onInterceptedKey(
+    callback: (notification: InterceptedKeyHook) => void | Promise<void>,
+  ): UnsubscribeFunction {
+    return this.emitter.on(InterceptedKeyHookSymbol, callback);
   }
 }

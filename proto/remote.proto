@@ -14,6 +14,7 @@ message RunProcessRequest {
   repeated string arguments = 2;
   optional string working_directory = 3;
   repeated fig_common.EnvironmentVariable env = 4;
+  optional fig_common.Duration timeout = 5;
 }
 
 message PseudoterminalExecuteRequest {

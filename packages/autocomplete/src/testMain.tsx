@@ -55,7 +55,7 @@ export function Test() {
     <div className="">
       {websocket && (
         <Autocomplete
-          ipcBackend={{
+          ipcClient={{
             type: "",
             websocket,
           }}

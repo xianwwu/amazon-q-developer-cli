@@ -5,19 +5,19 @@ import { Suggestion as SuggestionT } from "@aws/amazon-q-developer-cli-shared/in
 import { makeArray } from "@aws/amazon-q-developer-cli-shared/utils";
 import { getQueryTermForSuggestion } from "../suggestions/helpers";
 import SuggestionIcon from "./SuggestionIcon";
-import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
+import { IpcClient } from "@aws/amazon-q-developer-cli-ipc-client-core";
 
 type SuggestionProps = {
   style: CSSProperties;
   suggestion: SuggestionT;
-  onClick: (ipcBackend: IpcBackend, item: SuggestionT) => void;
+  onClick: (item: SuggestionT) => void;
   isActive: boolean;
   commonPrefix: string;
   iconPath: string;
   searchTerm: string;
   iconSize: number;
   fuzzySearchEnabled: boolean;
-  ipcBackend: IpcBackend;
+  ipcClient?: IpcClient;
 };
 
 type HighlightType = "match" | "prefix";
@@ -273,7 +273,7 @@ const getTitle = (
 };
 
 const Suggestion = ({
-  // style,
+  style,
   suggestion,
   commonPrefix,
   searchTerm,
@@ -281,13 +281,12 @@ const Suggestion = ({
   iconPath,
   isActive,
   onClick,
-  // iconSize,
-  ipcBackend,
+  iconSize,
+  // ipcClient,
 }: SuggestionProps) => {
   const onSuggestionClick = useCallback(() => {
-    console.log("suggestion clicked2!", suggestion);
-    onClick(ipcBackend, suggestion);
-  }, [ipcBackend, onClick, suggestion]);
+    onClick(suggestion);
+  }, [onClick, suggestion]);
 
   const textContainerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
@@ -299,21 +298,21 @@ const Suggestion = ({
 
   return (
     <div
-      // style={style}
+      style={style}
       className={`suggestion-item flex items-center overflow-hidden pl-1.5 ${
         isActive ? "bg-selected-bg brightness-95" : ""
       }`}
       onClick={onSuggestionClick}
     >
       <SuggestionIcon
-        style={{}}
-        // style={{
-        //   height: iconSize,
-        //   display: "flex",
-        //   width: iconSize,
-        //   minWidth: iconSize,
-        //   marginRight: 5,
-        // }}
+        // style={{}}
+        style={{
+          height: iconSize,
+          display: "flex",
+          width: iconSize,
+          minWidth: iconSize,
+          marginRight: 5,
+        }}
         suggestion={suggestion}
         iconPath={iconPath}
       />

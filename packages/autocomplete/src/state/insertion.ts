@@ -19,7 +19,7 @@ import {
 } from "../suggestions/helpers";
 import { updateAutocompleteIndexFromUserInsert } from "../suggestions/sorting";
 import { InsertPrefixError } from "./errors";
-import { IpcBackend } from "@aws/amazon-q-developer-cli-ipc-backend-core";
+import { IpcClient } from "@aws/amazon-q-developer-cli-ipc-client-core";
 import { trackEvent } from "../telemetry";
 import { create } from "@bufbuild/protobuf";
 import { InsertTextRequestSchema } from "@aws/amazon-q-developer-cli-proto/figterm";
@@ -30,7 +30,7 @@ const sendTextToTerminal = (
   text: string,
   isFullCompletion: boolean,
   rootCommand: string,
-  ipcBackend: IpcBackend,
+  ipcClient: IpcClient,
 ) => {
   const {
     parserResult: { searchTerm },
@@ -87,7 +87,7 @@ const sendTextToTerminal = (
   //   state.figState.shellContext?.sessionId,
   // );
 
-  ipcBackend?.insertText(
+  ipcClient?.insertText(
     state.figState.shellContext?.sessionId ?? "",
     create(InsertTextRequestSchema, {
       insertion: finalStringToInsert,
@@ -106,7 +106,7 @@ const insertString = (
   item: Suggestion,
   text: string,
   isFullCompletion: boolean,
-  ipcBackend: IpcBackend,
+  ipcClient: IpcClient,
 ) => {
   const { command, updateVisibilityPostInsert, parserResult } = state;
   const { commandIndex, annotations } = parserResult;
@@ -118,7 +118,7 @@ const insertString = (
     text,
     isFullCompletion,
     rootCommand,
-    ipcBackend,
+    ipcClient,
   );
 
   let specLocation: { location: SpecLocation; name: string } | undefined;
@@ -206,14 +206,17 @@ const getFullInsertion = (
 
 const makeInsertTextForItem =
   (get: StoreApi<AutocompleteState>["getState"]) =>
-  (ipcBackend: IpcBackend, item: Suggestion, execute = false) => {
+  (item: Suggestion, execute = false) => {
     const state = get();
     console.log("here");
     const {
       parserResult: { searchTerm },
       fuzzySearchEnabled,
       settings,
+      ipcClient,
     } = state;
+    if (!ipcClient) return;
+
     let text = getFullInsertion(
       item,
       searchTerm,
@@ -235,12 +238,11 @@ const makeInsertTextForItem =
       text += " ";
     }
 
-    return insertString(state, item, text, true, ipcBackend);
+    return insertString(state, item, text, true, ipcClient);
   };
 
 const makeInsertCommonPrefix =
-  (get: StoreApi<AutocompleteState>["getState"]) =>
-  (ipcBackend: IpcBackend) => {
+  (get: StoreApi<AutocompleteState>["getState"]) => () => {
     const state = get();
     const {
       suggestions,
@@ -249,12 +251,14 @@ const makeInsertCommonPrefix =
       fuzzySearchEnabled,
       settings,
       insertTextForItem,
+      ipcClient,
     } = state;
+    if (!ipcClient) return;
     const selectedItem = suggestions[selectedIndex];
 
     const queryTerm = getQueryTermForSuggestion(selectedItem, searchTerm);
     if (suggestions.length === 1) {
-      return insertTextForItem(ipcBackend, selectedItem);
+      return insertTextForItem(selectedItem);
     }
 
     let { type: itemType } = selectedItem;
@@ -290,7 +294,7 @@ const makeInsertCommonPrefix =
       if (selectedItem.type === "auto-execute") {
         throw new InsertPrefixError(`Cannot auto-execute using common prefix`);
       }
-      return insertTextForItem(ipcBackend, selectedItem);
+      return insertTextForItem(selectedItem);
     }
 
     const uncasedSharedPrefix = longestCommonPrefix(sameTypeSuggestionNames);
@@ -314,9 +318,9 @@ const makeInsertCommonPrefix =
       if (selectedItem.type === "auto-execute") {
         throw new InsertPrefixError(`Cannot auto-execute using common prefix`);
       }
-      return insertTextForItem(ipcBackend, selectedItem);
+      return insertTextForItem(selectedItem);
     }
-    return insertString(state, selectedItem, text, false, ipcBackend);
+    return insertString(state, selectedItem, text, false, ipcClient);
   };
 
 export const createInsertionState = (

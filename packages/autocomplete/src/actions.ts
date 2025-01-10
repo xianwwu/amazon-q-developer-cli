@@ -65,6 +65,7 @@ export const ACTIONS: Action[] = app.contributes.actions.map((action) => {
   }
 
   return create(ActionSchema, {
+    defaultBindings: [],
     ...action,
     availability,
   });

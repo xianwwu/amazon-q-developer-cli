@@ -1,5 +1,5 @@
 {
-  "name": "@aws/amazon-q-developer-cli-ipc-backend-websocket-mux",
+  "name": "@aws/amazon-q-developer-cli-ipc-client-websocket-mux",
   "version": "1.0.0",
   "description": "",
   "author": "",
@@ -19,7 +19,7 @@
     "clean": "rm -rf dist/ && rm -rf node_modules/"
   },
   "dependencies": {
-    "@aws/amazon-q-developer-cli-ipc-backend-core": "workspace:^",
+    "@aws/amazon-q-developer-cli-ipc-client-core": "workspace:^",
     "@aws/amazon-q-developer-cli-proto": "workspace:^",
     "@bufbuild/protobuf": "2.2.3",
     "emittery": "^1.0.3"

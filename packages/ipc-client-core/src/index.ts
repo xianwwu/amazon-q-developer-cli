@@ -14,6 +14,9 @@ import type {
   PreExecHook,
   PromptHook,
 } from "@aws/amazon-q-developer-cli-proto/local";
+import { State } from "./state.js";
+import { Settings } from "./settings.js";
+import type { UnsubscribeFunction } from "emittery";
 
 export type {
   InsertTextRequest,
@@ -25,9 +28,14 @@ export type {
   PostExecHook,
   PreExecHook,
   PromptHook,
+  State,
+  Settings,
 };
 
-export interface IpcBackend {
+export interface IpcClient {
+  state?: State;
+  settings?: Settings;
+
   // Request
   insertText: (sessionId: string, request: InsertTextRequest) => void;
   intercept: (sessionId: string, request: InterceptRequest) => void;
@@ -36,20 +44,26 @@ export interface IpcBackend {
   runProcess: (
     sessionId: string,
     request: RunProcessRequest,
-  ) => RunProcessResponse;
+  ) => Promise<RunProcessResponse>;
 
   // Notifications
   onEditBufferChange: (
-    callback: (notification: EditBufferHook) => void,
-  ) => void;
+    callback: (notification: EditBufferHook) => void | Promise<void>,
+  ) => UnsubscribeFunction;
 
-  onPrompt: (callback: (notification: PromptHook) => void) => void;
+  onPrompt: (
+    callback: (notification: PromptHook) => void | Promise<void>,
+  ) => UnsubscribeFunction;
 
-  onPreExec: (callback: (notification: PreExecHook) => void) => void;
+  onPreExec: (
+    callback: (notification: PreExecHook) => void | Promise<void>,
+  ) => UnsubscribeFunction;
 
-  onPostExec: (callback: (notification: PostExecHook) => void) => void;
+  onPostExec: (
+    callback: (notification: PostExecHook) => void | Promise<void>,
+  ) => UnsubscribeFunction;
 
   onInterceptedKey: (
-    callback: (notification: InterceptedKeyHook) => void,
-  ) => void;
+    callback: (notification: InterceptedKeyHook) => void | Promise<void>,
+  ) => UnsubscribeFunction;
 }

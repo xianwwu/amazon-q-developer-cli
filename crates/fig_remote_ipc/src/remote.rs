@@ -360,11 +360,7 @@ async fn handle_outgoing(
             },
             message = outgoing.recv_async() => {
                 if let Ok(message) = message {
-                    if matches!(message, Clientbound { packet: Some(clientbound::Packet::Ping(_)) }) {
-                        trace!(?message, "Sending remote message");
-                    } else {
-                        debug!(?message, "Sending remote message");
-                    }
+                    trace!(?message, "Sending remote message");
                     if let Err(err) = writer.send_message(message).await {
                         error!(%err, "remote outgoing task send error");
                         bad_connection.notify_one();
@@ -439,12 +435,14 @@ async fn handle_commands(
                 arguments,
                 working_directory,
                 env,
+                timeout,
             } => (
                 Request::RunProcess(RunProcessRequest {
                     executable,
                     arguments,
                     working_directory,
                     env,
+                    timeout: timeout.map(Into::into),
                 }),
                 Some(channel),
             ),

@@ -2,6 +2,7 @@ use std::net::{
     Ipv4Addr,
     SocketAddr,
 };
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -37,6 +38,7 @@ use fig_proto::local::{
 };
 use fig_proto::mux::{
     self,
+    Packet,
     PacketOptions,
     message_to_packet,
     packet_to_message,
@@ -74,7 +76,6 @@ use tokio::sync::mpsc::{
     UnboundedSender,
 };
 use tokio::task::JoinHandle;
-use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_util::codec::{
     FramedRead,
@@ -284,75 +285,48 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
     let (host_sender, mut host_receiver) = mpsc::unbounded_channel::<mux::Hostbound>();
 
     loop {
-        select! {
-            stream = listener.accept() => match stream {
-                Ok((stream, _)) => {
-                    info!("accepting steam");
-                    tokio::spawn(handle_remote_ipc(stream, figterm_state.clone(), SimpleHookHandler {
-                        sender: host_sender.clone(),
-                    }));
-                },
-                Err(err) => error!(?err, "{PTY_BINARY_NAME} connection failed to accept"),
+        let control_flow = select! {
+            stream = listener.accept() => {
+                match stream {
+                    Ok((stream, _)) => {
+                        info!("accepting steam");
+                        tokio::spawn(handle_remote_ipc(stream, figterm_state.clone(), SimpleHookHandler {
+                            sender: host_sender.clone(),
+                        }));
+                    },
+                    Err(err) => error!(?err, "{PTY_BINARY_NAME} connection failed to accept"),
+                };
+                ControlFlow::Continue(())
             },
-            packet = reader.next() => match packet {
-                Some(Ok(packet)) => {
-                    info!("received packet");
-                    let message = match packet_to_message(packet) {
-                        Ok(message) => message,
-                        Err(err) => {
-                            error!(?err, "error decoding packet");
-                            continue;
+            packet = reader.next() => forward_packet_to_figterm(packet, &figterm_state, &host_sender).await,
+            encoded = host_receiver.recv() => {
+                match encoded {
+                    Some(hostbound) => {
+                        info!("sending packet");
+                        let packet = message_to_packet(hostbound, &PacketOptions { gzip: true });
+                        if let Err(err) = writer.send(packet).await {
+                            error!(?err, "error sending packet");
                         }
-                    };
-                    match handle_client_bound_message(message, &figterm_state, &host_sender).await {
-                        Ok(Some(msg)) => {
-                            if let Some(session) = figterm_state.most_recent() {
-                                info!("sending to session {}", session.id);
-                                if let Err(err) = session.sender.send(msg) {
-                                    error!(?err, "error sending to session");
-                                }
-                            } else {
-                                warn!("no session to send to");
-                            }
-                        }
-                        Ok(None) => {}
-                        Err(err) => error!(?err, "error")
-                    };
-                },
-                Some(Err(err)) => {
-                    error!(?err, "Error");
-                },
-                None => {
-                    info!("{PTY_BINARY_NAME} connection closed");
-                    break;
-                },
-            },
-            encoded = host_receiver.recv() => match encoded {
-                Some(hostbound) => {
-                    info!("sending packet");
-                    let packet = message_to_packet(hostbound, &PacketOptions { gzip: true });
-                    if let Err(err) = writer.send(packet).await {
-                        error!(?err, "error sending packet");
-                    }
-                },
-                None => bail!("host recv none"),
+                    },
+                    None => bail!("host recv none"),
+                };
+                ControlFlow::Continue(())
             },
             error_opt = error_rx.recv() => {
                 match error_opt {
-                    Some(err) => {
-                        error!(?err, "error in multiplexer");
-                        break;
-                    },
-                    None => {
-                        error!("error_rx closed");
-                        break;
-                    }
-                }
+                    Some(err) => error!(?err, "error in multiplexer"),
+                    None => error!("error_rx closed")
+                };
+                ControlFlow::Break(())
             },
             _ = tokio::signal::ctrl_c() => {
                 eprintln!("\nExiting multiplexer: ctrl-c");
-                break;
+                ControlFlow::Break(())
             },
+        };
+
+        if control_flow.is_break() {
+            break;
         }
     }
 
@@ -360,6 +334,57 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
     let _ = pid_lock.map(|l| l.release());
 
     Ok(())
+}
+
+async fn forward_packet_to_figterm(
+    packet: Option<Result<Packet, std::io::Error>>,
+    figterm_state: &Arc<FigtermState>,
+    host_sender: &UnboundedSender<mux::Hostbound>,
+) -> ControlFlow<()> {
+    match packet {
+        Some(Ok(packet)) => {
+            info!("received packet");
+            let message: mux::Clientbound = match packet_to_message(packet) {
+                Ok(message) => message,
+                Err(err) => {
+                    error!(?err, "error decoding packet");
+                    return ControlFlow::Continue(());
+                },
+            };
+
+            let session_id = match Uuid::parse_str(&message.session_id) {
+                Ok(session_id) => session_id,
+                Err(err) => {
+                    error!(?err, "error parsing session id");
+                    return ControlFlow::Continue(());
+                },
+            };
+
+            match handle_client_bound_message(message, figterm_state, host_sender).await {
+                Ok(Some(msg)) => {
+                    if let Some(session) = figterm_state.get(&session_id) {
+                        info!("sending to session {}", session.id);
+                        if let Err(err) = session.sender.send(msg) {
+                            error!(?err, "error sending to session");
+                        }
+                    } else {
+                        warn!("no session to send to");
+                    }
+                },
+                Ok(None) => warn!("Nothing to send"),
+                Err(err) => error!(?err, "error"),
+            };
+            ControlFlow::Continue(())
+        },
+        Some(Err(err)) => {
+            error!(?err, "Error");
+            ControlFlow::Continue(())
+        },
+        None => {
+            info!("{PTY_BINARY_NAME} connection closed");
+            ControlFlow::Break(())
+        },
+    }
 }
 
 async fn handle_client_bound_message(
@@ -414,8 +439,10 @@ async fn handle_client_bound_message(
             arguments,
             working_directory,
             env,
+            timeout,
         }) => {
-            let (command, rx) = FigtermCommand::run_process(executable, arguments, working_directory, env);
+            let (command, rx) =
+                FigtermCommand::run_process(executable, arguments, working_directory, env, timeout.map(Into::into));
 
             let session_id = Uuid::parse_str(&message.session_id).context("msg")?;
             let sender = state.get(&session_id).context("abc")?.sender.clone();
@@ -424,7 +451,7 @@ async fn handle_client_bound_message(
 
             let timeout_duration = Duration::from_secs(10);
 
-            let response = timeout(timeout_duration, rx)
+            let response = tokio::time::timeout(timeout_duration, rx)
                 .await
                 .context("Timed out waiting for figterm response")?
                 .context("Failed to receive figterm response")?;
@@ -432,6 +459,7 @@ async fn handle_client_bound_message(
             if let remote::hostbound::response::Response::RunProcess(response) = response {
                 let hostbound = mux::Hostbound {
                     session_id: session_id.to_string(),
+                    message_id: message.message_id.clone(),
                     submessage: Some(mux::hostbound::Submessage::RunProcessResponse(response)),
                 };
                 host_sender.send(hostbound)?;
@@ -455,6 +483,7 @@ impl SimpleHookHandler {
         info!("sending on sender");
         let hostbound = mux::Hostbound {
             session_id: session_id.to_string(),
+            message_id: Uuid::new_v4().to_string(),
             submessage: Some(submessage),
         };
         self.sender.send(hostbound)?;
@@ -578,6 +607,7 @@ mod tests {
             let (sender, _) = mpsc::unbounded_channel();
             let message = mux::Clientbound {
                 session_id: Uuid::new_v4().to_string(),
+                message_id: Uuid::new_v4().to_string(),
                 submessage: Some(message),
             };
 

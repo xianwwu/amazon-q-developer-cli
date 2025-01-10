@@ -89,6 +89,8 @@ impl<T: Message> Encoder<T> for Base64LineCodec<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use fig_proto::fig::{
         EnvironmentVariable,
         ShellContext,
@@ -101,6 +103,8 @@ mod tests {
 
     use super::*;
 
+    // We load real env vars/alias from cloudshell to test with so the
+    // compression ratio test is accurate
     const ENV: &str = include_str!("../../test/data/env.txt");
     const ALIAS: &str = include_str!("../../test/data/alias.txt");
 
@@ -109,13 +113,11 @@ mod tests {
             .lines()
             .filter(|line| !line.starts_with('#'))
             .map(|line| {
-                let (left, right) = line.split_once('=').unwrap();
-                EnvironmentVariable {
-                    key: left.into(),
-                    value: Some(right.into()),
-                }
+                let (key, value) = line.split_once('=').unwrap();
+                (key.into(), if value.is_empty() { None } else { Some(value.into()) })
             })
-            .collect();
+            .collect::<HashMap<String, Option<String>>>();
+        let get_var = |key: &str| environment_variables.get(key).cloned().unwrap_or(None);
 
         Hostbound {
             packet: Some(hostbound::Packet::Request(hostbound::Request {
@@ -123,15 +125,18 @@ mod tests {
                 request: Some(hostbound::request::Request::Prompt(PromptHook {
                     context: Some(ShellContext {
                         pid: Some(123456),
-                        ttys: Some("/dev/pts/1".into()),
+                        ttys: get_var("TTY"),
                         process_name: Some("zsh".into()),
-                        current_working_directory: Some("/home/cloudshell-user".into()),
+                        current_working_directory: get_var("PWD"),
                         session_id: Some(uuid::Uuid::new_v4().to_string()),
-                        terminal: Some("VSCode".into()),
+                        terminal: None,
                         hostname: Some("cloudshell-user@127.0.0.1.ec2.internal".into()),
-                        shell_path: Some("/usr/bin/zsh".into()),
+                        shell_path: get_var("SHELL"),
                         wsl_distro: None,
-                        environment_variables,
+                        environment_variables: environment_variables
+                            .into_iter()
+                            .map(|(key, value)| EnvironmentVariable { key, value })
+                            .collect(),
                         qterm_version: Some(env!("CARGO_PKG_VERSION").into()),
                         preexec: Some(false),
                         osc_lock: Some(false),
@@ -156,8 +161,26 @@ mod tests {
         encoder.encode(message, &mut dst).unwrap();
         let compressed_size = dst.len();
 
-        let ratio = compressed_size as f64 / uncompressed_size as f64 * 100.0;
-        println!("Compression ratio: {ratio:.2}%");
+        let ratio = compressed_size as f64 / uncompressed_size as f64;
+        println!("Compression ratio: {:.2}%", ratio * 100.0);
         println!("Size: {uncompressed_size} -> {compressed_size}");
+
+        // Just make sure the size is at least somewhat smaller, the real value is closer to 0.5
+        assert!(ratio < 0.9);
+    }
+
+    #[test]
+    fn round_trip() {
+        let message = mock_message();
+
+        let mut encoder = Base64LineCodec::new();
+        let mut dst = BytesMut::new();
+        encoder.encode(message.clone(), &mut dst).unwrap();
+
+        let mut decoder = Base64LineCodec::new();
+        let mut src = BytesMut::from(dst.as_ref());
+        let decoded_message = decoder.decode(&mut src).unwrap().unwrap();
+
+        assert_eq!(message, decoded_message);
     }
 }

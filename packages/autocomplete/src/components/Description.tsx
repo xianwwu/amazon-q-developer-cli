@@ -1,8 +1,8 @@
 import { useEffect, useCallback, useRef, useMemo } from "react";
 import { Suggestion, Arg } from "@aws/amazon-q-developer-cli-shared/internal";
 import { getMaxHeight, POPOUT_WIDTH } from "../window";
-import { useAutocompleteStore } from "../state";
 import { AutocompleteAction } from "../actions";
+import { useAutocomplete } from "../state";
 
 export type DescriptionPosition = "unknown" | "left" | "right";
 
@@ -24,7 +24,7 @@ const Description = ({
   height,
 }: DescriptionProps) => {
   const descriptionRef = useRef<HTMLDivElement>(null);
-  const { settings } = useAutocompleteStore();
+  const { settings } = useAutocomplete();
 
   const hint = useMemo(() => {
     const keys = Object.entries(settings).reduce((acc, pair) => {

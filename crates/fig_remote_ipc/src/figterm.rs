@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::time::Duration;
 
 use fig_proto::fig::EnvironmentVariable;
 use fig_proto::local::{
@@ -251,6 +252,7 @@ pub enum FigtermCommand {
         arguments: Vec<String>,
         working_directory: Option<String>,
         env: Vec<EnvironmentVariable>,
+        timeout: Option<Duration>,
     },
 }
 
@@ -270,5 +272,6 @@ impl FigtermCommand {
         arguments: Vec<String>,
         working_directory: Option<String>,
         env: Vec<EnvironmentVariable>,
+        timeout: Option<Duration>,
     );
 }

@@ -82,6 +82,11 @@ export const createGeneratorState = (
 
   const triggerGenerator = (currentState: GeneratorState) => {
     logger.info("Triggering generator", { currentState });
+    const { ipcClient } = get();
+    if (!ipcClient) {
+      logger.debug("No IPC client, not triggering generator");
+      return currentState;
+    }
     const { generator, context } = currentState;
     let request: Promise<Fig.Suggestion[]>;
 
@@ -89,12 +94,13 @@ export const createGeneratorState = (
       request = getTemplateSuggestions(generator, context);
     } else if (generator.script) {
       request = getScriptSuggestions(
+        ipcClient,
         generator,
         context,
         getSetting<number>(SETTINGS.SCRIPT_TIMEOUT, 5000),
       );
     } else {
-      request = getCustomSuggestions(generator, context);
+      request = getCustomSuggestions(ipcClient, generator, context);
       // filepaths/folders templates are now a sugar for two custom generators, we need to filter
       // the suggestion created by those two custom generators
       if (generator.filterTemplateSuggestions) {

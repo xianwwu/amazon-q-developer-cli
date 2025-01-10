@@ -15,6 +15,7 @@ import { MOST_USED_SPECS } from "./constants.js";
 import { LoadLocalSpecError, SpecCDNError } from "./errors.js";
 import * as autocompleteIndex from "@withfig/autocomplete";
 import autocompleteDynamic from "@withfig/autocomplete/dynamic";
+import { IpcClient } from "../../ipc-client-core/dist/index.js";
 
 export type SpecFileImport =
   | {
@@ -169,6 +170,7 @@ export const getCachedCLIVersion = (key: string) =>
   cachedCLIVersions[key] ?? null;
 
 export async function getVersionFromFullFile(
+  ipcClient: IpcClient,
   specData: SpecFileImport,
   name: string,
 ) {
@@ -182,14 +184,16 @@ export async function getVersionFromFullFile(
       }
 
       if ("getVersionCommand" in specData && specData.getVersionCommand) {
-        const newVersion = await specData.getVersionCommand(executeCommand);
+        const newVersion = await specData.getVersionCommand(
+          executeCommand(ipcClient),
+        );
         cachedCLIVersions[storageKey] = newVersion;
         return newVersion;
       }
 
       const newVersion = semver.clean(
         (
-          await executeCommand({
+          await executeCommand(ipcClient)({
             command: name,
             args: ["--version"],
           })
