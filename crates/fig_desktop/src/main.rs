@@ -144,17 +144,6 @@ async fn main() -> ExitCode {
         }
     }
 
-    // tokio::spawn(async {
-    //     fig_telemetry::emit_track(fig_telemetry::TrackEvent::new(
-    //         fig_telemetry::TrackEventType::LaunchedApp,
-    //         fig_telemetry::TrackSource::Desktop,
-    //         env!("CARGO_PKG_VERSION").into(),
-    //         empty::<(&str, &str)>(),
-    //     ))
-    //     .await
-    //     .ok();
-    // });
-
     let ctx = Context::new();
     install::run_install(Arc::clone(&ctx), cli.ignore_immediate_update).await;
 
@@ -208,7 +197,6 @@ async fn main() -> ExitCode {
 
     webview_manager.run().await.unwrap();
     fig_telemetry::finish_telemetry().await;
-
     ExitCode::SUCCESS
 }
 
@@ -297,7 +285,6 @@ async fn allow_multiple_running_check(
             _ => (),
         }
     }
-
     None
 }
 
@@ -353,22 +340,21 @@ async fn allow_multiple_running_check(
                     {
                         eprintln!("Failed to open Fig: {err}");
                     }
-
-                    return Some(ExitCode::SUCCESS);
                 };
 
-                let exit_code = match (process.user_id().map(|uid| uid as &u32), current_user_id.as_ref()) {
-                    (Some(uid), Some(current_uid)) if uid == current_uid => on_match.await,
-                    (_, None) => on_match.await,
-                    _ => None,
-                };
-
-                if let Some(exit_code) = exit_code {
-                    return Some(exit_code);
+                match (process.user_id().map(|uid| uid as &u32), current_user_id.as_ref()) {
+                    (Some(uid), Some(current_uid)) if uid == current_uid => {
+                        on_match.await;
+                        return Some(ExitCode::SUCCESS);
+                    },
+                    (_, None) => {
+                        on_match.await;
+                        return Some(ExitCode::SUCCESS);
+                    },
+                    _ => {},
                 }
             }
         }
     }
-
     None
 }
