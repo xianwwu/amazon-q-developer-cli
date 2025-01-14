@@ -367,7 +367,7 @@ async fn forward_packet_to_figterm(
                 },
             };
 
-            match handle_client_bound_message(message, figterm_state, host_sender).await {
+            match handle_clientbound(message, figterm_state, host_sender).await {
                 Ok(Some(msg)) => {
                     if let Some(session) = figterm_state.get(&session_id) {
                         info!("sending to session {}", session.id);
@@ -394,7 +394,7 @@ async fn forward_packet_to_figterm(
     }
 }
 
-async fn handle_client_bound_message(
+async fn handle_clientbound(
     message: mux::Clientbound,
     state: &Arc<FigtermState>,
     host_sender: &UnboundedSender<mux::Hostbound>,
@@ -413,7 +413,7 @@ async fn handle_client_bound_message(
 
     match submessage {
         mux::clientbound::Submessage::Request(request) => match request.inner {
-            Some(inner) => abc(inner, session_id, message_id, state, host_sender).await,
+            Some(inner) => handle_clienbound_request(inner, session_id, message_id, state, host_sender).await,
             None => bail!("received malformed mux::clientbound::Submessage::Request, missing inner"),
         },
         mux::clientbound::Submessage::Ping(ping) => {
@@ -430,7 +430,7 @@ async fn handle_client_bound_message(
     }
 }
 
-async fn abc(
+async fn handle_clienbound_request(
     inner: mux::clientbound::request::Inner,
     session_id: String,
     message_id: String,
@@ -650,9 +650,8 @@ mod tests {
                 })),
             };
 
-            let result = handle_client_bound_message(message, &state, &sender).await;
-
-            assert!(result.is_ok());
+            let result = handle_clientbound(message, &state, &sender).await.unwrap();
+            println!("{result:?}");
         }
     }
 
