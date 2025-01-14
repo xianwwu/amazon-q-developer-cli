@@ -74,8 +74,12 @@ fig_telemetry_core = { path = "crates/fig_telemetry_core" }
 fig_test_utils = { path = "crates/fig_test_utils" }
 fig_util = { path = "crates/fig_util" }
 flate2 = "1.0.35"
+flume = "0.11.0"
+futures = "0.3.26"
+globset = "0.4.10"
 hex = "0.4.3"
 http = "1.2.0"
+indicatif = "0.17.3"
 indoc = "2.0.5"
 insta = "1.38.0"
 libc = "0.2.167"
@@ -133,6 +137,7 @@ time = { version = "0.3.34", features = [
     "serde",
 ] }
 tokio = { version = "1.42.0", features = ["full"] }
+tokio-tungstenite = "0.26.1"
 tokio-util = { version = "0.7.13", features = ["codec", "compat"] }
 toml = "0.8.12"
 tracing = { version = "0.1.40", features = ["log"] }
@@ -142,10 +147,13 @@ tracing-subscriber = { version = "0.3.19", features = [
     "parking_lot",
     "time",
 ] }
+unicode-width = "0.2.0"
 url = "2.5.4"
 uuid = { version = "1.8.0", features = ["v4", "serde"] }
+walkdir = "2.5.0"
 which = "6.0.3"
 whoami = "1.5.1"
+winnow = "0.6.2"
 
 # Keep these minor synced with reqwest
 # https://github.com/seanmonstar/reqwest/blob/v0.12.12/Cargo.toml

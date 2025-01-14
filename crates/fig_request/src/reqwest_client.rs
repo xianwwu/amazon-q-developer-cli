@@ -14,7 +14,7 @@ use rustls::{
 };
 
 pub fn create_default_root_cert_store() -> RootCertStore {
-    let mut root_cert_store = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let mut root_cert_store: RootCertStore = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
 
     // The errors are ignored because root certificates often include
     // ancient or syntactically invalid certificates

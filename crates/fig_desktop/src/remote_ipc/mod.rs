@@ -1,10 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{
-    Result,
-    anyhow,
-};
+use anyhow::Result;
 use base64::prelude::*;
 use bytes::BytesMut;
 use fig_proto::fig::server_originated_message::Submessage as ServerOriginatedSubMessage;
@@ -321,17 +318,5 @@ impl fig_remote_ipc::RemoteHookHandler for RemoteHook {
             .await?;
 
         Ok(None)
-    }
-
-    async fn account_info(&mut self) -> Result<Option<clientbound::response::Response>> {
-        Err(anyhow!("account info not implemented"))
-    }
-
-    async fn start_exchange_credentials(&mut self) -> Result<Option<clientbound::response::Response>> {
-        Err(anyhow!("start_exchange_credentials not implemented"))
-    }
-
-    async fn confirm_exchange_credentials(&mut self) -> Result<Option<clientbound::response::Response>> {
-        Err(anyhow!("confirm_exchange_credentials not implemented"))
     }
 }

@@ -56,12 +56,6 @@ pub trait RemoteHookHandler {
         session_id: Uuid,
     ) -> Result<Option<clientbound::response::Response>, Self::Error>;
 
-    async fn account_info(&mut self) -> Result<Option<clientbound::response::Response>, Self::Error>;
-
-    async fn start_exchange_credentials(&mut self) -> Result<Option<clientbound::response::Response>, Self::Error>;
-
-    async fn confirm_exchange_credentials(&mut self) -> Result<Option<clientbound::response::Response>, Self::Error>;
-
     /// This is not technically a hook, it is triggers by many other hooks and does not allow for a
     /// response, mostly used for diagnostics and testing
     async fn shell_context(&mut self, _context: &ShellContext, _session_id: Uuid) {}

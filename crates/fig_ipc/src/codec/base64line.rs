@@ -19,7 +19,7 @@ use tokio_util::codec::{
 pub struct Base64LineCodec<T: Message> {
     line_delinited: AnyDelimiterCodec,
     compressed: bool,
-    _a: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T: Message> Default for Base64LineCodec<T> {
@@ -33,7 +33,7 @@ impl<T: Message> Base64LineCodec<T> {
         Base64LineCodec {
             line_delinited: AnyDelimiterCodec::new(b"\r\n".into(), b"\n".into()),
             compressed: false,
-            _a: PhantomData,
+            _phantom: PhantomData,
         }
     }
 

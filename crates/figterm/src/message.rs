@@ -146,6 +146,8 @@ fn create_command(executable: impl AsRef<Path>, working_directory: impl AsRef<Pa
         ("NO_COLOR", "1"),
     ]);
 
+    cmd.kill_on_drop(true);
+
     cmd
 }
 

@@ -286,6 +286,7 @@ pub enum InternalSubcommand {
         #[arg(long, allow_hyphen_values = true)]
         suggestion: String,
     },
+    #[command(alias = "mux")]
     Multiplexer(MultiplexerArgs),
 }
 
@@ -852,10 +853,7 @@ impl InternalSubcommand {
                 Ok(inline_shell_completion_accept(buffer, suggestion).await)
             },
             InternalSubcommand::Multiplexer(args) => match multiplexer::execute(args).await {
-                Ok(()) => {
-                    info!("quitting multiplexer");
-                    Ok(ExitCode::SUCCESS)
-                },
+                Ok(()) => Ok(ExitCode::SUCCESS),
                 Err(err) => {
                     error!("{err}");
                     let path = logs_dir()?.join("mux-crash.log");

@@ -10,10 +10,7 @@ mod send_recv_message;
 mod unix_socket;
 
 pub use buffered_reader::BufferedReader;
-pub use codec::{
-    Base64LineCodec,
-    FigCodec,
-};
+pub use codec::Base64LineCodec;
 pub use error::{
     ConnectError,
     Error,

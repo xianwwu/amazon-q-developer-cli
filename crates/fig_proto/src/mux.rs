@@ -30,7 +30,7 @@ pub struct PacketOptions {
     pub gzip: bool,
 }
 
-pub fn message_to_packet<M: Message>(message: M, options: &PacketOptions) -> Packet {
+pub fn message_to_packet<M: Message>(message: M, options: &PacketOptions) -> Result<Packet, MuxError> {
     let mut inner = message.encode_to_vec();
 
     let mut rng = rand::thread_rng();
@@ -41,19 +41,19 @@ pub fn message_to_packet<M: Message>(message: M, options: &PacketOptions) -> Pac
     let compression = if options.gzip {
         let mut gz = flate2::bufread::GzEncoder::new(&*inner, Compression::default());
         let mut s = Vec::new();
-        gz.read_to_end(&mut s).unwrap();
+        gz.read_to_end(&mut s)?;
         inner = s;
         packet::Compression::Gzip.into()
     } else {
         packet::Compression::None.into()
     };
 
-    Packet {
+    Ok(Packet {
         version: PACKET_VERSION,
         compression,
         nonce,
         inner,
-    }
+    })
 }
 
 pub fn packet_to_message<M: Message + Default>(packet: Packet) -> Result<M, MuxError> {
@@ -98,10 +98,10 @@ mod test {
     fn test_message_to_packet() {
         let options = super::PacketOptions { gzip: false };
         let inner = mock_inner();
-        let packet = super::message_to_packet(inner.clone(), &options);
+        let packet = super::message_to_packet(inner.clone(), &options).unwrap();
         println!("{packet:?}");
 
-        let new_inner: Hostbound = packet_to_message(packet.clone()).unwrap();
+        let new_inner: Hostbound = packet_to_message(packet).unwrap();
         assert_eq!(inner, new_inner);
     }
 }

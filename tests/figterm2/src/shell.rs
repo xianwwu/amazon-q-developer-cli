@@ -89,18 +89,6 @@ impl RemoteHookHandler for RemoteHook {
         Ok(None)
     }
 
-    async fn account_info(&mut self) -> Result<Option<clientbound::response::Response>, Self::Error> {
-        Err(anyhow::anyhow!("account_info not implemented"))
-    }
-
-    async fn start_exchange_credentials(&mut self) -> Result<Option<clientbound::response::Response>, Self::Error> {
-        Err(anyhow::anyhow!("start_exchange_credentials not implemented"))
-    }
-
-    async fn confirm_exchange_credentials(&mut self) -> Result<Option<clientbound::response::Response>, Self::Error> {
-        Err(anyhow::anyhow!("confirm_exchange_credentials not implemented"))
-    }
-
     async fn shell_context(&mut self, context: &ShellContext, _session_id: Uuid) {
         *self.shell_context.lock().await = Some(context.clone());
     }

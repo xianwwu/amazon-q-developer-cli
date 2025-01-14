@@ -15,7 +15,6 @@ use eyre::{
     Context,
     ContextCompat,
     Result,
-    anyhow,
     bail,
 };
 use fig_ipc::Base64LineCodec;
@@ -303,7 +302,13 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
                 match encoded {
                     Some(hostbound) => {
                         info!("sending packet");
-                        let packet = message_to_packet(hostbound, &PacketOptions { gzip: true });
+                        let packet = match message_to_packet(hostbound, &PacketOptions { gzip: true }) {
+                            Ok(packet) => packet,
+                            Err(err) => {
+                                error!(?err, "error encoding packet");
+                                continue;
+                            },
+                        };
                         if let Err(err) = writer.send(packet).await {
                             error!(?err, "error sending packet");
                         }
@@ -333,6 +338,7 @@ pub async fn execute(args: MultiplexerArgs) -> Result<()> {
     #[cfg(unix)]
     let _ = pid_lock.map(|l| l.release());
 
+    info!("quitting multiplexer");
     Ok(())
 }
 
@@ -393,30 +399,36 @@ async fn handle_client_bound_message(
     host_sender: &UnboundedSender<mux::Hostbound>,
 ) -> Result<Option<FigtermCommand>> {
     let Some(submessage) = message.submessage else {
-        bail!("received malformed message");
+        bail!("received malformed message, missing submessage");
     };
 
     info!("submessage: {:?}", submessage);
 
-    Ok(match submessage {
-        mux::clientbound::Submessage::Intercept(InterceptRequest { intercept_command }) => match intercept_command {
-            Some(InterceptCommand::SetFigjsIntercepts(SetFigjsIntercepts {
-                intercept_bound_keystrokes,
-                intercept_global_keystrokes,
-                actions,
-                override_actions,
-            })) => Some(FigtermCommand::InterceptFigJs {
-                intercept_keystrokes: intercept_bound_keystrokes,
-                intercept_global_keystrokes,
-                actions,
-                override_actions,
-            }),
-            Some(InterceptCommand::SetFigjsVisible(SetFigjsVisible { visible })) => {
-                Some(FigtermCommand::InterceptFigJSVisible { visible })
-            },
-            None => None,
+    let mux::clientbound::Submessage::Request(mux::clientbound::Request { inner: Some(inner) }) = submessage else {
+        bail!("received malformed message, missing inner");
+    };
+
+    Ok(match inner {
+        mux::clientbound::request::Inner::Intercept(InterceptRequest { intercept_command }) => {
+            match intercept_command {
+                Some(InterceptCommand::SetFigjsIntercepts(SetFigjsIntercepts {
+                    intercept_bound_keystrokes,
+                    intercept_global_keystrokes,
+                    actions,
+                    override_actions,
+                })) => Some(FigtermCommand::InterceptFigJs {
+                    intercept_keystrokes: intercept_bound_keystrokes,
+                    intercept_global_keystrokes,
+                    actions,
+                    override_actions,
+                }),
+                Some(InterceptCommand::SetFigjsVisible(SetFigjsVisible { visible })) => {
+                    Some(FigtermCommand::InterceptFigJSVisible { visible })
+                },
+                None => None,
+            }
         },
-        mux::clientbound::Submessage::InsertText(InsertTextRequest {
+        mux::clientbound::request::Inner::InsertText(InsertTextRequest {
             insertion,
             deletion,
             offset,
@@ -431,10 +443,10 @@ async fn handle_client_bound_message(
             insertion_buffer,
             insert_during_command,
         }),
-        mux::clientbound::Submessage::SetBuffer(SetBufferRequest { text, cursor_position }) => {
+        mux::clientbound::request::Inner::SetBuffer(SetBufferRequest { text, cursor_position }) => {
             Some(FigtermCommand::SetBuffer { text, cursor_position })
         },
-        mux::clientbound::Submessage::RunProcess(RunProcessRequest {
+        mux::clientbound::request::Inner::RunProcess(RunProcessRequest {
             executable,
             arguments,
             working_directory,
@@ -460,7 +472,9 @@ async fn handle_client_bound_message(
                 let hostbound = mux::Hostbound {
                     session_id: session_id.to_string(),
                     message_id: message.message_id.clone(),
-                    submessage: Some(mux::hostbound::Submessage::RunProcessResponse(response)),
+                    submessage: Some(mux::hostbound::Submessage::Response(mux::hostbound::Response {
+                        inner: Some(mux::hostbound::response::Inner::RunProcess(response)),
+                    })),
                 };
                 host_sender.send(hostbound)?;
                 None
@@ -468,9 +482,6 @@ async fn handle_client_bound_message(
                 bail!("invalid response type");
             }
         },
-        mux::clientbound::Submessage::Diagnostics(_)
-        | mux::clientbound::Submessage::InsertOnNewCmd(_)
-        | mux::clientbound::Submessage::ReadFile(_) => None,
     })
 }
 
@@ -479,12 +490,14 @@ struct SimpleHookHandler {
 }
 
 impl SimpleHookHandler {
-    fn resererialize_send(&mut self, session_id: Uuid, submessage: mux::hostbound::Submessage) -> eyre::Result<()> {
+    fn resererialize_send(&mut self, session_id: Uuid, request: mux::hostbound::request::Inner) -> eyre::Result<()> {
         info!("sending on sender");
         let hostbound = mux::Hostbound {
             session_id: session_id.to_string(),
             message_id: Uuid::new_v4().to_string(),
-            submessage: Some(submessage),
+            submessage: Some(mux::hostbound::Submessage::Request(mux::hostbound::Request {
+                inner: Some(request),
+            })),
         };
         self.sender.send(hostbound)?;
         Ok(())
@@ -503,7 +516,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
         self.resererialize_send(
             session_id,
-            mux::hostbound::Submessage::EditBuffer(edit_buffer_hook.clone()),
+            mux::hostbound::request::Inner::EditBuffer(edit_buffer_hook.clone()),
         )?;
         Ok(None)
     }
@@ -514,7 +527,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
         session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        self.resererialize_send(session_id, mux::hostbound::Submessage::Prompt(prompt_hook.clone()))?;
+        self.resererialize_send(session_id, mux::hostbound::request::Inner::Prompt(prompt_hook.clone()))?;
         Ok(None)
     }
 
@@ -524,7 +537,10 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
         session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        self.resererialize_send(session_id, mux::hostbound::Submessage::PreExec(pre_exec_hook.clone()))?;
+        self.resererialize_send(
+            session_id,
+            mux::hostbound::request::Inner::PreExec(pre_exec_hook.clone()),
+        )?;
         Ok(None)
     }
 
@@ -534,7 +550,10 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
         session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        self.resererialize_send(session_id, mux::hostbound::Submessage::PostExec(post_exec_hook.clone()))?;
+        self.resererialize_send(
+            session_id,
+            mux::hostbound::request::Inner::PostExec(post_exec_hook.clone()),
+        )?;
         Ok(None)
     }
 
@@ -545,25 +564,9 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
         self.resererialize_send(
             session_id,
-            mux::hostbound::Submessage::InterceptedKey(intercepted_key.clone()),
+            mux::hostbound::request::Inner::InterceptedKey(intercepted_key.clone()),
         )?;
         Ok(None)
-    }
-
-    async fn account_info(&mut self) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        Err(anyhow!("account info not implemented"))
-    }
-
-    async fn start_exchange_credentials(
-        &mut self,
-    ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        Err(anyhow!("start_exchange_credentials not implemented"))
-    }
-
-    async fn confirm_exchange_credentials(
-        &mut self,
-    ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        Err(anyhow!("confirm_exchange_credentials not implemented"))
     }
 }
 
@@ -577,7 +580,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_client_bound_message() {
         let messages = [
-            mux::clientbound::Submessage::Intercept(InterceptRequest {
+            mux::clientbound::request::Inner::Intercept(InterceptRequest {
                 intercept_command: Some(InterceptCommand::SetFigjsIntercepts(SetFigjsIntercepts {
                     intercept_bound_keystrokes: false,
                     intercept_global_keystrokes: false,
@@ -585,10 +588,10 @@ mod tests {
                     override_actions: false,
                 })),
             }),
-            mux::clientbound::Submessage::Intercept(InterceptRequest {
+            mux::clientbound::request::Inner::Intercept(InterceptRequest {
                 intercept_command: Some(InterceptCommand::SetFigjsVisible(SetFigjsVisible { visible: false })),
             }),
-            mux::clientbound::Submessage::InsertText(InsertTextRequest {
+            mux::clientbound::request::Inner::InsertText(InsertTextRequest {
                 insertion: None,
                 deletion: None,
                 offset: None,
@@ -596,7 +599,7 @@ mod tests {
                 insertion_buffer: None,
                 insert_during_command: None,
             }),
-            mux::clientbound::Submessage::SetBuffer(SetBufferRequest {
+            mux::clientbound::request::Inner::SetBuffer(SetBufferRequest {
                 text: "text".into(),
                 cursor_position: None,
             }),
@@ -608,7 +611,9 @@ mod tests {
             let message = mux::Clientbound {
                 session_id: Uuid::new_v4().to_string(),
                 message_id: Uuid::new_v4().to_string(),
-                submessage: Some(message),
+                submessage: Some(mux::clientbound::Submessage::Request(mux::clientbound::Request {
+                    inner: Some(message),
+                })),
             };
 
             let result = handle_client_bound_message(message, &state, &sender).await;
@@ -622,7 +627,7 @@ mod tests {
         let (sender, mut receiver) = mpsc::unbounded_channel();
         let mut handler = SimpleHookHandler { sender };
 
-        let message = mux::hostbound::Submessage::EditBuffer(EditBufferHook {
+        let message = mux::hostbound::request::Inner::EditBuffer(EditBufferHook {
             context: Some(ShellContext {
                 pid: Some(123),
                 shell_path: Some("/bin/bash".into()),

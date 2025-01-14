@@ -267,9 +267,6 @@ pub async fn handle_remote_ipc(
                                         }
                                         hook.intercepted_key(intercepted_key, session_id).await
                                     },
-                                    hostbound::request::Request::AccountInfo(_) => hook.account_info().await,
-                                    hostbound::request::Request::StartExchangeCredentials(_) => hook.start_exchange_credentials().await,
-                                    hostbound::request::Request::ConfirmExchangeCredentials(_) => hook.confirm_exchange_credentials().await,
                                 } ;
 
                                 match res {
