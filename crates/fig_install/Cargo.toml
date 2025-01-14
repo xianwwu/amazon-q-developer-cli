@@ -12,7 +12,6 @@ workspace = true
 
 [features]
 default = []
-gamma = ["fig_util/gamma"]
 
 [dependencies]
 bitflags.workspace = true
