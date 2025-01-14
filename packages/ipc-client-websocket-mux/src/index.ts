@@ -9,12 +9,22 @@ import type {
   PreExecHook,
   PromptHook,
 } from "@aws/amazon-q-developer-cli-ipc-client-core";
-import { Clientbound, Hostbound } from "@aws/amazon-q-developer-cli-proto/mux";
+import {
+  Clientbound,
+  Clientbound_Request,
+  Clientbound_RequestSchema,
+  Hostbound,
+  Hostbound_Request,
+  Hostbound_Response,
+  PingSchema,
+  Pong,
+} from "@aws/amazon-q-developer-cli-proto/mux";
 import { PacketStream } from "./packetStream.js";
 import { CsWebsocket, Socket } from "./socket.js";
 import { clientboundToPacket, packetToHostbound } from "./mux.js";
 import { EditBufferHook } from "@aws/amazon-q-developer-cli-proto/local";
 import Emittery, { UnsubscribeFunction } from "emittery";
+import { create } from "@bufbuild/protobuf";
 
 export { CsWebsocket };
 
@@ -46,47 +56,87 @@ export class WebsocketMuxBackend implements IpcClient {
     const submessage = message.submessage;
     console.log(submessage);
     switch (submessage?.case) {
-      // Hooks
-      case "editBuffer":
-        this.emitter.emit(EditBufferHookSymbol, submessage.value);
+      case "request":
+        this.handleHostboundRequest(submessage.value);
         break;
-      case "interceptedKey":
-        this.emitter.emit(InterceptedKeyHookSymbol, submessage.value);
+      case "response":
+        this.handleHostboundResponse(submessage.value);
         break;
-      case "postExec":
-        this.emitter.emit(PostExecHookSymbol, submessage.value);
+      case "pong":
+        this.handleHostboundPong(submessage.value);
         break;
-      case "preExec":
-        this.emitter.emit(PreExecHookSymbol, submessage.value);
-        break;
-      case "prompt":
-        this.emitter.emit(PromptHookSymbol, submessage.value);
-        break;
-      // Request -> Response
-      case "runProcessResponse":
-        this.emitter.emit(message.messageId, submessage.value);
+      default:
+        console.warn("Unknown submessage", submessage);
         break;
     }
   }
 
+  private handleHostboundRequest(request: Hostbound_Request) {
+    switch (request.inner.case) {
+      case "editBuffer":
+        this.emitter.emit(EditBufferHookSymbol, request.inner.value);
+        break;
+      case "interceptedKey":
+        this.emitter.emit(InterceptedKeyHookSymbol, request.inner.value);
+        break;
+      case "postExec":
+        this.emitter.emit(PostExecHookSymbol, request.inner.value);
+        break;
+      case "preExec":
+        this.emitter.emit(PreExecHookSymbol, request.inner.value);
+        break;
+      case "prompt":
+        this.emitter.emit(PromptHookSymbol, request.inner.value);
+        break;
+      default:
+        console.warn("Unknown request", request.inner);
+        break;
+    }
+  }
+
+  private handleHostboundResponse(response: Hostbound_Response) {
+    switch (response.inner.case) {
+      case "runProcess":
+        this.emitter.emit(response.messageId, response.inner.value);
+        break;
+      default:
+        console.warn("Unknown response", response.inner);
+        break;
+    }
+  }
+
+  private handleHostboundPong(pong: Pong) {
+    this.emitter.emit(pong.messageId);
+  }
+
   // Helper requests
 
-  private async sendRequest(
+  private async sendClientbound(clientbound: Omit<Clientbound, "$typeName">) {
+    const packet = await clientboundToPacket(clientbound);
+    this.packetStream.write(packet);
+  }
+
+  private async sendClientboundRequest(
     sessionId: string,
     messageId: string | undefined,
-    clientbound: Clientbound["submessage"],
+    clientbound: Clientbound_Request["inner"],
   ) {
     const packet = await clientboundToPacket({
-      sessionId,
-      messageId: messageId ?? crypto.randomUUID(),
-      submessage: clientbound,
+      submessage: {
+        case: "request",
+        value: create(Clientbound_RequestSchema, {
+          sessionId,
+          messageId: messageId ?? crypto.randomUUID(),
+          inner: clientbound,
+        }),
+      },
     });
     this.packetStream.write(packet);
   }
 
   insertText(sessionId: string, request: InsertTextRequest): void {
     console.log("insertText");
-    this.sendRequest(sessionId, undefined, {
+    this.sendClientboundRequest(sessionId, undefined, {
       case: "insertText",
       value: request,
     });
@@ -94,7 +144,7 @@ export class WebsocketMuxBackend implements IpcClient {
 
   intercept(sessionId: string, request: InterceptRequest): void {
     console.log("intercept");
-    this.sendRequest(sessionId, undefined, {
+    this.sendClientboundRequest(sessionId, undefined, {
       case: "intercept",
       value: request,
     });
@@ -105,11 +155,24 @@ export class WebsocketMuxBackend implements IpcClient {
     request: RunProcessRequest,
   ): Promise<RunProcessResponse> {
     const messageId = crypto.randomUUID();
-    this.sendRequest(sessionId, messageId, {
+    this.sendClientboundRequest(sessionId, messageId, {
       case: "runProcess",
       value: request,
     });
     return await this.emitter.once(messageId);
+  }
+
+  async ping(): Promise<void> {
+    const messageId = crypto.randomUUID();
+    this.sendClientbound({
+      submessage: {
+        case: "ping",
+        value: create(PingSchema, {
+          messageId,
+        }),
+      },
+    });
+    await this.emitter.once(messageId);
   }
 
   onEditBufferChange(

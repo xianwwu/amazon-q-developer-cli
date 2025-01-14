@@ -124,8 +124,6 @@ const [requestsWithMatchingResponses, otherRequests] = requestTypes
 
       const endpoint = normalize(request);
 
-      console.log(endpoint, requestTypes);
-
       if (responseTypes.indexOf(`${endpoint}Response`) !== -1) {
         return [matchingResponse.concat([request]), other];
       }

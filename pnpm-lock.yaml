@@ -481,6 +481,9 @@ importers:
 
   packages/autocomplete-parser:
     dependencies:
+      '@aws/amazon-q-developer-cli-api-bindings':
+        specifier: workspace:^
+        version: link:../api-bindings
       '@aws/amazon-q-developer-cli-api-bindings-wrappers':
         specifier: workspace:^
         version: link:../api-bindings-wrappers

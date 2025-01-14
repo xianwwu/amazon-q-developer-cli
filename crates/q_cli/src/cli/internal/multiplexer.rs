@@ -39,6 +39,7 @@ use fig_proto::mux::{
     self,
     Packet,
     PacketOptions,
+    Ping,
     message_to_packet,
     packet_to_message,
 };
@@ -359,16 +360,8 @@ async fn forward_packet_to_figterm(
                 },
             };
 
-            let session_id = match Uuid::parse_str(&message.session_id) {
-                Ok(session_id) => session_id,
-                Err(err) => {
-                    error!(?err, "error parsing session id");
-                    return ControlFlow::Continue(());
-                },
-            };
-
             match handle_clientbound(message, figterm_state, host_sender).await {
-                Ok(Some(msg)) => {
+                Ok(Some((msg, session_id))) => {
                     if let Some(session) = figterm_state.get(&session_id) {
                         info!("sending to session {}", session.id);
                         if let Err(err) = session.sender.send(msg) {
@@ -398,31 +391,38 @@ async fn handle_clientbound(
     message: mux::Clientbound,
     state: &Arc<FigtermState>,
     host_sender: &UnboundedSender<mux::Hostbound>,
-) -> Result<Option<FigtermCommand>> {
+) -> Result<Option<(FigtermCommand, Uuid)>> {
     trace!(?message, "handle mux::Clientbound");
 
-    let mux::Clientbound {
-        session_id,
-        message_id,
-        submessage,
-    } = message;
-
+    let mux::Clientbound { submessage } = message;
     let Some(submessage) = submessage else {
         bail!("received malformed message, missing submessage");
     };
 
     match submessage {
         mux::clientbound::Submessage::Request(request) => match request.inner {
-            Some(inner) => handle_clienbound_request(inner, session_id, message_id, state, host_sender).await,
+            Some(inner) => {
+                let session_id = match Uuid::parse_str(&request.session_id) {
+                    Ok(session_id) => session_id,
+                    Err(err) => {
+                        error!(?err, "error parsing session id");
+                        bail!("received malformed mux::clientbound::Submessage::Request, invalid session id");
+                    },
+                };
+
+                Ok(
+                    handle_clienbound_request(inner, request.session_id, request.message_id, state, host_sender)
+                        .await?
+                        .map(|a| (a, session_id)),
+                )
+            },
             None => bail!("received malformed mux::clientbound::Submessage::Request, missing inner"),
         },
-        mux::clientbound::Submessage::Ping(ping) => {
-            trace!(?ping, "received mux::clientbound::Submessage::Ping");
+        mux::clientbound::Submessage::Ping(Ping { message_id }) => {
+            trace!(%message_id, "received mux::clientbound::Submessage::Ping");
             host_sender
                 .send(mux::Hostbound {
-                    session_id,
-                    message_id,
-                    submessage: Some(mux::hostbound::Submessage::Pong(mux::Pong {})),
+                    submessage: Some(mux::hostbound::Submessage::Pong(mux::Pong { message_id })),
                 })
                 .context("Failed sending pong")?;
             Ok(None)
@@ -499,9 +499,9 @@ async fn handle_clienbound_request(
 
             if let remote::hostbound::response::Response::RunProcess(response) = response {
                 let hostbound = mux::Hostbound {
-                    session_id: session_id.to_string(),
-                    message_id,
                     submessage: Some(mux::hostbound::Submessage::Response(mux::hostbound::Response {
+                        session_id: session_id.to_string(),
+                        message_id,
                         inner: Some(mux::hostbound::response::Inner::RunProcess(response)),
                     })),
                 };
@@ -519,11 +519,9 @@ struct SimpleHookHandler {
 }
 
 impl SimpleHookHandler {
-    fn send(&mut self, session_id: Uuid, submessage: mux::hostbound::Submessage) -> eyre::Result<()> {
+    fn send(&mut self, submessage: mux::hostbound::Submessage) -> eyre::Result<()> {
         info!("sending on sender");
         let hostbound = mux::Hostbound {
-            session_id: session_id.to_string(),
-            message_id: Uuid::new_v4().to_string(),
             submessage: Some(submessage),
         };
         self.sender.send(hostbound)?;
@@ -531,10 +529,11 @@ impl SimpleHookHandler {
     }
 
     fn send_request(&mut self, session_id: Uuid, request: mux::hostbound::request::Inner) -> eyre::Result<()> {
-        self.send(
-            session_id,
-            mux::hostbound::Submessage::Request(mux::hostbound::Request { inner: Some(request) }),
-        )
+        self.send(mux::hostbound::Submessage::Request(mux::hostbound::Request {
+            session_id: session_id.to_string(),
+            message_id: Uuid::new_v4().to_string(),
+            inner: Some(request),
+        }))
     }
 }
 
@@ -643,9 +642,9 @@ mod tests {
             let state = Arc::new(FigtermState::new());
             let (sender, _) = mpsc::unbounded_channel();
             let message = mux::Clientbound {
-                session_id: Uuid::new_v4().to_string(),
-                message_id: Uuid::new_v4().to_string(),
                 submessage: Some(mux::clientbound::Submessage::Request(mux::clientbound::Request {
+                    session_id: Uuid::new_v4().to_string(),
+                    message_id: Uuid::new_v4().to_string(),
                     inner: Some(message),
                 })),
             };

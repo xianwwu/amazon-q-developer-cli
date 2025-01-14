@@ -23,20 +23,26 @@ message Packet {
   bytes inner = 100;
 }
 
-message Ping {}
+message Ping {
+  // A message id that the pong will contain
+  string message_id = 1;
+}
 
-message Pong {}
+message Pong {
+  // The message id from the ping
+  string message_id = 1;
+}
 
 message Hostbound {
   reserved 102;
   reserved "ping";
 
-  // The session id of the figterm instance the message originated from
-  string session_id = 1;
-  // A message id that all responses will share
-  string message_id = 2;
-
   message Request {
+    // The session id of the figterm instance the message originated from
+    string session_id = 1;
+    // A message id that all responses will share
+    string message_id = 2;
+
     oneof inner {
       local.EditBufferHook edit_buffer = 100;
       local.PromptHook prompt = 101;
@@ -47,6 +53,11 @@ message Hostbound {
   }
 
   message Response {
+    // The session id of the figterm instance the message originated from
+    string session_id = 1;
+    // A message id that all responses will share
+    string message_id = 2;
+
     oneof inner {
       fig.RunProcessResponse run_process = 100;
     }
@@ -63,12 +74,12 @@ message Clientbound {
   reserved 101, 103;
   reserved "response", "pong";
 
-  // The session id of the figterm instance the message will be sent to
-  string session_id = 1;
-  // A message id that all responses will share
-  string message_id = 2;
-
   message Request {
+    // The session id of the figterm instance the message will be sent to
+    string session_id = 1;
+    // A message id that all responses will share
+    string message_id = 2;
+
     oneof inner {
       figterm.InterceptRequest intercept = 100;
       figterm.InsertTextRequest insert_text = 101;
