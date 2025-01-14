@@ -17,14 +17,6 @@ message RunProcessRequest {
   optional fig_common.Duration timeout = 5;
 }
 
-message PseudoterminalExecuteRequest {
-  string command = 1;
-  optional string working_directory = 2;
-  optional bool background_job = 3;
-  optional bool is_pipelined = 4;
-  repeated fig_common.EnvironmentVariable env = 5;
-}
-
 message Clientbound {
   oneof packet {
     HandshakeResponse handshake_response = 100;
