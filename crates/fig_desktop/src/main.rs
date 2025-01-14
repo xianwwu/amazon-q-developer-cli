@@ -139,7 +139,7 @@ async fn main() -> ExitCode {
                     )
                     .show();
 
-                return ExitCode::SUCCESS;
+                return ExitCode::FAILURE;
             }
         }
     }
