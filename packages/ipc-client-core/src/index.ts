@@ -46,6 +46,8 @@ export interface IpcClient {
     request: RunProcessRequest,
   ) => Promise<RunProcessResponse>;
 
+  ping: () => Promise<void>;
+
   // Notifications
   onEditBufferChange: (
     callback: (notification: EditBufferHook) => void | Promise<void>,

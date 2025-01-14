@@ -67,9 +67,14 @@ export interface AutocompleteProps {
   enableMocks?: boolean;
 
   visible?: boolean;
+  onDisconnect?: () => void;
 }
 
-function AutocompleteInner({ enableMocks, visible }: AutocompleteProps) {
+function AutocompleteInner({
+  enableMocks,
+  visible,
+  onDisconnect,
+}: AutocompleteProps) {
   const {
     generatorStates,
     suggestions,
@@ -249,6 +254,30 @@ function AutocompleteInner({ enableMocks, visible }: AutocompleteProps) {
       );
     }
   }, [visible, setVisibleState]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pingLoop = async () => {
+      while (!cancelled) {
+        if (ipcClient) {
+          try {
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error("Ping timeout")), 10000);
+            });
+            await Promise.race([ipcClient.ping(), timeoutPromise]);
+          } catch (_err) {
+            if (!cancelled) {
+              onDisconnect?.();
+            }
+          }
+        }
+      }
+    };
+    pingLoop();
+    return () => {
+      cancelled = true;
+    };
+  }, [ipcClient, onDisconnect]);
 
   // useEffect(() => {
   //   Settings.get(SETTINGS.DISABLE_HISTORY_LOADING)
