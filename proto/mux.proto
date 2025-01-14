@@ -29,16 +29,25 @@ message Hostbound {
   // A message id that all responses will share
   string message_id = 2;
 
-  oneof submessage {
-    // requests
-    local.EditBufferHook edit_buffer = 101;
-    local.PromptHook prompt = 102;
-    local.PreExecHook pre_exec = 103;
-    local.PostExecHook post_exec = 108;
-    local.InterceptedKeyHook intercepted_key = 104;
+  message Request {
+    oneof inner {
+      local.EditBufferHook edit_buffer = 100;
+      local.PromptHook prompt = 101;
+      local.PreExecHook pre_exec = 102;
+      local.PostExecHook post_exec = 103;
+      local.InterceptedKeyHook intercepted_key = 104;
+    }
+  }
 
-    // responses
-    fig.RunProcessResponse run_process_response = 105;
+  message Response {
+    oneof inner {
+      fig.RunProcessResponse run_process = 100;
+    }
+  }
+
+  oneof submessage {
+    Request request = 100;
+    Response response = 101;
   }
 }
 
@@ -48,16 +57,16 @@ message Clientbound {
   // A message id that all responses will share
   string message_id = 2;
 
-  oneof submessage {
-    // requests
-    figterm.InterceptRequest intercept = 100;
-    figterm.InsertTextRequest insert_text = 101;
-    figterm.SetBufferRequest set_buffer = 102;
-    figterm.DiagnosticsRequest diagnostics = 103;
-    figterm.InsertOnNewCmdRequest insert_on_new_cmd = 107;
-    remote.RunProcessRequest run_process = 108;
+  message Request {
+    oneof inner {
+      figterm.InterceptRequest intercept = 100;
+      figterm.InsertTextRequest insert_text = 101;
+      figterm.SetBufferRequest set_buffer = 102;
+      remote.RunProcessRequest run_process = 103;
+    }
+  }
 
-    // responses
-    fig.ReadFileRequest read_file = 105;
+  oneof submessage {
+    Request request = 100;
   }
 }

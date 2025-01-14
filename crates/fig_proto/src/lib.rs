@@ -85,6 +85,7 @@ pub enum FigMessageComponent {
 
 #[derive(Debug, Error)]
 pub enum FigMessageParseError {
+    /// The missing component and the needed bytes
     #[error("incomplete message, missing {0:?}")]
     Incomplete(FigMessageComponent, usize),
     #[error("invalid message header {0} (raw type {1})")]
