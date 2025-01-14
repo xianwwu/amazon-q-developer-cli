@@ -26,7 +26,6 @@
   "dependencies": {
     "@aws/amazon-q-developer-cli-api-bindings": "workspace:^",
     "@aws/amazon-q-developer-cli-api-bindings-wrappers": "workspace:^",
-    "@aws/amazon-q-developer-cli-api-bindings": "workspace:~",
     "@aws/amazon-q-developer-cli-autocomplete-parser": "workspace:^",
     "@aws/amazon-q-developer-cli-fuzzysort": "workspace:^",
     "@aws/amazon-q-developer-cli-ipc-client-core": "workspace:^",
