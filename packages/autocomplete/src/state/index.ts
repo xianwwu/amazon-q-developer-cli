@@ -294,7 +294,7 @@ export const createAutocompleteStore = (props: AutocompleteProps) =>
         return {
           ...(initialState as AutocompleteState),
           ...insertionState,
-          ipcClient: new WebsocketMuxBackend(props.ipcClient.websocket!),
+          ipcClient: new WebsocketMuxBackend(props.ipcClient.websocket),
           styleType: props.style ?? "tailwind",
 
           setParserResult: (

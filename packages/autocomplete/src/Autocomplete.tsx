@@ -25,7 +25,6 @@ import {
 import { getCommonSuggestionPrefix } from "./suggestions/helpers";
 
 import { createAutocompleteStore } from "./state";
-// import { Visibility } from "./state/types";
 import {
   useAutocompleteKeypressCallback,
   Direction,
@@ -56,16 +55,15 @@ const getIconPath = (cwd: string): string => {
   return path.startsWith("//") ? path.slice(1) : path;
 };
 
-export interface IpcClientProps {
-  type: string;
-  websocket?: CsWebsocket;
-}
+type IpcClientProps = {
+  type: "CsWebsocket";
+  websocket: CsWebsocket;
+};
 
 export interface AutocompleteProps {
   ipcClient: IpcClientProps;
   style?: StyleType;
   enableMocks?: boolean;
-
   visible?: boolean;
   onDisconnect?: () => void;
 }
@@ -271,6 +269,7 @@ function AutocompleteInner({
             }
           }
         }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     };
     pingLoop();

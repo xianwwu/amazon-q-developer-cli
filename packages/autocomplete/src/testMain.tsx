@@ -56,8 +56,11 @@ export function Test() {
       {websocket && (
         <Autocomplete
           ipcClient={{
-            type: "",
+            type: "CsWebsocket",
             websocket,
+          }}
+          onDisconnect={() => {
+            console.error("DISCONNECT!");
           }}
         />
       )}
