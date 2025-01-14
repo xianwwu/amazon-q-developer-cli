@@ -44,7 +44,7 @@ const transformIconUri = (icon: URL): URL => {
   return new URL(`fig://${host}${icon.pathname}${icon.search}${icon.hash}`);
 };
 
-function IconImg(icon: URL, height: string | number) {
+function IconImg({ icon, height }: { icon: URL; height: string | number }) {
   const iconClassName = useClassName(
     "icon-img",
     "grid overflow-hidden bg-contain bg-no-repeat",
@@ -112,8 +112,8 @@ const SuggestionIcon = ({
   style,
 }: SuggestionIconProps) => {
   const { icon, name, type } = suggestion;
+  let height = style.height;
   let img;
-  let { height } = style;
 
   // The icon is a Emoji or text if it is <4 length
   if (icon && icon.length < 4) {
@@ -135,7 +135,7 @@ const SuggestionIcon = ({
   if (!img && icon && typeof icon === "string") {
     try {
       const iconUri = new URL(icon);
-      img = IconImg(transformIconUri(iconUri), height ?? 0);
+      img = <IconImg icon={transformIconUri(iconUri)} height={height ?? 0} />;
     } catch (_err) {
       if (typeof height === "number") {
         height *= 0.8;
@@ -169,7 +169,7 @@ const SuggestionIcon = ({
       (type && srcMap[type] ? srcMap[type] : undefined) ??
       new URL(localProtocol("icon", "?type=box"));
 
-    img = IconImg(src, height ?? 0);
+    img = <IconImg icon={src} height={height ?? 0} />;
   }
 
   return <div style={style}>{img}</div>;

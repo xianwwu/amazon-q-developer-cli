@@ -56,8 +56,6 @@ export const initialState: Partial<AutocompleteState> = {
   fuzzySearchEnabled: false,
   userFuzzySearchEnabled: getSetting(SETTINGS.FUZZY_SEARCH, false) as boolean,
   settings: {} as SettingsMap,
-
-  styleType: "tailwind",
 };
 
 const getCommandMemoized = memoizeOne(getCommand);
@@ -297,6 +295,7 @@ export const createAutocompleteStore = (props: AutocompleteProps) =>
           ...(initialState as AutocompleteState),
           ...insertionState,
           ipcClient: new WebsocketMuxBackend(props.ipcClient.websocket!),
+          styleType: props.style ?? "tailwind",
 
           setParserResult: (
             parserResult: ArgumentParserResult,

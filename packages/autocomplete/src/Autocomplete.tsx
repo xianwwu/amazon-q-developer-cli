@@ -48,7 +48,7 @@ import { InterceptRequestSchema } from "@aws/amazon-q-developer-cli-proto/figter
 import { create } from "@bufbuild/protobuf";
 import { AutocompleteContext } from "./state/context";
 import { useAutocomplete } from "./state/useAutocomplete";
-import { Visibility } from "./state/types";
+import { StyleType, Visibility } from "./state/types";
 
 const getIconPath = (cwd: string): string => {
   const home = window?.fig?.constants?.home;
@@ -63,15 +63,19 @@ export interface IpcClientProps {
 
 export interface AutocompleteProps {
   ipcClient: IpcClientProps;
+  style?: StyleType;
   enableMocks?: boolean;
+
+  visible?: boolean;
 }
 
-function AutocompleteInner({ enableMocks }: AutocompleteProps) {
+function AutocompleteInner({ enableMocks, visible }: AutocompleteProps) {
   const {
     generatorStates,
     suggestions,
     selectedIndex,
     visibleState,
+    setVisibleState,
     figState: { cwd, shellContext },
     parserResult: { searchTerm, currentArg },
     settings,
@@ -237,6 +241,14 @@ function AutocompleteInner({ enableMocks }: AutocompleteProps) {
   useFigSettings(setSettings);
   useFigKeypress(keypressCallback, ipcClient);
   useFigClearCache();
+
+  useEffect(() => {
+    if (visible !== undefined) {
+      setVisibleState(
+        visible ? Visibility.VISIBLE : Visibility.HIDDEN_UNTIL_KEYPRESS,
+      );
+    }
+  }, [visible, setVisibleState]);
 
   // useEffect(() => {
   //   Settings.get(SETTINGS.DISABLE_HISTORY_LOADING)
