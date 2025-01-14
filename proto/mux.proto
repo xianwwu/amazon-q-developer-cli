@@ -23,7 +23,14 @@ message Packet {
   bytes inner = 100;
 }
 
+message Ping {}
+
+message Pong {}
+
 message Hostbound {
+  reserved 102;
+  reserved "ping";
+
   // The session id of the figterm instance the message originated from
   string session_id = 1;
   // A message id that all responses will share
@@ -48,10 +55,14 @@ message Hostbound {
   oneof submessage {
     Request request = 100;
     Response response = 101;
+    Pong pong = 103;
   }
 }
 
 message Clientbound {
+  reserved 101, 103;
+  reserved "response", "pong";
+
   // The session id of the figterm instance the message will be sent to
   string session_id = 1;
   // A message id that all responses will share
@@ -68,5 +79,6 @@ message Clientbound {
 
   oneof submessage {
     Request request = 100;
+    Ping ping = 102;
   }
 }

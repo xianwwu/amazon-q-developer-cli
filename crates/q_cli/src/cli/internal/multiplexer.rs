@@ -84,6 +84,7 @@ use tracing::{
     debug,
     error,
     info,
+    trace,
     warn,
 };
 use uuid::Uuid;
@@ -398,16 +399,44 @@ async fn handle_client_bound_message(
     state: &Arc<FigtermState>,
     host_sender: &UnboundedSender<mux::Hostbound>,
 ) -> Result<Option<FigtermCommand>> {
-    let Some(submessage) = message.submessage else {
+    trace!(?message, "handle mux::Clientbound");
+
+    let mux::Clientbound {
+        session_id,
+        message_id,
+        submessage,
+    } = message;
+
+    let Some(submessage) = submessage else {
         bail!("received malformed message, missing submessage");
     };
 
-    info!("submessage: {:?}", submessage);
+    match submessage {
+        mux::clientbound::Submessage::Request(request) => match request.inner {
+            Some(inner) => abc(inner, session_id, message_id, state, host_sender).await,
+            None => bail!("received malformed mux::clientbound::Submessage::Request, missing inner"),
+        },
+        mux::clientbound::Submessage::Ping(ping) => {
+            trace!(?ping, "received mux::clientbound::Submessage::Ping");
+            host_sender
+                .send(mux::Hostbound {
+                    session_id,
+                    message_id,
+                    submessage: Some(mux::hostbound::Submessage::Pong(mux::Pong {})),
+                })
+                .context("Failed sending pong")?;
+            Ok(None)
+        },
+    }
+}
 
-    let mux::clientbound::Submessage::Request(mux::clientbound::Request { inner: Some(inner) }) = submessage else {
-        bail!("received malformed message, missing inner");
-    };
-
+async fn abc(
+    inner: mux::clientbound::request::Inner,
+    session_id: String,
+    message_id: String,
+    state: &Arc<FigtermState>,
+    host_sender: &UnboundedSender<mux::Hostbound>,
+) -> Result<Option<FigtermCommand>> {
     Ok(match inner {
         mux::clientbound::request::Inner::Intercept(InterceptRequest { intercept_command }) => {
             match intercept_command {
@@ -456,7 +485,7 @@ async fn handle_client_bound_message(
             let (command, rx) =
                 FigtermCommand::run_process(executable, arguments, working_directory, env, timeout.map(Into::into));
 
-            let session_id = Uuid::parse_str(&message.session_id).context("msg")?;
+            let session_id = Uuid::parse_str(&session_id).context("msg")?;
             let sender = state.get(&session_id).context("abc")?.sender.clone();
 
             sender.send(command).context("Failed sending command to figterm")?;
@@ -471,7 +500,7 @@ async fn handle_client_bound_message(
             if let remote::hostbound::response::Response::RunProcess(response) = response {
                 let hostbound = mux::Hostbound {
                     session_id: session_id.to_string(),
-                    message_id: message.message_id.clone(),
+                    message_id,
                     submessage: Some(mux::hostbound::Submessage::Response(mux::hostbound::Response {
                         inner: Some(mux::hostbound::response::Inner::RunProcess(response)),
                     })),
@@ -490,17 +519,22 @@ struct SimpleHookHandler {
 }
 
 impl SimpleHookHandler {
-    fn resererialize_send(&mut self, session_id: Uuid, request: mux::hostbound::request::Inner) -> eyre::Result<()> {
+    fn send(&mut self, session_id: Uuid, submessage: mux::hostbound::Submessage) -> eyre::Result<()> {
         info!("sending on sender");
         let hostbound = mux::Hostbound {
             session_id: session_id.to_string(),
             message_id: Uuid::new_v4().to_string(),
-            submessage: Some(mux::hostbound::Submessage::Request(mux::hostbound::Request {
-                inner: Some(request),
-            })),
+            submessage: Some(submessage),
         };
         self.sender.send(hostbound)?;
         Ok(())
+    }
+
+    fn send_request(&mut self, session_id: Uuid, request: mux::hostbound::request::Inner) -> eyre::Result<()> {
+        self.send(
+            session_id,
+            mux::hostbound::Submessage::Request(mux::hostbound::Request { inner: Some(request) }),
+        )
     }
 }
 
@@ -514,7 +548,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
         session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        self.resererialize_send(
+        self.send_request(
             session_id,
             mux::hostbound::request::Inner::EditBuffer(edit_buffer_hook.clone()),
         )?;
@@ -527,7 +561,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
         session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        self.resererialize_send(session_id, mux::hostbound::request::Inner::Prompt(prompt_hook.clone()))?;
+        self.send_request(session_id, mux::hostbound::request::Inner::Prompt(prompt_hook.clone()))?;
         Ok(None)
     }
 
@@ -537,7 +571,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
         session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        self.resererialize_send(
+        self.send_request(
             session_id,
             mux::hostbound::request::Inner::PreExec(pre_exec_hook.clone()),
         )?;
@@ -550,7 +584,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
         session_id: Uuid,
         _figterm_state: &Arc<FigtermState>,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        self.resererialize_send(
+        self.send_request(
             session_id,
             mux::hostbound::request::Inner::PostExec(post_exec_hook.clone()),
         )?;
@@ -562,7 +596,7 @@ impl fig_remote_ipc::RemoteHookHandler for SimpleHookHandler {
         intercepted_key: InterceptedKeyHook,
         session_id: Uuid,
     ) -> Result<Option<remote::clientbound::response::Response>, Self::Error> {
-        self.resererialize_send(
+        self.send_request(
             session_id,
             mux::hostbound::request::Inner::InterceptedKey(intercepted_key.clone()),
         )?;
@@ -638,7 +672,7 @@ mod tests {
             histno: 2,
             terminal_cursor_coordinates: None,
         });
-        handler.resererialize_send(Uuid::new_v4(), message).unwrap();
+        handler.send_request(Uuid::new_v4(), message).unwrap();
 
         let received = receiver.try_recv().unwrap();
         println!("{received:?}");
