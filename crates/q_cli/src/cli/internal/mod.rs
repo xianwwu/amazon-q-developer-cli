@@ -286,6 +286,7 @@ pub enum InternalSubcommand {
         #[arg(long, allow_hyphen_values = true)]
         suggestion: String,
     },
+    #[command(alias = "mux")]
     Multiplexer(MultiplexerArgs),
 }
 
