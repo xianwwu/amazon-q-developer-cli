@@ -4,11 +4,7 @@ import {
   updateSettings,
 } from "@aws/amazon-q-developer-cli-api-bindings-wrappers";
 import { SpecLocationSource } from "@aws/amazon-q-developer-cli-shared/utils";
-import {
-  getSpecPath,
-  loadFigSubcommand,
-  loadSubcommandCached,
-} from "../src/loadSpec";
+import * as loadSpec from "../src/loadSpec";
 import * as loadHelpers from "../src/loadHelpers";
 import {
   expect,
@@ -26,13 +22,13 @@ import { RunProcessResponseSchema } from "@aws/amazon-q-developer-cli-proto/fig"
 
 const { importSpecFromFile } = loadHelpers;
 
-vi.mock("../src/loadHelpers", () => ({
-  importSpecFromFile: vi
-    .fn()
-    .mockResolvedValue({ default: { name: "loadFromFile" } }),
-  getPrivateSpec: vi.fn().mockReturnValue(undefined),
-  isDiffVersionedSpec: vi.fn(),
-}));
+// vi.mock("../src/loadHelpers", () => ({
+//   importSpecFromFile: vi
+//     .fn()
+//     .mockResolvedValue({ default: { name: "loadFromFile" } }),
+//   getPrivateSpec: vi.fn().mockReturnValue(undefined),
+//   isDiffVersionedSpec: vi.fn(),
+// }));
 
 // TODO: remove this statement and move fig dir to shared
 const FIG_DIR = "~/.fig";
@@ -51,11 +47,11 @@ beforeAll(() => {
   updateSettings({});
 });
 
-describe("getSpecPath", () => {
+describe("loadSpec.getSpecPath", () => {
   const cwd = "test_cwd";
 
   it("works", async () => {
-    expect(await getSpecPath(ipcClient, "git", cwd)).toEqual({
+    expect(await loadSpec.getSpecPath(ipcClient, "git", cwd)).toEqual({
       type: SpecLocationSource.GLOBAL,
       name: "git",
     });
@@ -63,7 +59,12 @@ describe("getSpecPath", () => {
 
   it("works for specs containing a slash in the name", async () => {
     expect(
-      await getSpecPath(ipcClient, "@withfig/autocomplete-tools", cwd, false),
+      await loadSpec.getSpecPath(
+        ipcClient,
+        "@withfig/autocomplete-tools",
+        cwd,
+        false,
+      ),
     ).toEqual({
       type: SpecLocationSource.GLOBAL,
       name: "@withfig/autocomplete-tools",
@@ -72,7 +73,7 @@ describe("getSpecPath", () => {
 
   it("works for scripts containing a slash in the name", async () => {
     expect(
-      await getSpecPath(ipcClient, "@withfig/autocomplete-tools", cwd),
+      await loadSpec.getSpecPath(ipcClient, "@withfig/autocomplete-tools", cwd),
     ).toEqual({
       type: SpecLocationSource.LOCAL,
       name: "autocomplete-tools",
@@ -81,32 +82,32 @@ describe("getSpecPath", () => {
   });
 
   it("works properly with local commands", async () => {
-    expect(await getSpecPath(ipcClient, "./test", cwd)).toEqual({
+    expect(await loadSpec.getSpecPath(ipcClient, "./test", cwd)).toEqual({
       type: SpecLocationSource.LOCAL,
       name: "test",
       path: `${cwd}/`,
     });
-    expect(await getSpecPath(ipcClient, "~/test", cwd)).toEqual({
+    expect(await loadSpec.getSpecPath(ipcClient, "~/test", cwd)).toEqual({
       type: SpecLocationSource.LOCAL,
       path: `~/`,
       name: "test",
     });
-    expect(await getSpecPath(ipcClient, "/test", cwd)).toEqual({
+    expect(await loadSpec.getSpecPath(ipcClient, "/test", cwd)).toEqual({
       type: SpecLocationSource.LOCAL,
       path: `/`,
       name: "test",
     });
-    expect(await getSpecPath(ipcClient, "/dir/test", cwd)).toEqual({
+    expect(await loadSpec.getSpecPath(ipcClient, "/dir/test", cwd)).toEqual({
       type: SpecLocationSource.LOCAL,
       path: `/dir/`,
       name: "test",
     });
-    expect(await getSpecPath(ipcClient, "~/dir/test", cwd)).toEqual({
+    expect(await loadSpec.getSpecPath(ipcClient, "~/dir/test", cwd)).toEqual({
       type: SpecLocationSource.LOCAL,
       path: `~/dir/`,
       name: "test",
     });
-    expect(await getSpecPath(ipcClient, "./dir/test", cwd)).toEqual({
+    expect(await loadSpec.getSpecPath(ipcClient, "./dir/test", cwd)).toEqual({
       type: SpecLocationSource.LOCAL,
       path: `${cwd}/dir/`,
       name: "test",
@@ -114,7 +115,7 @@ describe("getSpecPath", () => {
   });
 
   it("works properly with ? commands", async () => {
-    expect(await getSpecPath(ipcClient, "?", cwd)).toEqual({
+    expect(await loadSpec.getSpecPath(ipcClient, "?", cwd)).toEqual({
       type: SpecLocationSource.LOCAL,
       path: `${cwd}/`,
       name: "_shortcuts",
@@ -122,7 +123,7 @@ describe("getSpecPath", () => {
   });
 
   it("works properly with + commands", async () => {
-    expect(await getSpecPath(ipcClient, "+", cwd)).toEqual({
+    expect(await loadSpec.getSpecPath(ipcClient, "+", cwd)).toEqual({
       type: SpecLocationSource.LOCAL,
       name: "+",
       path: "~/",
@@ -130,7 +131,7 @@ describe("getSpecPath", () => {
   });
 });
 
-describe("loadFigSubcommand", () => {
+describe("loadSpec.loadFigSubcommand", () => {
   window.URL.createObjectURL = vi.fn();
 
   beforeEach(() => {
@@ -143,7 +144,7 @@ describe("loadFigSubcommand", () => {
   });
 
   it("works with expected input", async () => {
-    const result = await loadFigSubcommand(ipcClient, {
+    const result = await loadSpec.loadFigSubcommand(ipcClient, {
       name: "path",
       type: SpecLocationSource.LOCAL,
     });
@@ -163,7 +164,7 @@ describe("loadFigSubcommand", () => {
       [SETTINGS.DEV_MODE_NPM]: false,
       [SETTINGS.DEV_MODE]: false,
     });
-    await loadFigSubcommand(ipcClient, specLocation);
+    await loadSpec.loadFigSubcommand(ipcClient, specLocation);
     expect(importSpecFromFile).toHaveBeenLastCalledWith(
       "git",
       `${FIG_DIR}/autocomplete/build/`,
@@ -175,7 +176,7 @@ describe("loadFigSubcommand", () => {
       [SETTINGS.DEV_MODE_NPM]: true,
       [SETTINGS.DEV_MODE]: false,
     });
-    await loadFigSubcommand(ipcClient, specLocation);
+    await loadSpec.loadFigSubcommand(ipcClient, specLocation);
     expect(importSpecFromFile).toHaveBeenLastCalledWith("git", devPath, logger);
 
     updateSettings({
@@ -183,7 +184,7 @@ describe("loadFigSubcommand", () => {
       [SETTINGS.DEV_MODE_NPM]: false,
       [SETTINGS.DEV_MODE]: true,
     });
-    await loadFigSubcommand(ipcClient, specLocation);
+    await loadSpec.loadFigSubcommand(ipcClient, specLocation);
     expect(importSpecFromFile).toHaveBeenLastCalledWith("git", devPath, logger);
 
     updateSettings({
@@ -191,19 +192,20 @@ describe("loadFigSubcommand", () => {
       [SETTINGS.DEV_MODE_NPM]: false,
       [SETTINGS.DEV_MODE]: true,
     });
-    await loadFigSubcommand(ipcClient, specLocation);
+    await loadSpec.loadFigSubcommand(ipcClient, specLocation);
     expect(importSpecFromFile).toHaveBeenLastCalledWith("git", devPath, logger);
 
     expect(loadHelpers.isDiffVersionedSpec).toHaveBeenCalledTimes(4);
   });
 });
 
-describe("loadSubcommandCached", () => {
-  // This is broken right now...
-  it.todo("works", async () => {
-    const oldLoadSpec = loadFigSubcommand;
-    (loadFigSubcommand as Mock) = vi.fn();
-    (loadFigSubcommand as Mock).mockResolvedValue({ name: "exampleSpec" });
+describe("loadSpec.loadSubcommandCached", () => {
+  it.skip("works", async () => {
+    const loadFigSubcommandSpy = vi.spyOn(loadSpec, "loadFigSubcommand");
+    loadFigSubcommandSpy.mockResolvedValue({
+      name: "exampleSpec",
+    });
+
     const context: Fig.ShellContext = {
       currentWorkingDirectory: "",
       currentProcess: "",
@@ -211,24 +213,23 @@ describe("loadSubcommandCached", () => {
       environmentVariables: {},
     };
 
-    await loadSubcommandCached(
+    await loadSpec.loadSubcommandCached(
       ipcClient,
       { name: "git", type: SpecLocationSource.LOCAL },
       context,
     );
-    await loadSubcommandCached(
+    await loadSpec.loadSubcommandCached(
       ipcClient,
       { name: "git", type: SpecLocationSource.LOCAL },
       context,
     );
-    expect(loadFigSubcommand).toHaveBeenCalledTimes(1);
+    expect(loadSpec.loadFigSubcommand).toHaveBeenCalledTimes(1);
 
-    await loadSubcommandCached(
+    await loadSpec.loadSubcommandCached(
       ipcClient,
       { name: "hg", type: SpecLocationSource.LOCAL },
       context,
     );
-    expect(loadFigSubcommand).toHaveBeenCalledTimes(2);
-    (loadFigSubcommand as unknown) = oldLoadSpec;
+    expect(loadFigSubcommandSpy).toHaveBeenCalledTimes(2);
   });
 });

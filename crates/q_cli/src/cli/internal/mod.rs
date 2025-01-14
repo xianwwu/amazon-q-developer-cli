@@ -846,10 +846,7 @@ impl InternalSubcommand {
                     .ok();
                 Ok(ExitCode::SUCCESS)
             },
-            InternalSubcommand::GenerateSsh(args) => {
-                args.execute()?;
-                Ok(ExitCode::SUCCESS)
-            },
+            InternalSubcommand::GenerateSsh(args) => args.execute().await,
             InternalSubcommand::InlineShellCompletion { buffer } => Ok(inline_shell_completion(buffer).await),
             InternalSubcommand::InlineShellCompletionAccept { buffer, suggestion } => {
                 Ok(inline_shell_completion_accept(buffer, suggestion).await)

@@ -1,5 +1,0 @@
-# Web API
-
-```mermaid
-
-```

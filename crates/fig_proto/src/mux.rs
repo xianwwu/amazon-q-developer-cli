@@ -89,6 +89,7 @@ mod test {
     fn mock_inner() -> Hostbound {
         Hostbound {
             session_id: uuid::Uuid::new_v4().to_string(),
+            message_id: uuid::Uuid::new_v4().to_string(),
             submessage: None,
         }
     }

@@ -9,14 +9,6 @@ it("blah", async () => {
     const nonce = makeNonce();
     console.log(nonce.length);
   }
-
-  //   const packet = await clientboundToPacket({
-  //     sessionId: "abc",
-  //     submessage: {
-  //         case: "insertText",
-  //     }
-  //   });
-
   const inner = toBinary(
     HostboundSchema,
     create(HostboundSchema, {

@@ -13,15 +13,20 @@ message Packet {
     COMPRESSION_GZIP = 2;
   }
 
+  // Version of the packet, currently only 0 is valid
   uint32 version = 1;
+  // The compression algorithm used for the inner bytes
   Compression compression = 2;
+  // Variable length nonce to ensure message content and length very
   bytes nonce = 3;
-
+  // The inner encoded message
   bytes inner = 100;
 }
 
 message Hostbound {
+  // The session id of the figterm instance the message originated from
   string session_id = 1;
+  // A message id that all responses will share
   string message_id = 2;
 
   oneof submessage {
@@ -38,7 +43,9 @@ message Hostbound {
 }
 
 message Clientbound {
+  // The session id of the figterm instance the message will be sent to
   string session_id = 1;
+  // A message id that all responses will share
   string message_id = 2;
 
   oneof submessage {
