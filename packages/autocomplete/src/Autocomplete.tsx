@@ -69,7 +69,7 @@ export interface AutocompleteProps {
   enableMocks?: boolean;
   visible?: boolean;
   onDisconnect?: () => void;
-  onKeypress: (listener: Listener<string>) => void;
+  onKeypress?: (listener: Listener<string>) => void;
 }
 
 function AutocompleteInner({
