@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useRef } from "react";
 import Autocomplete from "./Autocomplete";
 import Emittery from "emittery";
 
@@ -35,21 +35,13 @@ class WebsocktShim {
 }
 
 export function Test() {
-  const [websocket, setWebsocket] = useState<WebsocktShim | undefined>();
-
-  console.log("hi");
-
-  useEffect(() => {
+  const websocket = useRef<WebsocktShim>();
+  if (!websocket.current) {
     const inner = new WebSocket("ws://localhost:8080");
     inner.onopen = () => console.log("ws opened");
     inner.onclose = () => console.log("ws closed");
-
-    setWebsocket(new WebsocktShim(inner));
-
-    return () => {
-      inner.close();
-    };
-  }, []);
+    websocket.current = new WebsocktShim(inner);
+  }
 
   return (
     <div className="">
@@ -57,7 +49,7 @@ export function Test() {
         <Autocomplete
           ipcClient={{
             type: "CsWebsocket",
-            websocket,
+            websocket: websocket.current,
           }}
           onDisconnect={() => {
             console.error("DISCONNECT!");

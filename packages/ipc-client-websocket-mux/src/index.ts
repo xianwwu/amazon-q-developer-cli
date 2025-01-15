@@ -97,7 +97,10 @@ export class WebsocketMuxBackend implements IpcClient {
   private handleHostboundResponse(response: Hostbound_Response) {
     switch (response.inner.case) {
       case "runProcess":
-        this.emitter.emit(response.messageId, response.inner.value);
+        this.emitter.emit(
+          `runProcess-${response.messageId}`,
+          response.inner.value,
+        );
         break;
       default:
         console.warn("Unknown response", response.inner);
@@ -106,7 +109,7 @@ export class WebsocketMuxBackend implements IpcClient {
   }
 
   private handleHostboundPong(pong: Pong) {
-    this.emitter.emit(pong.messageId);
+    this.emitter.emit(`pong-${pong.messageId}`);
   }
 
   // Helper requests
@@ -159,7 +162,7 @@ export class WebsocketMuxBackend implements IpcClient {
       case: "runProcess",
       value: request,
     });
-    return await this.emitter.once(messageId);
+    return await this.emitter.once(`runProcess-${messageId}`);
   }
 
   async ping(): Promise<void> {
@@ -172,7 +175,7 @@ export class WebsocketMuxBackend implements IpcClient {
         }),
       },
     });
-    await this.emitter.once(messageId);
+    await this.emitter.once(`pong-${messageId}`);
   }
 
   onEditBufferChange(

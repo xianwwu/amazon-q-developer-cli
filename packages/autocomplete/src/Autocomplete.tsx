@@ -24,7 +24,7 @@ import {
 
 import { getCommonSuggestionPrefix } from "./suggestions/helpers";
 
-import { createAutocompleteStore } from "./state";
+import { AutocompleteStore, createAutocompleteStore } from "./state";
 import {
   useAutocompleteKeypressCallback,
   Direction,
@@ -71,7 +71,7 @@ export interface AutocompleteProps {
 function AutocompleteInner({
   enableMocks,
   visible,
-  onDisconnect,
+  // onDisconnect,
 }: AutocompleteProps) {
   const {
     generatorStates,
@@ -253,30 +253,30 @@ function AutocompleteInner({
     }
   }, [visible, setVisibleState]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const pingLoop = async () => {
-      while (!cancelled) {
-        if (ipcClient) {
-          try {
-            const timeoutPromise = new Promise((_, reject) => {
-              setTimeout(() => reject(new Error("Ping timeout")), 10000);
-            });
-            await Promise.race([ipcClient.ping(), timeoutPromise]);
-          } catch (_err) {
-            if (!cancelled) {
-              onDisconnect?.();
-            }
-          }
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    };
-    pingLoop();
-    return () => {
-      cancelled = true;
-    };
-  }, [ipcClient, onDisconnect]);
+  // useEffect(() => {
+  //   let cancelled = false;
+  //   const pingLoop = async () => {
+  //     while (!cancelled) {
+  //       if (ipcClient) {
+  //         try {
+  //           const timeoutPromise = new Promise((_, reject) => {
+  //             setTimeout(() => reject(new Error("Ping timeout")), 10000);
+  //           });
+  //           await Promise.race([ipcClient.ping(), timeoutPromise]);
+  //         } catch (_err) {
+  //           if (!cancelled) {
+  //             onDisconnect?.();
+  //           }
+  //         }
+  //       }
+  //       await new Promise((resolve) => setTimeout(resolve, 1000));
+  //     }
+  //   };
+  //   pingLoop();
+  //   return () => {
+  //     cancelled = true;
+  //   };
+  // }, [ipcClient, onDisconnect]);
 
   // useEffect(() => {
   //   Settings.get(SETTINGS.DISABLE_HISTORY_LOADING)
@@ -548,9 +548,12 @@ function AutocompleteInner({
 }
 
 function Autocomplete(props: AutocompleteProps) {
-  const store = useRef(createAutocompleteStore(props)).current;
+  const storeRef = useRef<AutocompleteStore>();
+  if (!storeRef.current) {
+    storeRef.current = createAutocompleteStore(props);
+  }
   return (
-    <AutocompleteContext.Provider value={store}>
+    <AutocompleteContext.Provider value={storeRef.current}>
       <AutocompleteInner {...props} />
     </AutocompleteContext.Provider>
   );
