@@ -73,7 +73,7 @@ importers:
         specifier: ^1.5.13
         version: 1.5.13
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       globals:
         specifier: ^15.14.0
@@ -91,7 +91,7 @@ importers:
         specifier: ^10.0.10
         version: 10.0.10
       '@types/node':
-        specifier: ^22.10.6
+        specifier: ^22.10.5
         version: 22.10.6
       '@types/vscode':
         specifier: ~1.80.0
@@ -103,7 +103,7 @@ importers:
         specifier: ^2.32.0
         version: 2.32.0
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       glob:
         specifier: ^11.0.1
@@ -137,13 +137,13 @@ importers:
         specifier: ^1.0.8
         version: 1.0.8
       '@types/node':
-        specifier: ^22.10.6
+        specifier: ^22.10.5
         version: 22.10.6
       '@typescript/analyze-trace':
         specifier: ^0.10.1
         version: 0.10.1
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       lint-staged:
         specifier: ^15.3.0
@@ -195,7 +195,7 @@ importers:
         specifier: ^1.31.0
         version: 1.31.0
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       prettier:
         specifier: ^3.4.2
@@ -234,8 +234,8 @@ importers:
         specifier: 2.2.3
         version: 2.2.3
       '@fig/autocomplete-helpers':
-        specifier: ^2.0.0
-        version: 2.0.0
+        specifier: ^1.0.7
+        version: 1.0.7
       '@fig/autocomplete-shared':
         specifier: ^1.1.2
         version: 1.1.2
@@ -276,7 +276,7 @@ importers:
         specifier: ^0.12.5
         version: 0.12.5
       zustand:
-        specifier: ^4.5.6
+        specifier: ^4.0.0
         version: 4.5.6(@types/react@18.3.18)(react@18.3.1)
     devDependencies:
       '@amzn/eslint-config':
@@ -292,7 +292,7 @@ importers:
         specifier: ^4.0.9
         version: 4.0.9
       '@types/node':
-        specifier: ^22.10.6
+        specifier: ^22.10.5
         version: 22.10.6
       '@types/react':
         specifier: ^18.3.18
@@ -319,10 +319,10 @@ importers:
         specifier: ^10.4.20
         version: 10.4.20(postcss@8.5.1)
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       postcss:
-        specifier: ^8.5.1
+        specifier: ^8.4.49
         version: 8.5.1
       prettier:
         specifier: ^3.4.2
@@ -337,7 +337,7 @@ importers:
         specifier: ^5.7.3
         version: 5.7.3
       vite:
-        specifier: ^6.0.7
+        specifier: ^6.0.0
         version: 6.0.7(@types/node@22.10.6)(jiti@1.21.7)(terser@5.37.0)(tsx@4.19.2)(yaml@2.7.0)
       vitest:
         specifier: ^2.1.8
@@ -503,14 +503,11 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
       '@fig/autocomplete-helpers':
-        specifier: ^2.0.0
-        version: 2.0.0
+        specifier: ^1.0.7
+        version: 1.0.7
       '@fig/autocomplete-shared':
         specifier: ^1.1.2
         version: 1.1.2
-      '@withfig/autocomplete':
-        specifier: 2.690.4
-        version: 2.690.4
       loglevel:
         specifier: ^1.9.2
         version: 1.9.2
@@ -540,7 +537,7 @@ importers:
         specifier: ^1.31.0
         version: 1.31.0
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       typescript:
         specifier: ^5.7.3
@@ -609,7 +606,7 @@ importers:
         specifier: ^3.24.1
         version: 3.24.1
       zustand:
-        specifier: ^4.5.6
+        specifier: ^4.0.0
         version: 4.5.6(@types/react@18.3.18)(react@18.3.1)
     devDependencies:
       '@amzn/types':
@@ -637,7 +634,7 @@ importers:
         specifier: ^10.4.20
         version: 10.4.20(postcss@8.5.1)
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       eslint-plugin-react-hooks:
         specifier: ^5.1.0
@@ -649,7 +646,7 @@ importers:
         specifier: ^15.14.0
         version: 15.14.0
       postcss:
-        specifier: ^8.5.1
+        specifier: ^8.4.49
         version: 8.5.1
       prettier:
         specifier: ^3.4.2
@@ -661,7 +658,7 @@ importers:
         specifier: ^5.7.3
         version: 5.7.3
       typescript-eslint:
-        specifier: ^8.20.0
+        specifier: ^8.19.1
         version: 8.20.0(eslint@9.18.0(jiti@1.21.7))(typescript@5.7.3)
       vite:
         specifier: ^6.0.7
@@ -679,14 +676,14 @@ importers:
         specifier: ^8.42.3
         version: 8.42.3
       '@typescript-eslint/utils':
-        specifier: ^8.20.0
+        specifier: ^8.19.0
         version: 8.20.0(eslint@9.18.0(jiti@1.21.7))(typescript@5.7.3)
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       eslint-config-prettier:
-        specifier: ^10.0.1
-        version: 10.0.1(eslint@9.18.0(jiti@1.21.7))
+        specifier: ^9.1.0
+        version: 9.1.0(eslint@9.18.0(jiti@1.21.7))
       eslint-plugin-import:
         specifier: ^2.31.0
         version: 2.31.0(eslint@9.18.0(jiti@1.21.7))
@@ -694,7 +691,7 @@ importers:
         specifier: ^6.10.2
         version: 6.10.2(eslint@9.18.0(jiti@1.21.7))
       eslint-plugin-react:
-        specifier: ^7.37.4
+        specifier: ^7.37.3
         version: 7.37.4(eslint@9.18.0(jiti@1.21.7))
       eslint-plugin-react-hooks:
         specifier: ^5.1.0
@@ -712,7 +709,7 @@ importers:
         specifier: ^5.7.3
         version: 5.7.3
       typescript-eslint:
-        specifier: ^8.20.0
+        specifier: ^8.19.1
         version: 8.20.0(eslint@9.18.0(jiti@1.21.7))(typescript@5.7.3)
 
   packages/fuzzysort: {}
@@ -823,7 +820,7 @@ importers:
         specifier: ^1.31.0
         version: 1.31.0
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       typescript:
         specifier: ^5.7.3
@@ -848,7 +845,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.8(vitest@2.1.8)
       eslint:
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0(jiti@1.21.7)
       prettier:
         specifier: ^3.4.2
@@ -899,7 +896,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/api-bindings
       '@types/node':
-        specifier: ^22.10.6
+        specifier: ^22.10.5
         version: 22.10.6
       typescript:
         specifier: ^5.7.3
@@ -3084,10 +3081,6 @@ packages:
   '@withfig/autocomplete-types@1.31.0':
     resolution: {integrity: sha512-TSZDo5jvEaeIHqmHY6Wkd3gBqVbxcHQVdkF6N1J8CXRBuQZpjUVci15/HPNYe0nKLvsomBWIRsTP3m1zr9pv3A==}
 
-  '@withfig/autocomplete@2.690.4':
-    resolution: {integrity: sha512-wrDsI9b6rNR8ZG1UpfXmPWQkZCezye5B79wx+pjwG92Qz4Gs3ugdjbycCR3pU04aSintjIx/9EjWrJqbGuDm0Q==}
-    engines: {node: '>=20', pnpm: '>=9'}
-
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
     peerDependencies:
@@ -3784,8 +3777,8 @@ packages:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
     engines: {node: '>=10'}
 
-  eslint-config-prettier@10.0.1:
-    resolution: {integrity: sha512-lZBts941cyJyeaooiKxAtzoPHTN+GbQTJFAIdQbRhA4/8whaAraEh47Whw/ZFfrjNSnlAxqfm9i0XVAEkULjCw==}
+  eslint-config-prettier@9.1.0:
+    resolution: {integrity: sha512-NSWl5BFQWEPi1j4TjVNItzYV7dZXZ+wP6I6ZhrBGpChQhZRUaElihE9uRRkcbRnNb76UMKDF3r+WTmNcGPKsqw==}
     hasBin: true
     peerDependencies:
       eslint: '>=7.0.0'
@@ -5704,10 +5697,6 @@ packages:
   strip-json-comments@3.1.1:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
-
-  strip-json-comments@5.0.1:
-    resolution: {integrity: sha512-0fk9zBqO67Nq5M/m45qHCJxylV/DhBlIOVExqgOMiCCrzrhU6tCibRXNqE3jwJLftzE9SNuZtYbpzcO+i9FiKw==}
-    engines: {node: '>=14.16'}
 
   strnum@1.0.5:
     resolution: {integrity: sha512-J8bbNyKKXl5qYcR36TIO8W3mVGVHrmmxsd5PAItGkmyzwJvybiw2IVq5nqd0i4LSNSkB/sx9VHllbfFdr9k1JA==}
@@ -9072,14 +9061,6 @@ snapshots:
 
   '@withfig/autocomplete-types@1.31.0': {}
 
-  '@withfig/autocomplete@2.690.4':
-    dependencies:
-      '@fig/autocomplete-generators': 2.4.0
-      '@fig/autocomplete-helpers': 1.0.7
-      semver: 7.6.3
-      strip-json-comments: 5.0.1
-      yaml: 2.7.0
-
   acorn-jsx@5.3.2(acorn@8.14.0):
     dependencies:
       acorn: 8.14.0
@@ -9911,7 +9892,7 @@ snapshots:
 
   escape-string-regexp@4.0.0: {}
 
-  eslint-config-prettier@10.0.1(eslint@9.18.0(jiti@1.21.7)):
+  eslint-config-prettier@9.1.0(eslint@9.18.0(jiti@1.21.7)):
     dependencies:
       eslint: 9.18.0(jiti@1.21.7)
 
@@ -12207,8 +12188,6 @@ snapshots:
     optional: true
 
   strip-json-comments@3.1.1: {}
-
-  strip-json-comments@5.0.1: {}
 
   strnum@1.0.5: {}
 

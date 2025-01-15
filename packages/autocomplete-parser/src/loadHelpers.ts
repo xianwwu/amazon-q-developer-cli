@@ -13,8 +13,8 @@ import {
 import z from "zod";
 import { MOST_USED_SPECS } from "./constants.js";
 import { LoadLocalSpecError, SpecCDNError } from "./errors.js";
-import * as autocompleteIndex from "@withfig/autocomplete";
-import autocompleteDynamic from "@withfig/autocomplete/dynamic";
+// import * as autocompleteIndex from "@withfig/autocomplete";
+// import autocompleteDynamic from "@withfig/autocomplete/dynamic";
 import { IpcClient } from "../../ipc-client-core/dist/index.js";
 
 export type SpecFileImport =
@@ -27,9 +27,9 @@ export type SpecFileImport =
       versions: Fig.VersionDiffMap;
     };
 
-function loadBundled(): boolean {
-  return true;
-}
+// function loadBundled(): boolean {
+//   return true;
+// }
 
 const makeCdnUrlFactory =
   (baseUrl: string) =>
@@ -104,9 +104,9 @@ export async function importFromPublicCDN<T = SpecFileImport>(
     );
   }
 
-  if (loadBundled()) {
-    return (await autocompleteDynamic[name]()) as T;
-  }
+  // if (loadBundled()) {
+  //   return (await autocompleteDynamic[name]()) as T;
+  // }
 
   // Total of retries in the worst case should be close to previous timeout value
   // 500ms * 2^5 + 5 * 1000ms + 5 * 100ms = 21500ms, before the timeout was 20000ms
@@ -132,12 +132,12 @@ async function jsonFromPublicCDN(path: string): Promise<unknown> {
     return fetch(`spec://localhost/${path}.json`).then((res) => res.json());
   }
 
-  if (loadBundled()) {
-    return {
-      completions: autocompleteIndex.default,
-      diffVersionedCompletions: autocompleteIndex.diffVersionedCompletions,
-    };
-  }
+  // if (loadBundled()) {
+  //   return {
+  //     completions: autocompleteIndex.default,
+  //     diffVersionedCompletions: autocompleteIndex.diffVersionedCompletions,
+  //   };
+  // }
 
   return exponentialBackoff(
     {
