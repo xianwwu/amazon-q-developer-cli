@@ -3,6 +3,8 @@ import { Socket } from "./socket.js";
 import { fromBinary } from "@bufbuild/protobuf";
 import Emittery from "emittery";
 
+const PacketSymbol = Symbol("packet");
+
 export class PacketReader {
   private buffer: string;
   private emitter: Emittery;
@@ -20,7 +22,7 @@ export class PacketReader {
   }
 
   onPacket(listener: (packet: Packet) => void | Promise<void>) {
-    this.emitter.on("packet", listener);
+    this.emitter.on(PacketSymbol, listener);
   }
 
   parse() {
@@ -31,7 +33,7 @@ export class PacketReader {
       switch (result.type) {
         case "success": {
           // Enqueue the parsed value and remove consumed characters
-          this.emitter.emit("packet", result.value);
+          this.emitter.emit(PacketSymbol, result.value);
           this.buffer = this.buffer.slice(result.charsConsumed);
           break;
         }

@@ -55,6 +55,10 @@ export class WebsocketMuxBackend implements IpcClient {
   private handleHostbound(message: Hostbound) {
     const submessage = message.submessage;
     console.log(submessage);
+    if (submessage.value?.$unknown && submessage.value.$unknown.length > 0) {
+      console.warn("Unknown request", submessage.value);
+      return;
+    }
     switch (submessage?.case) {
       case "request":
         this.handleHostboundRequest(submessage.value);
@@ -72,6 +76,13 @@ export class WebsocketMuxBackend implements IpcClient {
   }
 
   private handleHostboundRequest(request: Hostbound_Request) {
+    if (
+      request.inner.value?.$unknown &&
+      request.inner.value.$unknown.length > 0
+    ) {
+      console.warn("Unknown request", request.inner);
+      return;
+    }
     switch (request.inner.case) {
       case "editBuffer":
         this.emitter.emit(EditBufferHookSymbol, request.inner.value);

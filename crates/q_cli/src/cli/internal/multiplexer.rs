@@ -482,16 +482,15 @@ async fn handle_clienbound_request(
             env,
             timeout,
         }) => {
-            let (command, rx) =
-                FigtermCommand::run_process(executable, arguments, working_directory, env, timeout.map(Into::into));
+            let timeout = timeout.map(Into::into);
+            let (command, rx) = FigtermCommand::run_process(executable, arguments, working_directory, env, timeout);
 
-            let session_id = Uuid::parse_str(&session_id).context("msg")?;
-            let sender = state.get(&session_id).context("abc")?.sender.clone();
-
+            let session_id = Uuid::parse_str(&session_id).context("failed to parse session id")?;
+            let sender = state.get(&session_id).context("failed to get sender")?.sender.clone();
             sender.send(command).context("Failed sending command to figterm")?;
+            drop(sender);
 
-            let timeout_duration = Duration::from_secs(10);
-
+            let timeout_duration = timeout.unwrap_or(Duration::from_secs(60));
             let response = tokio::time::timeout(timeout_duration, rx)
                 .await
                 .context("Timed out waiting for figterm response")?
@@ -521,10 +520,9 @@ struct SimpleHookHandler {
 impl SimpleHookHandler {
     fn send(&mut self, submessage: mux::hostbound::Submessage) -> eyre::Result<()> {
         info!("sending on sender");
-        let hostbound = mux::Hostbound {
+        self.sender.send(mux::Hostbound {
             submessage: Some(submessage),
-        };
-        self.sender.send(hostbound)?;
+        })?;
         Ok(())
     }
 
