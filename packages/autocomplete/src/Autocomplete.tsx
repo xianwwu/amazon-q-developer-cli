@@ -60,12 +60,16 @@ type IpcClientProps = {
   websocket: CsWebsocket;
 };
 
+type UnsubscribeFn = () => void;
+type Listener<T> = (data: T) => UnsubscribeFn;
+
 export interface AutocompleteProps {
   ipcClient: IpcClientProps;
   style?: StyleType;
   enableMocks?: boolean;
   visible?: boolean;
   onDisconnect?: () => void;
+  onKeypress: (listener: Listener<string>) => void;
 }
 
 function AutocompleteInner({
