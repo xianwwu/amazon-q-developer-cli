@@ -23,7 +23,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@aws/amazon-q-developer-cli-api-bindings": "workspace:~",
+    "@aws/amazon-q-developer-cli-api-bindings": "workspace:^",
     "@aws/amazon-q-developer-cli-ipc-client-core": "workspace:^",
     "@aws/amazon-q-developer-cli-proto": "workspace:^",
     "@bufbuild/protobuf": "2.2.3",

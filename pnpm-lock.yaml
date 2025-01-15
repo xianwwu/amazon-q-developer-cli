@@ -46,7 +46,7 @@ importers:
         version: 46.0.2
     devDependencies:
       '@eslint/js':
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0
       eslint:
         specifier: 9.18.0
@@ -64,7 +64,7 @@ importers:
   extensions/gnome-legacy-extension:
     devDependencies:
       '@eslint/js':
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0
       '@gi.ts/cli':
         specifier: ^1.5.10
@@ -82,7 +82,7 @@ importers:
   extensions/vscode:
     devDependencies:
       '@eslint/js':
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0
       '@types/glob':
         specifier: ^8.1.0
@@ -164,7 +164,7 @@ importers:
   packages/api-bindings-wrappers:
     dependencies:
       '@aws/amazon-q-developer-cli-api-bindings':
-        specifier: workspace:~
+        specifier: workspace:^
         version: link:../api-bindings
       '@aws/amazon-q-developer-cli-ipc-client-core':
         specifier: workspace:^
@@ -346,7 +346,7 @@ importers:
   packages/autocomplete-app:
     dependencies:
       '@aws/amazon-q-developer-cli-api-bindings':
-        specifier: workspace:~
+        specifier: workspace:^
         version: link:../api-bindings
       '@aws/amazon-q-developer-cli-api-bindings-wrappers':
         specifier: workspace:^
@@ -613,7 +613,7 @@ importers:
         specifier: workspace:^
         version: link:../types
       '@eslint/js':
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0
       '@types/react':
         specifier: ^18.3.18
@@ -670,7 +670,7 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@eslint/js':
-        specifier: ^9.18.0
+        specifier: ^9.16.0
         version: 9.18.0
       '@types/eslint__js':
         specifier: ^8.42.3
