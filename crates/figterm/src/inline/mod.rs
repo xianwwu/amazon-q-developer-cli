@@ -74,8 +74,7 @@ static DEBOUNCE_DURATION: LazyLock<Duration> = LazyLock::new(|| {
     std::env::var("Q_INLINE_SHELL_COMPLETION_DEBOUNCE_MS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .map(Duration::from_millis)
-        .unwrap_or(DEBOUNCE_DURATION_DEFAULT)
+        .map_or(DEBOUNCE_DURATION_DEFAULT, Duration::from_millis)
 });
 
 pub async fn on_prompt() {
@@ -269,7 +268,7 @@ pub async fn handle_request(
 
                 let mut completions = recommendations
                     .into_iter()
-                    .map(|choice| clean_completion(&choice.content).to_owned())
+                    .map(|choice| clean_completion(&choice.content).clone())
                     .collect::<Vec<_>>();
 
                 // skips the first one which we will recommend, we only cache the rest
