@@ -48,6 +48,7 @@ import { create } from "@bufbuild/protobuf";
 import { AutocompleteContext } from "./state/context";
 import { useAutocomplete } from "./state/useAutocomplete";
 import { StyleType, Visibility } from "./state/types";
+import DevModeWarning from "./components/DevModeWarning";
 
 const getIconPath = (cwd: string): string => {
   const home = window?.fig?.constants?.home;
@@ -55,10 +56,14 @@ const getIconPath = (cwd: string): string => {
   return path.startsWith("//") ? path.slice(1) : path;
 };
 
-type IpcClientProps = {
-  type: "CsWebsocket";
+export enum AUTOCOMPLETE_CONNECTION_TYPES {
+  CS_WEBSOCKET = "CsWebsocket",
+}
+
+interface IpcClientProps {
+  type: AUTOCOMPLETE_CONNECTION_TYPES | string;
   websocket: CsWebsocket;
-};
+}
 
 type UnsubscribeFn = () => void;
 type Listener<T> = (data: T) => UnsubscribeFn;
@@ -75,8 +80,13 @@ export interface AutocompleteProps {
 function AutocompleteInner({
   enableMocks,
   visible,
+  ipcClient: _ipcClientProps,
   // onDisconnect,
 }: AutocompleteProps) {
+  const isWeb = useMemo(
+    () => _ipcClientProps.type === AUTOCOMPLETE_CONNECTION_TYPES.CS_WEBSOCKET,
+    [_ipcClientProps.type],
+  );
   const {
     generatorStates,
     suggestions,
@@ -356,6 +366,7 @@ function AutocompleteInner({
   const onResize: (size: { height?: number; width?: number }) => void =
     useCallback(
       ({ height, width }) => {
+        if (isWeb) return;
         const onLeft =
           !hasSpecialArgDescription &&
           windowState.descriptionPosition === "unknown";
@@ -376,6 +387,7 @@ function AutocompleteInner({
         // eslint-disable-next-line react-hooks/exhaustive-deps
         (enableMocks ? suggestionsMock : suggestions)[selectedIndex]
           ?.previewComponent,
+        isWeb,
       ],
     );
 
@@ -434,39 +446,6 @@ function AutocompleteInner({
     hasBottomDescription && "rounded-b-none",
   ];
 
-  const devModeWarning = Boolean(devMode) && (
-    <div
-      style={{
-        width: size.suggestionWidth - 20,
-      }}
-      className="m-1 space-y-1.5 rounded bg-amber-500 px-2.5 py-2 text-black"
-    >
-      <div className="text-base font-bold">Developer mode enabled!</div>
-      <div className="text-sm">
-        Loading specs from disk. Disable with either
-      </div>
-      <div className="ml-2 flex flex-col gap-1 text-xs">
-        <div>
-          •{" "}
-          <code className="rounded-sm bg-zinc-700 p-0.5 text-zinc-200">
-            Ctrl + C
-          </code>{" "}
-          in the dev mode process
-        </div>
-        <div>
-          {"• "}
-          <button
-            type="button"
-            className="text-xs underline"
-            onClick={() => {}}
-          >
-            Click to disable
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   let contents: React.ReactElement;
 
   // eslint-disable-next-line no-constant-condition
@@ -475,11 +454,20 @@ function AutocompleteInner({
   } else {
     contents = (
       <>
-        {windowState.isAboveCursor && devModeWarning}
-        <div className="flex flex-row gap-1.5 p-1">
+        {windowState.isAboveCursor && (
+          <DevModeWarning
+            devMode={devMode}
+            suggestionWidth={size.suggestionWidth}
+          />
+        )}
+        <div className="q-autocomplete-container flex flex-row gap-1.5 p-1">
           {descriptionPosition === "left" && description}
           <div
-            className="bg-main-bg relative flex flex-none flex-col items-stretch overflow-hidden rounded shadow-[0px_0px_3px_0px_rgb(85,_85,_85)]"
+            className={
+              isWeb
+                ? "q-autocomplete-container__sub-block"
+                : "bg-main-bg relative flex flex-none flex-col items-stretch overflow-hidden rounded shadow-[0px_0px_3px_0px_rgb(85,_85,_85)]"
+            }
             style={
               hasSuggestions
                 ? {
@@ -520,7 +508,7 @@ function AutocompleteInner({
                 />
               )}
             </AutoSizedList>
-            <div className="scrollbar-none flex flex-shrink-0 flex-row">
+            <div className="description-wrapper scrollbar-none flex flex-shrink-0 flex-row">
               {descriptionPosition === "unknown" && description}
               {isLoading && (
                 <LoadingIcon
@@ -535,16 +523,20 @@ function AutocompleteInner({
           </div>
           {descriptionPosition === "right" && description}
         </div>
-        {!windowState.isAboveCursor && devModeWarning}
+        {!windowState.isAboveCursor && (
+          <DevModeWarning
+            devMode={devMode}
+            suggestionWidth={size.suggestionWidth}
+          />
+        )}
       </>
     );
   }
-
   return (
     <div
       ref={autocompleteWindowRef}
       id="autocompleteWindow"
-      className="relative flex flex-col overflow-hidden"
+      className="q-autocomplete-wrapper relative flex flex-col overflow-hidden"
     >
       {contents}
     </div>

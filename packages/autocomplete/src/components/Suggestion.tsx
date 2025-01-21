@@ -1,4 +1,4 @@
-import { useCallback, useMemo, CSSProperties, useRef } from "react";
+import React, { useCallback, useMemo, CSSProperties, useRef } from "react";
 import logger from "loglevel";
 import fuzzysort from "@aws/amazon-q-developer-cli-fuzzysort";
 import { Suggestion as SuggestionT } from "@aws/amazon-q-developer-cli-shared/internal";
@@ -300,12 +300,11 @@ const Suggestion = ({
     <div
       style={style}
       className={`suggestion-item flex items-center overflow-hidden pl-1.5 ${
-        isActive ? "bg-selected-bg brightness-95" : ""
+        isActive ? "suggestion-item__active bg-selected-bg brightness-95" : ""
       }`}
       onClick={onSuggestionClick}
     >
       <SuggestionIcon
-        // style={{}}
         style={{
           height: iconSize,
           display: "flex",
@@ -316,7 +315,7 @@ const Suggestion = ({
         suggestion={suggestion}
         iconPath={iconPath}
       />
-      <div className="overflow-hidden" ref={textContainerRef}>
+      <div className="suggestion-title overflow-hidden" ref={textContainerRef}>
         <div
           className="text data-[active-item]:text-selected-text group w-fit whitespace-nowrap"
           // style={{

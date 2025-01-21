@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import Autocomplete from "./Autocomplete";
+import React, { useRef } from "react";
+import Autocomplete, { AUTOCOMPLETE_CONNECTION_TYPES } from "./Autocomplete";
 import Emittery from "emittery";
 
 class WebsocktShim {
@@ -48,7 +48,7 @@ export function Test() {
       {websocket && (
         <Autocomplete
           ipcClient={{
-            type: "CsWebsocket",
+            type: AUTOCOMPLETE_CONNECTION_TYPES.CS_WEBSOCKET,
             websocket: websocket.current,
           }}
           onDisconnect={() => {
