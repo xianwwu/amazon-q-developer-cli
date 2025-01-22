@@ -3,71 +3,206 @@ import {
   Suggestion,
   SuggestionType,
 } from "@aws/amazon-q-developer-cli-shared/internal";
-import { localProtocol } from "@aws/amazon-q-developer-cli-shared/utils";
-import { icons } from "../fig/icons";
+import { IconName, ICONS } from "../fig/icons";
 import { useClassName } from "../state/style";
+import templateImg from "../assets/template.png";
 
 type SuggestionIconProps = {
   suggestion: Suggestion;
   iconPath: string;
   style: React.CSSProperties;
+  isWeb: boolean;
 };
 
-const transformIconUri = (icon: URL): URL => {
-  let { host } = icon;
+type Icon =
+  | EmojiIcon
+  | TextIcon
+  | UrlIcon
+  | PresetIcon
+  | PathIcon
+  | TemplateIcon
+  | UnknownIcon;
 
-  if (icon.protocol !== "fig:") {
-    return icon;
+type ImgIcon = UrlIcon | PresetIcon | PathIcon | TemplateIcon | UnknownIcon;
+
+interface EmojiIcon {
+  type: "emoji";
+  text: string;
+}
+
+interface TextIcon {
+  type: "text";
+  text: string;
+}
+
+interface UrlIcon {
+  type: "url";
+  url: URL;
+}
+
+interface PresetIcon {
+  type: "preset";
+  icon: string;
+}
+
+interface PathIcon {
+  type: "path";
+  figUrl?: URL;
+  path: string;
+  kind?: "file" | "folder";
+}
+
+interface TemplateIcon {
+  type: "template";
+  figUrl?: URL;
+  color?: string;
+  badge?: string;
+  ty?: string;
+}
+
+interface UnknownIcon {
+  type: "unknown";
+  figUrl: URL;
+}
+
+function parseIcon(icon: string, iconPath: string): Icon {
+  const emojiRegex = /^(\p{Emoji_Presentation}|\p{Extended_Pictographic})/gu;
+  const uriRegex = /^[a-z]+:\/\//g;
+
+  if (emojiRegex.test(icon)) {
+    return {
+      type: "emoji",
+      text: icon,
+    };
+  } else if (uriRegex.test(icon)) {
+    const url = new URL(icon);
+
+    if (url.protocol !== "fig:") {
+      return {
+        type: "url",
+        url: new URL(icon),
+      };
+    } else {
+      if (url.host === "" || url.host === "path") {
+        return {
+          type: "path",
+          figUrl: url,
+          path: url.pathname,
+        };
+      } else if (url.host === "template") {
+        const params = new URLSearchParams(url.search);
+        const color = params.get("color") ?? undefined;
+        const badge = params.get("badge") ?? undefined;
+        const ty = params.get("type") ?? undefined;
+
+        return {
+          type: "template",
+          figUrl: url,
+          color,
+          badge,
+          ty,
+        };
+      } else if (url.host === "icon") {
+        const params = new URLSearchParams(url.search);
+        const icon = params.get("type") ?? "box";
+        return {
+          type: "preset",
+          icon,
+        };
+      } else {
+        return {
+          type: "unknown",
+          figUrl: url,
+        };
+      }
+    }
+  } else if (icon === "" && iconPath !== "") {
+    return {
+      type: "path",
+      path: iconPath,
+    };
+  } else {
+    return {
+      type: "text",
+      text: icon,
+    };
+  }
+}
+
+function cdnIcon(icon: IconName) {
+  return new URL(`https://specs.q.us-east-1.amazonaws.com/icons/${icon}.png`);
+}
+
+function transformIconUri(icon: ImgIcon, isWeb: boolean): URL | undefined {
+  if (icon.type === "url") {
+    return icon.url;
   }
 
-  if (host === "" && window?.fig?.constants?.newUriFormat) {
-    host = "path";
-  }
-
-  if (icon.hostname === "icon") {
-    const type = icon.searchParams.get("type");
+  if (icon.type === "preset") {
+    const type = icon.icon as IconName;
     if (type) {
-      if (icons.includes(type)) {
-        return new URL(
-          `https://specs.q.us-east-1.amazonaws.com/icons/${type}.png`,
-        );
+      if (ICONS.includes(type)) {
+        return cdnIcon(type);
       }
     }
   }
 
-  if (window?.fig?.constants?.os === "windows") {
-    return new URL(
-      `https://fig.${host}${icon.pathname}${icon.search}${icon.hash}`,
-    );
+  if (!isWeb && "figUrl" in icon && icon.figUrl) {
+    const url = icon.figUrl;
+    if (window?.fig?.constants?.os === "windows") {
+      return new URL(
+        `https://fig.${icon.type}${url.pathname}${url.search}${url.hash}`,
+      );
+    }
+
+    return new URL(`fig://${icon.type}${url.pathname}${url.search}${url.hash}`);
   }
 
-  return new URL(`fig://${host}${icon.pathname}${icon.search}${icon.hash}`);
-};
+  if (icon.type === "path") {
+    if (isWeb) {
+      return cdnIcon("command");
+    } else {
+      return new URL(`fig://path/${icon.path}`);
+    }
+  }
 
-function IconImg({ icon, height }: { icon: URL; height: string | number }) {
+  return cdnIcon("box");
+}
+
+function iconToString(icon: ImgIcon): string {
+  if (icon.type === "path") {
+    return `Icon for ${icon.path}`;
+  } else if (icon.type === "template") {
+    return `Template icon`;
+  } else {
+    return `Icon for ${icon.type}`;
+  }
+}
+
+function IconImg({
+  icon,
+  height,
+  isWeb,
+}: {
+  icon: ImgIcon;
+  height: string | number;
+  isWeb: boolean;
+}) {
   const iconClassName = useClassName(
     "icon-img",
     "grid overflow-hidden bg-contain bg-no-repeat",
   );
 
-  const isFigProtocol = icon.protocol === "fig:";
+  const isTemplate = icon.type === "template";
 
-  const isTemplate = isFigProtocol ? icon.host.endsWith("template") : false;
-
-  const color = isFigProtocol ? icon.searchParams.get("color") : undefined;
-  const badge = isFigProtocol ? icon.searchParams.get("badge") : undefined;
-  const type = isFigProtocol ? icon.searchParams.get("type") : undefined;
+  // const color = isTemplate ? icon.color : undefined;
+  const badge = isTemplate ? icon.badge : undefined;
+  const url = transformIconUri(icon, isWeb);
 
   return (
     <div
       role="img"
-      aria-label={
-        type
-          ? `Icon for ${type}`
-          : isTemplate
-            ? "Template icon"
-            : `Icon for ${icon.pathname}`
-      }
+      aria-label={iconToString(icon)}
       className={iconClassName}
       style={{
         height,
@@ -75,9 +210,7 @@ function IconImg({ icon, height }: { icon: URL; height: string | number }) {
         minWidth: height,
         minHeight: height,
         fontSize: typeof height === "number" ? height * 0.6 : height,
-        backgroundImage: isTemplate
-          ? `url(${transformIconUri(new URL(`fig://template?color=${color}`))})`
-          : `url(${icon})`,
+        backgroundImage: isTemplate ? `url(${templateImg})` : `url(${url})`,
       }}
     >
       {badge &&
@@ -94,9 +227,7 @@ function IconImg({ icon, height }: { icon: URL; height: string | number }) {
           <span
             className="flex h-2.5 w-2.5 place-content-center place-self-end bg-contain bg-no-repeat text-[80%] text-white"
             style={{
-              backgroundImage: `url(${transformIconUri(
-                new URL(`fig://template?color=${color}`),
-              )})`,
+              backgroundImage: `url(${templateImg})`,
             }}
           >
             {badge}
@@ -110,13 +241,18 @@ const SuggestionIcon = ({
   suggestion,
   iconPath,
   style,
+  isWeb,
 }: SuggestionIconProps) => {
-  const { icon, name, type } = suggestion;
+  const { name, type } = suggestion;
+  console.log(suggestion.icon);
+  const icon = parseIcon(suggestion.icon ?? "", iconPath);
   let height = style.height;
   let img;
 
+  console.log(icon);
+
   // The icon is a Emoji or text if it is <4 length
-  if (icon && icon.length < 4) {
+  if (icon.type === "emoji") {
     if (typeof height === "number") {
       height *= 0.8;
     }
@@ -127,49 +263,43 @@ const SuggestionIcon = ({
         }}
         className="suggestion-icon relative right-[0.0625rem] pb-2.5"
       >
-        {icon}
+        {icon.text}
       </span>
     );
-  }
-
-  if (!img && icon && typeof icon === "string") {
-    try {
-      const iconUri = new URL(icon);
-      img = <IconImg icon={transformIconUri(iconUri)} height={height ?? 0} />;
-    } catch (_err) {
-      if (typeof height === "number") {
-        height *= 0.8;
-      }
-      img = (
-        <span
-          style={{
-            fontSize: height,
-          }}
-          className="relative right-[0.0625rem] pb-2.5"
-        >
-          {icon}
-        </span>
-      );
+  } else if (icon.type === "text") {
+    if (typeof height === "number") {
+      height *= 0.8;
     }
-  }
-
-  if (!img) {
-    const srcMap: Partial<Record<SuggestionType | "other", URL>> = {
-      folder: new URL(localProtocol("path", `${iconPath}${name}`)),
-      file: new URL(localProtocol("path", `${iconPath}${name}`)),
-      subcommand: transformIconUri(new URL("fig://icon?type=command")),
-      option: transformIconUri(new URL("fig://icon?type=option")),
-      shortcut: new URL(localProtocol("template", "?color=3498db&badge=💡")),
-      "auto-execute": transformIconUri(new URL("fig://icon?type=carrot")),
-      arg: transformIconUri(new URL("fig://icon?type=box")),
-      mixin: new URL(localProtocol("template", "?color=628dad&badge=➡️")),
+    img = (
+      <span
+        style={{
+          fontSize: height,
+        }}
+        className="relative right-[0.0625rem] pb-2.5"
+      >
+        {icon.text}
+      </span>
+    );
+  } else if (icon.type === "url") {
+    img = <IconImg icon={icon} isWeb={isWeb} height={height ?? 0} />;
+  } else {
+    const srcMap: Partial<Record<SuggestionType, ImgIcon>> = {
+      folder: { type: "path", path: `${iconPath}${name}`, kind: "folder" },
+      file: { type: "path", path: `${iconPath}${name}`, kind: "file" },
+      subcommand: { type: "preset", icon: "command" },
+      option: { type: "preset", icon: "option" },
+      shortcut: { type: "template", color: "3498db", badge: "💡" },
+      "auto-execute": { type: "preset", icon: "carrot" },
+      arg: { type: "preset", icon: "box" },
+      mixin: { type: "template", color: "628dad", badge: "➡️" },
     };
 
-    const src =
-      (type && srcMap[type] ? srcMap[type] : undefined) ??
-      new URL(localProtocol("icon", "?type=box"));
+    const src = (type && srcMap[type] ? srcMap[type] : undefined) ?? {
+      type: "preset",
+      icon: "box",
+    };
 
-    img = <IconImg icon={src} height={height ?? 0} />;
+    img = <IconImg icon={src} isWeb={isWeb} height={height ?? 0} />;
   }
 
   return (

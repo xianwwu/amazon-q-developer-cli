@@ -18,6 +18,7 @@ type SuggestionProps = {
   iconSize: number;
   fuzzySearchEnabled: boolean;
   ipcClient?: IpcClient;
+  isWeb: boolean;
 };
 
 type HighlightType = "match" | "prefix";
@@ -282,6 +283,7 @@ const Suggestion = ({
   isActive,
   onClick,
   iconSize,
+  isWeb,
   // ipcClient,
 }: SuggestionProps) => {
   const onSuggestionClick = useCallback(() => {
@@ -314,6 +316,7 @@ const Suggestion = ({
         }}
         suggestion={suggestion}
         iconPath={iconPath}
+        isWeb={isWeb}
       />
       <div className="suggestion-title overflow-hidden" ref={textContainerRef}>
         <div

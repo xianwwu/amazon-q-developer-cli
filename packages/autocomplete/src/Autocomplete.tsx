@@ -551,6 +551,7 @@ function AutocompleteInner({
                 iconPath={iconPath}
                 iconSize={size.itemSize * 0.75}
                 ipcClient={ipcClient}
+                isWeb={isWeb}
               />
             )}
           </AutoSizedList>
