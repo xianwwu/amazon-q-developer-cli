@@ -82,16 +82,14 @@ export interface AutocompleteProps {
 
   /** A callback to set the visibility of the autocomplete window */
   setVisibilityCallback?: (
-    callback: (visible: boolean) => MaybePromise<{
-      unsubscribe: boolean;
-    }>,
+    callback: (visible: boolean) => MaybePromise<void>,
   ) => void;
 
   /** A callback to poll the status of the multiplexer */
   setPollMultiplexerCallback?: (
     callback: (
       event: KeyboardEvent,
-    ) => MaybePromise<{ multiplexerConnected: boolean; unsubscribe: boolean }>,
+    ) => MaybePromise<{ multiplexerConnected: boolean }>,
   ) => void;
 }
 
@@ -280,22 +278,16 @@ function AutocompleteInner({
   useFigClearCache();
 
   useEffect(() => {
-    let stale = false;
     if (setVisibilityCallback)
       setVisibilityCallback(async (visible) => {
         const v = visible
           ? Visibility.VISIBLE
           : Visibility.HIDDEN_UNTIL_KEYPRESS;
         setVisibleState(v);
-        return { unsubscribe: stale };
       });
-    return () => {
-      stale = true;
-    };
   }, [setVisibilityCallback, setVisibleState]);
 
   useEffect(() => {
-    let stale = false;
     if (setPollMultiplexerCallback)
       setPollMultiplexerCallback(async (_event) => {
         const multiplexerConnected = ipcClient
@@ -303,12 +295,8 @@ function AutocompleteInner({
           : false;
         return {
           multiplexerConnected,
-          unsubscribe: stale,
         };
       });
-    return () => {
-      stale = true;
-    };
   }, [ipcClient, setPollMultiplexerCallback]);
 
   // useEffect(() => {

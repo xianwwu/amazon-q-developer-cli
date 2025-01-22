@@ -5,7 +5,6 @@ import {
 } from "@aws/amazon-q-developer-cli-shared/internal";
 import { IconName, ICONS } from "../fig/icons";
 import { useClassName } from "../state/style";
-import templateImg from "../assets/template.png";
 
 type SuggestionIconProps = {
   suggestion: Suggestion;
@@ -210,7 +209,7 @@ function IconImg({
         minWidth: height,
         minHeight: height,
         fontSize: typeof height === "number" ? height * 0.6 : height,
-        backgroundImage: isTemplate ? `url(${templateImg})` : `url(${url})`,
+        backgroundImage: isTemplate ? `url(${cdnIcon("template")})` : `url(${url})`,
       }}
     >
       {badge &&
@@ -227,7 +226,7 @@ function IconImg({
           <span
             className="flex h-2.5 w-2.5 place-content-center place-self-end bg-contain bg-no-repeat text-[80%] text-white"
             style={{
-              backgroundImage: `url(${templateImg})`,
+              backgroundImage: `url(${cdnIcon("template")})`,
             }}
           >
             {badge}
