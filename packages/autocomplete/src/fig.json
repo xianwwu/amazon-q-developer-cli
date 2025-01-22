@@ -5,83 +5,89 @@
       {
         "identifier": "insertSelected",
         "name": "Insert selected",
-        "description": "Insert selected suggestion",
         "category": "Insertion",
+        "description": "Insert selected suggestion",
         "availability": "WHEN_FOCUSED",
         "defaultBindings": ["enter"]
       },
       {
         "identifier": "insertCommonPrefix",
         "name": "Insert common prefix",
-        "description": "Insert shared prefix of available suggestions. Shake if there's no common prefix.",
         "category": "Insertion",
+        "description": "Insert shared prefix of available suggestions. Shake if there's no common prefix.",
         "availability": "WHEN_FOCUSED",
         "defaultBindings": ["tab"]
       },
       {
         "identifier": "insertCommonPrefixOrNavigateDown",
         "name": "Insert common prefix or navigate",
-        "description": "Insert shared prefix of available suggestions. Navigate if there's no common prefix.",
         "category": "Insertion",
-        "availability": "WHEN_FOCUSED"
+        "description": "Insert shared prefix of available suggestions. Navigate if there's no common prefix.",
+        "availability": "WHEN_FOCUSED",
+        "defaultBindings": []
       },
       {
         "identifier": "insertCommonPrefixOrInsertSelected",
         "name": "Insert common prefix or insert selected",
-        "description": "Insert shared prefix of available suggestions. Insert currently selected suggestion if there's not common prefix.",
         "category": "Insertion",
-        "availability": "WHEN_FOCUSED"
+        "description": "Insert shared prefix of available suggestions. Insert currently selected suggestion if there's not common prefix.",
+        "availability": "WHEN_FOCUSED",
+        "defaultBindings": []
       },
       {
         "identifier": "insertSelectedAndExecute",
         "name": "Insert selected and execute",
-        "description": "Insert selected suggestion and then execute the current command.",
         "category": "Insertion",
-        "availability": "WHEN_FOCUSED"
+        "description": "Insert selected suggestion and then execute the current command.",
+        "availability": "WHEN_FOCUSED",
+        "defaultBindings": []
       },
       {
         "identifier": "execute",
         "name": "Execute",
-        "description": "Execute the current command.",
         "category": "Insertion",
-        "availability": "WHEN_FOCUSED"
+        "description": "Execute the current command.",
+        "availability": "WHEN_FOCUSED",
+        "defaultBindings": []
       },
       {
         "identifier": "hideAutocomplete",
         "name": "Hide autocomplete",
-        "description": "Hide the autocomplete window",
         "category": "General",
+        "description": "Hide the autocomplete window",
         "availability": "ALWAYS",
         "defaultBindings": ["esc"]
       },
       {
         "identifier": "showAutocomplete",
         "name": "Show autocomplete",
-        "description": "Show the autocomplete window",
         "category": "General",
-        "availability": "ALWAYS"
+        "description": "Show the autocomplete window",
+        "availability": "ALWAYS",
+        "defaultBindings": []
       },
       {
         "identifier": "toggleAutocomplete",
         "name": "Toggle autocomplete",
         "description": "Toggle the visibility of the autocomplete window",
-        "availability": "ALWAYS"
+        "availability": "ALWAYS",
+        "defaultBindings": []
       },
       {
         "identifier": "navigateUp",
         "name": "Navigate up",
-        "description": "Scroll up one entry in the list of suggestions",
         "category": "Navigation",
+        "description": "Scroll up one entry in the list of suggestions",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["shift+tab", "up", "control+k", "control+p"]
+        "defaultBindings": ["shift+tab", "up", "control+p"]
       },
       {
         "identifier": "navigateDown",
         "name": "Navigate down",
-        "description": "Scroll down one entry in the list of suggestions",
         "category": "Navigation",
+        "description": "Scroll down one entry in the list of suggestions",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["down", "control+j", "control+n"]
+        "defaultBindings": ["down", "control+n"]
       },
       {
         "identifier": "selectSuggestion1",
@@ -89,7 +95,7 @@
         "description": "Select the 1st suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+1"]
+        "defaultBindings": ["command+1"]
       },
       {
         "identifier": "selectSuggestion2",
@@ -97,7 +103,7 @@
         "description": "Select the 2nd suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+2"]
+        "defaultBindings": ["command+2"]
       },
       {
         "identifier": "selectSuggestion3",
@@ -105,7 +111,7 @@
         "description": "Select the 3rd suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+3"]
+        "defaultBindings": ["command+3"]
       },
       {
         "identifier": "selectSuggestion4",
@@ -113,7 +119,7 @@
         "description": "Select the 4th suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+4"]
+        "defaultBindings": ["command+4"]
       },
       {
         "identifier": "selectSuggestion5",
@@ -121,7 +127,7 @@
         "description": "Select the 5th suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+5"]
+        "defaultBindings": ["command+5"]
       },
       {
         "identifier": "selectSuggestion6",
@@ -129,7 +135,7 @@
         "description": "Select the 6th suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+6"]
+        "defaultBindings": ["command+6"]
       },
       {
         "identifier": "selectSuggestion7",
@@ -137,7 +143,7 @@
         "description": "Select the 7th suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+7"]
+        "defaultBindings": ["command+7"]
       },
       {
         "identifier": "selectSuggestion8",
@@ -145,7 +151,7 @@
         "description": "Select the 8th suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+8"]
+        "defaultBindings": ["command+8"]
       },
       {
         "identifier": "selectSuggestion9",
@@ -153,7 +159,7 @@
         "description": "Select the 9th suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+9"]
+        "defaultBindings": ["command+9"]
       },
       {
         "identifier": "selectSuggestion10",
@@ -161,60 +167,63 @@
         "description": "Select the 10th suggestion of the list",
         "category": "Navigation",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["control+0"]
+        "defaultBindings": ["command+0"]
       },
       {
         "identifier": "hideDescription",
         "name": "Hide description popout",
-        "description": "Hide autocomplete description popout",
         "category": "Appearance",
-        "availability": "WHEN_FOCUSED"
+        "description": "Hide autocomplete description popout",
+        "availability": "WHEN_FOCUSED",
+        "defaultBindings": []
       },
       {
         "identifier": "showDescription",
         "name": "Show description popout",
-        "description": "Show autocomplete description popout",
         "category": "Appearance",
-        "availability": "WHEN_FOCUSED"
+        "description": "Show autocomplete description popout",
+        "availability": "WHEN_FOCUSED",
+        "defaultBindings": []
       },
       {
         "identifier": "toggleDescription",
         "name": "Toggle description popout",
-        "description": "Toggle visibility of autocomplete description popout",
         "category": "Appearance",
+        "description": "Toggle visibility of autocomplete description popout",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["command+i"]
+        "defaultBindings": ["control+k"]
       },
       {
         "identifier": "toggleHistoryMode",
         "name": "Toggle history mode",
-        "description": "Toggle between history suggestions and autocomplete spec suggestions",
         "category": "General",
+        "description": "Toggle between history suggestions and autocomplete spec suggestions",
         "availability": "WHEN_FOCUSED",
         "defaultBindings": ["control+r"]
       },
       {
         "identifier": "toggleFuzzySearch",
         "name": "Toggle fuzzy search",
-        "description": "Toggle between normal prefix search and fuzzy search",
         "category": "General",
-        "availability": "WHEN_FOCUSED"
+        "description": "Toggle between normal prefix search and fuzzy search",
+        "availability": "WHEN_FOCUSED",
+        "defaultBindings": []
       },
       {
         "identifier": "increaseSize",
         "name": "Increase window size",
-        "description": "Increase the size of the autocomplete window",
         "category": "Appearance",
+        "description": "Increase the size of the autocomplete window",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["command+="]
+        "defaultBindings": []
       },
       {
         "identifier": "decreaseSize",
         "name": "Decrease window size",
-        "description": "Decrease the size of the autocomplete window",
         "category": "Appearance",
+        "description": "Decrease the size of the autocomplete window",
         "availability": "WHEN_FOCUSED",
-        "defaultBindings": ["command+-"]
+        "defaultBindings": []
       }
     ]
   }

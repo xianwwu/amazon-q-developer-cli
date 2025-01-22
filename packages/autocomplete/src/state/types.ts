@@ -24,6 +24,10 @@ export enum Visibility {
   HIDDEN_BY_INSERTION = "insertion",
 }
 
+export enum AutocompleteConnectionType {
+  CS_WEBSOCKET = "CsWebsocket",
+}
+
 export type StyleType = "tailwind" | "class";
 
 type AutocompleteActions = {

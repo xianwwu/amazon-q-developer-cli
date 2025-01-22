@@ -1,3 +1,4 @@
-import Autocomplete, {AUTOCOMPLETE_CONNECTION_TYPES} from './Autocomplete';
+import Autocomplete from "./Autocomplete";
+import { AutocompleteConnectionType } from "./state/types";
 
-export { Autocomplete, AUTOCOMPLETE_CONNECTION_TYPES };
+export { Autocomplete, AutocompleteConnectionType };

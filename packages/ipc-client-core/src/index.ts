@@ -68,4 +68,6 @@ export interface IpcClient {
   onInterceptedKey: (
     callback: (notification: InterceptedKeyHook) => void | Promise<void>,
   ) => UnsubscribeFunction;
+
+  isActive: (timeout?: number | undefined) => Promise<boolean>;
 }

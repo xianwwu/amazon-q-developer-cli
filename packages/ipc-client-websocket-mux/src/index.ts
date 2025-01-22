@@ -216,4 +216,21 @@ export class WebsocketMuxBackend implements IpcClient {
   ): UnsubscribeFunction {
     return this.emitter.on(InterceptedKeyHookSymbol, callback);
   }
+
+  async isActive(timeout?: number | undefined) {
+    const timeoutPromise = new Promise<void>((_, reject) =>
+      setTimeout(() => reject(), timeout ?? 5000),
+    );
+    const anyEventPromise = new Promise<void>((resolve) =>
+      this.emitter.onAny((_) => {
+        resolve();
+      }),
+    );
+    try {
+      await Promise.race([timeoutPromise, anyEventPromise]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }

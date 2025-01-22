@@ -47,8 +47,13 @@ import { InterceptRequestSchema } from "@aws/amazon-q-developer-cli-proto/figter
 import { create } from "@bufbuild/protobuf";
 import { AutocompleteContext } from "./state/context";
 import { useAutocomplete } from "./state/useAutocomplete";
-import { StyleType, Visibility } from "./state/types";
+import {
+  AutocompleteConnectionType,
+  StyleType,
+  Visibility,
+} from "./state/types";
 import DevModeWarning from "./components/DevModeWarning";
+import AutocompleteWindow from "./components/AutocompleteWindow";
 
 const getIconPath = (cwd: string): string => {
   const home = window?.fig?.constants?.home;
@@ -56,37 +61,52 @@ const getIconPath = (cwd: string): string => {
   return path.startsWith("//") ? path.slice(1) : path;
 };
 
-export enum AUTOCOMPLETE_CONNECTION_TYPES {
-  CS_WEBSOCKET = "CsWebsocket",
-}
-
 interface IpcClientProps {
-  type: AUTOCOMPLETE_CONNECTION_TYPES | string;
+  type: AutocompleteConnectionType | string;
   websocket: CsWebsocket;
 }
 
 type UnsubscribeFn = () => void;
 type Listener<T> = (data: T) => UnsubscribeFn;
+type MaybePromise<T> = T | Promise<T>;
 
 export interface AutocompleteProps {
   ipcClient: IpcClientProps;
   style?: StyleType;
   enableMocks?: boolean;
-  visible?: boolean;
   onDisconnect?: () => void;
   onKeypress?: (listener: Listener<string>) => void;
+
+  /** The sessionId of the active tab */
+  sessionId?: string;
+
+  /** A callback to set the visibility of the autocomplete window */
+  setVisibilityCallback?: (
+    callback: (visible: boolean) => MaybePromise<{
+      unsubscribe: boolean;
+    }>,
+  ) => void;
+
+  /** A callback to poll the status of the multiplexer */
+  setPollMultiplexerCallback?: (
+    callback: (
+      event: KeyboardEvent,
+    ) => MaybePromise<{ multiplexerConnected: boolean; unsubscribe: boolean }>,
+  ) => void;
 }
 
 function AutocompleteInner({
   enableMocks,
-  visible,
   ipcClient: _ipcClientProps,
+  setPollMultiplexerCallback,
+  setVisibilityCallback,
   // onDisconnect,
 }: AutocompleteProps) {
   const isWeb = useMemo(
-    () => _ipcClientProps.type === AUTOCOMPLETE_CONNECTION_TYPES.CS_WEBSOCKET,
+    () => _ipcClientProps.type === AutocompleteConnectionType.CS_WEBSOCKET,
     [_ipcClientProps.type],
   );
+
   const {
     generatorStates,
     suggestions,
@@ -260,12 +280,36 @@ function AutocompleteInner({
   useFigClearCache();
 
   useEffect(() => {
-    if (visible !== undefined) {
-      setVisibleState(
-        visible ? Visibility.VISIBLE : Visibility.HIDDEN_UNTIL_KEYPRESS,
-      );
-    }
-  }, [visible, setVisibleState]);
+    let stale = false;
+    if (setVisibilityCallback)
+      setVisibilityCallback(async (visible) => {
+        const v = visible
+          ? Visibility.VISIBLE
+          : Visibility.HIDDEN_UNTIL_KEYPRESS;
+        setVisibleState(v);
+        return { unsubscribe: stale };
+      });
+    return () => {
+      stale = true;
+    };
+  }, [setVisibilityCallback, setVisibleState]);
+
+  useEffect(() => {
+    let stale = false;
+    if (setPollMultiplexerCallback)
+      setPollMultiplexerCallback(async (_event) => {
+        const multiplexerConnected = ipcClient
+          ? await ipcClient.isActive()
+          : false;
+        return {
+          multiplexerConnected,
+          unsubscribe: stale,
+        };
+      });
+    return () => {
+      stale = true;
+    };
+  }, [ipcClient, setPollMultiplexerCallback]);
 
   // useEffect(() => {
   //   let cancelled = false;
@@ -446,100 +490,92 @@ function AutocompleteInner({
     hasBottomDescription && "rounded-b-none",
   ];
 
-  let contents: React.ReactElement;
-
-  // eslint-disable-next-line no-constant-condition
-  if (isLoading && false) {
-    contents = <LoadingIcon />;
-  } else {
-    contents = (
-      <>
-        {windowState.isAboveCursor && (
-          <DevModeWarning
-            devMode={devMode}
-            suggestionWidth={size.suggestionWidth}
-          />
-        )}
-        <div className="q-autocomplete-container flex flex-row gap-1.5 p-1">
-          {descriptionPosition === "left" && description}
-          <div
-            className={
-              isWeb
-                ? "q-autocomplete-container__sub-block"
-                : "bg-main-bg relative flex flex-none flex-col items-stretch overflow-hidden rounded shadow-[0px_0px_3px_0px_rgb(85,_85,_85)]"
-            }
-            style={
-              hasSuggestions
-                ? {
-                    width: size.suggestionWidth,
-                    height: "100%",
-                    alignSelf: windowState.isAboveCursor
-                      ? "flex-end"
-                      : "flex-start",
-                    maxHeight: size.maxHeight,
-                  }
-                : {}
-            }
-          >
-            <AutoSizedList
-              className={listClasses.filter((x) => !!x).join(" ")}
-              onResize={scrollToItemCallback}
-              ref={listRef}
-              itemSize={size.itemSize}
-              width="100%"
-              itemCount={Math.round(
-                (enableMocks ? suggestionsMock : suggestions).length,
-              )}
-            >
-              {({ index, style }) => (
-                <Suggestion
-                  style={style}
-                  suggestion={
-                    (enableMocks ? suggestionsMock : suggestions)[index]
-                  }
-                  commonPrefix={commonPrefix || ""}
-                  onClick={(item) => insertTextForItem(item)}
-                  isActive={selectedIndex === index}
-                  searchTerm={searchTerm}
-                  fuzzySearchEnabled={fuzzySearchEnabled}
-                  iconPath={iconPath}
-                  iconSize={size.itemSize * 0.75}
-                  ipcClient={ipcClient}
-                />
-              )}
-            </AutoSizedList>
-            <div className="description-wrapper scrollbar-none flex flex-shrink-0 flex-row">
-              {descriptionPosition === "unknown" && description}
-              {isLoading && (
-                <LoadingIcon
-                  className={
-                    hasSuggestions
-                      ? "left-[2px] [&>*]:top-[calc(50%-5px)]"
-                      : "left-[2px] [&>*]:top-[calc(50%-3px)]"
-                  }
-                />
-              )}
-            </div>
-          </div>
-          {descriptionPosition === "right" && description}
-        </div>
-        {!windowState.isAboveCursor && (
-          <DevModeWarning
-            devMode={devMode}
-            suggestionWidth={size.suggestionWidth}
-          />
-        )}
-      </>
+  if (isLoading) {
+    return (
+      <AutocompleteWindow>
+        <LoadingIcon />
+      </AutocompleteWindow>
     );
   }
+
   return (
-    <div
-      ref={autocompleteWindowRef}
-      id="autocompleteWindow"
-      className="q-autocomplete-wrapper relative flex flex-col overflow-hidden"
-    >
-      {contents}
-    </div>
+    <AutocompleteWindow>
+      {windowState.isAboveCursor && (
+        <DevModeWarning
+          devMode={devMode}
+          suggestionWidth={size.suggestionWidth}
+        />
+      )}
+      <div className="q-autocomplete-container flex flex-row gap-1.5 p-1">
+        {descriptionPosition === "left" && description}
+        <div
+          className={
+            isWeb
+              ? "q-autocomplete-container__sub-block"
+              : "bg-main-bg relative flex flex-none flex-col items-stretch overflow-hidden rounded shadow-[0px_0px_3px_0px_rgb(85,_85,_85)]"
+          }
+          style={
+            hasSuggestions
+              ? {
+                  width: size.suggestionWidth,
+                  height: "100%",
+                  alignSelf: windowState.isAboveCursor
+                    ? "flex-end"
+                    : "flex-start",
+                  maxHeight: size.maxHeight,
+                }
+              : {}
+          }
+        >
+          <AutoSizedList
+            className={listClasses.filter((x) => !!x).join(" ")}
+            onResize={scrollToItemCallback}
+            ref={listRef}
+            itemSize={size.itemSize}
+            width="100%"
+            itemCount={Math.round(
+              (enableMocks ? suggestionsMock : suggestions).length,
+            )}
+          >
+            {({ index, style }) => (
+              <Suggestion
+                style={style}
+                suggestion={
+                  (enableMocks ? suggestionsMock : suggestions)[index]
+                }
+                commonPrefix={commonPrefix || ""}
+                onClick={(item) => insertTextForItem(item)}
+                isActive={selectedIndex === index}
+                searchTerm={searchTerm}
+                fuzzySearchEnabled={fuzzySearchEnabled}
+                iconPath={iconPath}
+                iconSize={size.itemSize * 0.75}
+                ipcClient={ipcClient}
+              />
+            )}
+          </AutoSizedList>
+          <div className="description-wrapper scrollbar-none flex flex-shrink-0 flex-row">
+            {descriptionPosition === "unknown" && description}
+            {isLoading && (
+              <LoadingIcon
+                className={
+                  hasSuggestions
+                    ? "left-[2px] [&>*]:top-[calc(50%-5px)]"
+                    : "left-[2px] [&>*]:top-[calc(50%-3px)]"
+                }
+              />
+            )}
+          </div>
+        </div>
+        {descriptionPosition === "right" && description}
+      </div>
+      {!windowState.isAboveCursor && (
+        <DevModeWarning
+          devMode={devMode}
+          suggestionWidth={size.suggestionWidth}
+        />
+      )}
+    </AutocompleteWindow>
   );
 }
 

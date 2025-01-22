@@ -172,7 +172,11 @@ const SuggestionIcon = ({
     img = <IconImg icon={src} height={height ?? 0} />;
   }
 
-  return <div className="suggestion-icon-container" style={style}>{img}</div>;
+  return (
+    <div className="suggestion-icon-container" style={style}>
+      {img}
+    </div>
+  );
 };
 
 export default SuggestionIcon;
