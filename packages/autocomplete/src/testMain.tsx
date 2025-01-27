@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useCallback, useRef } from "react";
 import Autocomplete from "./Autocomplete";
 import Emittery from "emittery";
 import { AutocompleteConnectionType } from "./state/types";
@@ -44,8 +44,39 @@ export function Test() {
     websocket.current = new WebsocktShim(inner);
   }
 
+  // const [avisibilityCallback, asetVisibilityCallback] = useState<
+  //   undefined | ((visible: boolean) => Promise<void> | void)
+  // >(undefined);
+
+  const setVisibilityCallback = useCallback((callback: unknown) => {
+    console.log("Hey!", callback);
+    // asetVisibilityCallback(callback);
+  }, []);
+
   return (
-    <div className="">
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-row gap-4 p-2">
+        <button
+          className="p-2 border rounded bg-blue-300"
+          onClick={() => {
+            console.log("HIDE");
+            // if (visibilityCallback) visibilityCallback(false);
+          }}
+        >
+          Hide
+        </button>
+        <button
+          className="p-2 border rounded bg-blue-300"
+          onClick={() => {
+            console.log("SHOW");
+            // if (visibilityCallback) visibilityCallback(true);
+          }}
+        >
+          Show
+        </button>
+        <input></input>
+      </div>
+
       {websocket && (
         <Autocomplete
           ipcClient={{
@@ -55,6 +86,7 @@ export function Test() {
           onDisconnect={() => {
             console.error("DISCONNECT!");
           }}
+          setVisibilityCallback={setVisibilityCallback}
         />
       )}
     </div>

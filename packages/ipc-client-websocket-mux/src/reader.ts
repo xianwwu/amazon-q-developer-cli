@@ -8,12 +8,27 @@ const PacketSymbol = Symbol("packet");
 export class PacketReader {
   private buffer: string;
   private emitter: Emittery;
+  private socket: Socket;
 
   constructor(socket: Socket) {
     this.buffer = "";
     this.emitter = new Emittery();
+    this.socket = socket;
+    this.socket.onMessage((data) => {
+      if (typeof data === "string") {
+        this.buffer += data;
+        this.parse();
+      }
+    });
+  }
 
-    socket.onMessage((data) => {
+  setSocket(socket: Socket) {
+    // clear buffer on socket change
+    this.buffer = "";
+    // update the socket
+    this.socket.active = false;
+    this.socket = socket;
+    this.socket.onMessage((data) => {
       if (typeof data === "string") {
         this.buffer += data;
         this.parse();

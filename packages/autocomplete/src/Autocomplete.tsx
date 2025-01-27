@@ -99,6 +99,7 @@ function AutocompleteInner({
   setPollMultiplexerCallback,
   setVisibilityCallback,
   // onDisconnect,
+  sessionId: sessionIdProp,
 }: AutocompleteProps) {
   const isWeb = useMemo(
     () => _ipcClientProps.type === AutocompleteConnectionType.CS_WEBSOCKET,
@@ -122,32 +123,35 @@ function AutocompleteInner({
     setFigState,
 
     ipcClient,
-    // setIpcClient,
+    sessionId,
   } = useAutocomplete();
 
   useMemo(() => {
     logger.enableAll();
   }, []);
 
-  const suggestionsMock: Fig.Suggestion[] = [
-    {
-      name: "ec2",
-      description: "The command line interface for Fig",
-      insertValue: 'echo "123"',
-    },
-    {
-      name: "account",
-      description: "It's not what you think",
-    },
-    {
-      name: "acm",
-      description: "The largest and oldest of the group",
-    },
-    {
-      name: "acm-pca",
-      description: "With the circle",
-    },
-  ];
+  const suggestionsMock: Fig.Suggestion[] = useMemo(
+    () => [
+      {
+        name: "ec2",
+        description: "The command line interface for Fig",
+        insertValue: 'echo "123"',
+      },
+      {
+        name: "account",
+        description: "It's not what you think",
+      },
+      {
+        name: "acm",
+        description: "The largest and oldest of the group",
+      },
+      {
+        name: "acm-pca",
+        description: "With the circle",
+      },
+    ],
+    [],
+  );
 
   const [systemTheme] = useSystemTheme();
   const [isShaking, shake] = useShake();
@@ -278,13 +282,15 @@ function AutocompleteInner({
   useFigClearCache();
 
   useEffect(() => {
-    if (setVisibilityCallback)
+    if (setVisibilityCallback) {
+      console.log("Setting state");
       setVisibilityCallback(async (visible) => {
         const v = visible
           ? Visibility.VISIBLE
           : Visibility.HIDDEN_UNTIL_KEYPRESS;
         setVisibleState(v);
       });
+    }
   }, [setVisibilityCallback, setVisibleState]);
 
   useEffect(() => {
@@ -298,31 +304,6 @@ function AutocompleteInner({
         };
       });
   }, [ipcClient, setPollMultiplexerCallback]);
-
-  // useEffect(() => {
-  //   let cancelled = false;
-  //   const pingLoop = async () => {
-  //     while (!cancelled) {
-  //       if (ipcClient) {
-  //         try {
-  //           const timeoutPromise = new Promise((_, reject) => {
-  //             setTimeout(() => reject(new Error("Ping timeout")), 10000);
-  //           });
-  //           await Promise.race([ipcClient.ping(), timeoutPromise]);
-  //         } catch (_err) {
-  //           if (!cancelled) {
-  //             onDisconnect?.();
-  //           }
-  //         }
-  //       }
-  //       await new Promise((resolve) => setTimeout(resolve, 1000));
-  //     }
-  //   };
-  //   pingLoop();
-  //   return () => {
-  //     cancelled = true;
-  //   };
-  // }, [ipcClient, onDisconnect]);
 
   // useEffect(() => {
   //   Settings.get(SETTINGS.DISABLE_HISTORY_LOADING)
@@ -357,6 +338,16 @@ function AutocompleteInner({
   const interceptKeystrokes = Boolean(
     !isHidden && (enableMocks ? suggestionsMock : suggestions).length > 0,
   );
+
+  useEffect(() => {
+    if (sessionId != sessionIdProp) {
+      setFigState((state) => ({
+        ...state,
+        sessionId: sessionIdProp,
+      }));
+      setVisibleState(Visibility.HIDDEN_BY_INSERTION);
+    }
+  }, [sessionId, sessionIdProp, setFigState, setVisibleState]);
 
   useEffect(() => {
     logger.info("Setting intercept keystrokes", {
@@ -573,6 +564,14 @@ function Autocomplete(props: AutocompleteProps) {
   if (!storeRef.current) {
     storeRef.current = createAutocompleteStore(props);
   }
+
+  useEffect(() => {
+    const setSocket = storeRef.current?.getState()?.setSocket;
+    if (setSocket) {
+      setSocket(props.ipcClient.websocket);
+    }
+  }, [props.ipcClient.websocket]);
+
   return (
     <AutocompleteContext.Provider value={storeRef.current}>
       <AutocompleteInner {...props} />

@@ -5,6 +5,7 @@ import { SettingsMap } from "@aws/amazon-q-developer-cli-api-bindings-wrappers";
 import { FigState } from "../fig/hooks";
 import { GeneratorState } from "../generators/helpers";
 import { IpcClient } from "@aws/amazon-q-developer-cli-ipc-client-core";
+import type { CsWebsocket } from "@aws/amazon-q-developer-cli-ipc-client-websocket-mux";
 
 export enum Visibility {
   VISIBLE = "visible",
@@ -40,7 +41,7 @@ type AutocompleteActions = {
   setVisibleState: (visibleState: Visibility) => void;
   scroll: (index: number, visibleState: Visibility) => void;
   setFigState: React.Dispatch<React.SetStateAction<FigState>>;
-  setIpcClient: (ipcClient: IpcClient | undefined) => void;
+  setSocket: (socket: CsWebsocket) => void;
   updateVisibilityPostInsert: (
     suggestion: Suggestion,
     isFullCompletion: boolean,
@@ -81,6 +82,8 @@ export type AutocompleteState = {
   settings: SettingsMap;
 
   styleType: StyleType;
+
+  sessionId?: string;
 } & AutocompleteActions;
 
 export declare type NamedSetState<T> = {

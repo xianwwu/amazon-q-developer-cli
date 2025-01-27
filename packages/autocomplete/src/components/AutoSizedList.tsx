@@ -58,11 +58,11 @@ const AutoSizedList: ForwardRefRenderFunction<
       <List
         width={desiredWidth === undefined ? width || 0 : desiredWidth}
         ref={listRef}
-        height={height || 0}
-        className={twMerge(
-          "suggestions-wrapper__list-container scrollbar-none",
+        height={height ?? 0}
+        className={`suggestions-wrapper__list-container ${twMerge(
+          "scrollbar-none",
           className,
-        )}
+        )}`}
         {...props}
       />
     </div>

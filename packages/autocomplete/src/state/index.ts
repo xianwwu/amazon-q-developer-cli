@@ -32,9 +32,11 @@ import { useAutocomplete } from "./useAutocomplete";
 import { getFullHistorySuggestions } from "../history";
 import { createGeneratorState } from "./generators";
 import { createInsertionState } from "./insertion";
-import { IpcClient } from "@aws/amazon-q-developer-cli-ipc-client-core";
 import { AutocompleteProps } from "../Autocomplete";
-import { WebsocketMuxBackend } from "@aws/amazon-q-developer-cli-ipc-client-websocket-mux";
+import {
+  CsWebsocket,
+  WebsocketMuxBackend,
+} from "@aws/amazon-q-developer-cli-ipc-client-websocket-mux";
 
 export { useAutocomplete };
 
@@ -506,8 +508,22 @@ export const createAutocompleteStore = (props: AutocompleteProps) =>
               }
             }),
 
-          setIpcClient: (ipcClient: IpcClient | undefined) =>
-            setNamed("setIpcClient", { ipcClient }),
+          setSocket: (socket: CsWebsocket) =>
+            setNamed("setSocket", (state) => {
+              const ipcClient = state.ipcClient;
+              if (!ipcClient) {
+                return {
+                  ...state,
+                  ipcClient: new WebsocketMuxBackend(socket),
+                };
+              } else if (ipcClient instanceof WebsocketMuxBackend) {
+                ipcClient.setWebsocket(socket);
+                return { ...state, ipcClient };
+              } else {
+                console.warn("Cannot setSocket");
+              }
+              return state;
+            }),
 
           error: (error: string) =>
             setNamed("error", (state) => {

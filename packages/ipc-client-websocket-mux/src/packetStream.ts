@@ -12,6 +12,11 @@ export class PacketStream {
     this.readable = new PacketReader(socket);
   }
 
+  setSocket(socket: Socket) {
+    this.socket = socket;
+    this.readable.setSocket(socket);
+  }
+
   onPacket(listener: (packet: Packet) => void | Promise<void>) {
     this.readable.onPacket(listener);
   }

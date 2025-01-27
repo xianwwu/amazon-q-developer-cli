@@ -52,6 +52,10 @@ export class WebsocketMuxBackend implements IpcClient {
     });
   }
 
+  setWebsocket(websocket: CsWebsocket) {
+    this.packetStream.setSocket(Socket.cs(websocket));
+  }
+
   private handleHostbound(message: Hostbound) {
     const submessage = message.submessage;
     console.log(submessage);

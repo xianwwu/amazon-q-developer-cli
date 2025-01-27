@@ -40,6 +40,7 @@ const getTitle = (
   commonPrefix: string,
   searchTerm: string,
   fuzzySearch: boolean,
+  isWeb: boolean,
 ) => {
   let elementId = 0;
 
@@ -247,7 +248,11 @@ const getTitle = (
             if (t.type === "match") {
               return (
                 <mark
-                  className="bg-matching-bg/80 group-data-[active-item]:bg-selected-matching-bg/80 text-inherit brightness-95"
+                  className={
+                    isWeb
+                      ? "matching-text"
+                      : "bg-matching-bg/80 group-data-[active-item]:bg-selected-matching-bg/80 text-inherit brightness-95"
+                  }
                   key={t.id}
                 >
                   <span className="brightness-125">{t.highlight}</span>
@@ -294,8 +299,9 @@ const Suggestion = ({
   const textRef = useRef<HTMLDivElement>(null);
 
   const Title = useMemo(
-    () => getTitle(suggestion, commonPrefix, searchTerm, fuzzySearchEnabled),
-    [suggestion, commonPrefix, searchTerm, fuzzySearchEnabled],
+    () =>
+      getTitle(suggestion, commonPrefix, searchTerm, fuzzySearchEnabled, isWeb),
+    [suggestion, commonPrefix, searchTerm, fuzzySearchEnabled, isWeb],
   );
 
   return (
