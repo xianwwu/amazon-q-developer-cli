@@ -17,7 +17,7 @@ use tokio_util::codec::{
 
 #[derive(Debug, Clone)]
 pub struct Base64LineCodec<T: Message> {
-    line_delinited: AnyDelimiterCodec,
+    line_delimited: AnyDelimiterCodec,
     compressed: bool,
     _phantom: PhantomData<T>,
 }
@@ -31,7 +31,7 @@ impl<T: Message> Default for Base64LineCodec<T> {
 impl<T: Message> Base64LineCodec<T> {
     pub fn new() -> Base64LineCodec<T> {
         Base64LineCodec {
-            line_delinited: AnyDelimiterCodec::new(b"\r\n".into(), b"\n".into()),
+            line_delimited: AnyDelimiterCodec::new(b"\r\n".into(), b"\n".into()),
             compressed: false,
             _phantom: PhantomData,
         }
@@ -48,7 +48,7 @@ impl<T: Message + Default> Decoder for Base64LineCodec<T> {
     type Item = T;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let line = match self.line_delinited.decode(src) {
+        let line = match self.line_delimited.decode(src) {
             Ok(Some(line)) => line,
             Ok(None) => return Ok(None),
             Err(AnyDelimiterCodecError::Io(io)) => return Err(io),
@@ -77,7 +77,7 @@ impl<T: Message> Encoder<T> for Base64LineCodec<T> {
         }
 
         let base64_encoded = BASE64_STANDARD.encode(encoded_message);
-        match self.line_delinited.encode(&base64_encoded, dst) {
+        match self.line_delimited.encode(&base64_encoded, dst) {
             Ok(()) => Ok(()),
             Err(AnyDelimiterCodecError::Io(io)) => Err(io),
             Err(err @ AnyDelimiterCodecError::MaxChunkLengthExceeded) => {

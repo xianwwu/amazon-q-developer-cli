@@ -32,6 +32,15 @@ use tracing::{
     warn,
 };
 
+/// A file-based process lock that ensures only one instance of a process is running.
+///
+/// `PidLock` works by:
+/// 1. Creating/opening a PID file at the specified path
+/// 2. Attempting to acquire an exclusive lock on the file
+/// 3. Writing the current process ID to the file
+/// 4. If another process holds the lock, attempts to terminate that process first
+///
+/// The lock is automatically released when the `PidLock` instance is dropped.
 #[derive(Debug)]
 pub struct PidLock {
     lock: Flock<File>,
@@ -124,11 +133,7 @@ fn process_exists(pid: i32) -> bool {
 async fn kill_process(pid: i32) -> Result<()> {
     if !process_exists(pid) {
         error!(%pid, "Process not found");
-        return Err(Error::new(
-            ErrorKind::AlreadyExists,
-            format!("Process already running with PID {pid}"),
-        )
-        .into());
+        return Err(Error::new(ErrorKind::NotFound, format!("Process already running with PID {pid}")).into());
     }
 
     info!(%pid, "Attempting to terminate process");

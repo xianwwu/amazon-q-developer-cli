@@ -164,7 +164,6 @@ pub async fn handle_remote_ipc(
                                 );
                                 figterm_state.insert(FigtermSession {
                                     id: session_id,
-                                    external_id: handshake.id,
                                     secret: handshake.secret.clone(),
                                     sender: command_tx,
                                     writer: Some(clientbound_tx.clone()),
