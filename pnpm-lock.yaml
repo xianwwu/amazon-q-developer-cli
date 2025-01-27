@@ -346,7 +346,7 @@ importers:
   packages/autocomplete-app:
     dependencies:
       '@aws/amazon-q-developer-cli-api-bindings':
-        specifier: workspace:^
+        specifier: workspace:~
         version: link:../api-bindings
       '@aws/amazon-q-developer-cli-api-bindings-wrappers':
         specifier: workspace:^
@@ -360,8 +360,11 @@ importers:
       '@aws/amazon-q-developer-cli-shell-parser':
         specifier: workspace:^
         version: link:../shell-parser
+      '@bufbuild/protobuf':
+        specifier: 2.2.3
+        version: 2.2.3
       '@fig/autocomplete-helpers':
-        specifier: 2.0.0
+        specifier: ^2.0.0
         version: 2.0.0
       '@fig/autocomplete-shared':
         specifier: ^1.1.2
@@ -369,47 +372,23 @@ importers:
       '@juggle/resize-observer':
         specifier: ^3.4.0
         version: 3.4.0
-      '@types/js-yaml':
-        specifier: ^4.0.9
-        version: 4.0.9
-      '@vitejs/plugin-react':
-        specifier: ^4.3.4
-        version: 4.3.4(vite@6.0.7(@types/node@22.10.6)(jiti@1.21.7)(terser@5.37.0)(tsx@4.19.2)(yaml@2.7.0))
-      '@withfig/autocomplete-types':
-        specifier: ^1.31.0
-        version: 1.31.0
       deep-object-diff:
         specifier: ^1.1.9
         version: 1.1.9
-      exponential-backoff:
-        specifier: ^3.1.1
-        version: 3.1.1
-      js-yaml:
-        specifier: ^4.1.0
-        version: 4.1.0
       loglevel:
         specifier: ^1.9.2
         version: 1.9.2
-      prop-types:
-        specifier: ^15.8.1
-        version: 15.8.1
       react:
         specifier: ^18.3.1
         version: 18.3.1
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
-      react-shadow:
-        specifier: ^20.5.0
-        version: 20.6.0(prop-types@15.8.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-window:
-        specifier: ^1.8.10
+        specifier: ^1.8.11
         version: 1.8.11(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      semver:
-        specifier: ^7.6.3
-        version: 7.6.3
       tailwind-merge:
-        specifier: ^2.5.5
+        specifier: ^2.6.0
         version: 2.6.0
       use-resize-observer:
         specifier: ^9.1.0
@@ -417,11 +396,8 @@ importers:
       util:
         specifier: ^0.12.5
         version: 0.12.5
-      vite:
-        specifier: ^6.0.3
-        version: 6.0.7(@types/node@22.10.6)(jiti@1.21.7)(terser@5.37.0)(tsx@4.19.2)(yaml@2.7.0)
       zustand:
-        specifier: ^4.5.5
+        specifier: ^4.5.6
         version: 4.5.6(@types/react@18.3.18)(react@18.3.1)
     devDependencies:
       '@amzn/eslint-config':
@@ -436,14 +412,17 @@ importers:
       '@aws/amazon-q-developer-cli-shared':
         specifier: workspace:^
         version: link:../shared
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
       '@types/node':
-        specifier: ^22.10.1
+        specifier: ^22.10.6
         version: 22.10.6
       '@types/react':
-        specifier: ^18.3.14
+        specifier: ^18.3.18
         version: 18.3.18
       '@types/react-dom':
-        specifier: ^18.3.2
+        specifier: ^18.3.5
         version: 18.3.5(@types/react@18.3.18)
       '@types/react-window':
         specifier: ^1.8.8
@@ -454,27 +433,36 @@ importers:
       '@vitejs/plugin-legacy':
         specifier: ^6.0.0
         version: 6.0.0(terser@5.37.0)(vite@6.0.7(@types/node@22.10.6)(jiti@1.21.7)(terser@5.37.0)(tsx@4.19.2)(yaml@2.7.0))
+      '@vitejs/plugin-react':
+        specifier: ^4.3.4
+        version: 4.3.4(vite@6.0.7(@types/node@22.10.6)(jiti@1.21.7)(terser@5.37.0)(tsx@4.19.2)(yaml@2.7.0))
+      '@withfig/autocomplete-types':
+        specifier: ^1.31.0
+        version: 1.31.0
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.20(postcss@8.5.1)
       eslint:
-        specifier: ^9.16.0
+        specifier: ^9.18.0
         version: 9.18.0(jiti@1.21.7)
       postcss:
-        specifier: ^8.4.49
+        specifier: ^8.5.1
         version: 8.5.1
       prettier:
         specifier: ^3.4.2
         version: 3.4.2
       tailwindcss:
-        specifier: ^3.4.16
+        specifier: ^3.4.17
         version: 3.4.17(ts-node@10.9.2(@types/node@22.10.6)(typescript@5.7.3))
       terser:
         specifier: ^5.37.0
         version: 5.37.0
       typescript:
-        specifier: ^5.7.2
+        specifier: ^5.7.3
         version: 5.7.3
+      vite:
+        specifier: ^6.0.7
+        version: 6.0.7(@types/node@22.10.6)(jiti@1.21.7)(terser@5.37.0)(tsx@4.19.2)(yaml@2.7.0)
       vitest:
         specifier: ^2.1.8
         version: 2.1.8(@types/node@22.10.6)(@vitest/ui@2.1.8)(jsdom@24.1.0)(terser@5.37.0)
@@ -4202,9 +4190,6 @@ packages:
     resolution: {integrity: sha512-AXcZb6vzzrFAUE61HnN4mpLqd/cSIwNQjtNWR0euPm6y0iqx3G4gOXaIDdtdDwZmhwe82LA6+zinmW4UBWVePQ==}
     engines: {node: '>=16.17.0'}
 
-  humps@2.0.1:
-    resolution: {integrity: sha512-E0eIbrFWUhwfXJmsbdjRQFQPrl5pTEoKlz163j1mTqqUnU9PgR4AgB8AIITzuB3vLBdxZXyZ9TDIrwB2OASz4g==}
-
   husky@9.1.7:
     resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
     engines: {node: '>=18'}
@@ -5291,13 +5276,6 @@ packages:
     peerDependenciesMeta:
       react-dom:
         optional: true
-
-  react-shadow@20.6.0:
-    resolution: {integrity: sha512-kY+w4OMNZ8Nj9YI9eiTgvvJ/wYO7XyX1D/LYhvwQZv5vw69iCiDtGB0BX/2U8gLUuZAMN+x/7rHJKqHh8wXFHQ==}
-    peerDependencies:
-      prop-types: ^15.0.0
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-      react-dom: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   react-style-singleton@2.2.3:
     resolution: {integrity: sha512-b6jSvxvVnyptAiLjbkWLE/lOnR4lfTtDAl+eUC7RZy+QQWc6wRzIV2CE6xBuMmDxc2qIihtDCZD5NPOFl7fRBQ==}
@@ -10419,8 +10397,6 @@ snapshots:
 
   human-signals@5.0.0: {}
 
-  humps@2.0.1: {}
-
   husky@9.1.7: {}
 
   hyperlinker@1.0.0: {}
@@ -11679,13 +11655,6 @@ snapshots:
       set-cookie-parser: 2.7.1
       turbo-stream: 2.4.0
     optionalDependencies:
-      react-dom: 18.3.1(react@18.3.1)
-
-  react-shadow@20.6.0(prop-types@15.8.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
-    dependencies:
-      humps: 2.0.1
-      prop-types: 15.8.1
-      react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
   react-style-singleton@2.2.3(@types/react@18.3.18)(react@18.3.1):
