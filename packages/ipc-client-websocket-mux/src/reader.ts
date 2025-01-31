@@ -23,10 +23,11 @@ export class PacketReader {
   }
 
   setSocket(socket: Socket) {
+    this.socket.active = false;
+
     // clear buffer on socket change
     this.buffer = "";
     // update the socket
-    this.socket.active = false;
     this.socket = socket;
     this.socket.onMessage((data) => {
       if (typeof data === "string") {

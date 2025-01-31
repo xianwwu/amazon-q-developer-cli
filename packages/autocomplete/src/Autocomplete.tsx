@@ -54,6 +54,7 @@ import {
 } from "./state/types";
 import DevModeWarning from "./components/DevModeWarning";
 import AutocompleteWindow from "./components/AutocompleteWindow";
+import { WindowPosition } from "@aws/amazon-q-developer-cli-api-bindings";
 
 const getIconPath = (cwd: string): string => {
   const home = window?.fig?.constants?.home;
@@ -101,10 +102,11 @@ function AutocompleteInner({
   // onDisconnect,
   sessionId: sessionIdProp,
 }: AutocompleteProps) {
-  const isWeb = useMemo(
-    () => _ipcClientProps.type === AutocompleteConnectionType.CS_WEBSOCKET,
-    [_ipcClientProps.type],
-  );
+  // const isWeb = useMemo(
+  //   () => _ipcClientProps.type === AutocompleteConnectionType.CS_WEBSOCKET,
+  //   [_ipcClientProps.type],
+  // );
+  const isWeb = false;
 
   const {
     generatorStates,
@@ -112,7 +114,7 @@ function AutocompleteInner({
     selectedIndex,
     visibleState,
     setVisibleState,
-    figState: { cwd, shellContext },
+    figState: { buffer, cwd, shellContext },
     parserResult: { searchTerm, currentArg },
     settings,
     setSettings,
@@ -160,7 +162,6 @@ function AutocompleteInner({
     isDescriptionSeparate: false,
     isAboveCursor: true,
     descriptionPosition: "unknown" as DescriptionPosition,
-    previewPosition: "right" as DescriptionPosition,
   });
   const {
     [SETTINGS.THEME]: theme,
@@ -229,7 +230,6 @@ function AutocompleteInner({
       isAboveCursor: alwaysShowDescription ? state.isAboveCursor : false,
       isDescriptionSeparate: alwaysShowDescription as boolean,
       descriptionPosition: "unknown",
-      previewPosition: state.previewPosition,
     }));
   }, [alwaysShowDescription]);
 
@@ -240,7 +240,6 @@ function AutocompleteInner({
       isAboveCursor: state.isDescriptionSeparate ? false : state.isAboveCursor,
       isDescriptionSeparate: !state.isDescriptionSeparate,
       descriptionPosition: "unknown",
-      previewPosition: state.previewPosition,
     }));
   };
 
@@ -382,6 +381,53 @@ function AutocompleteInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIndex, windowState.descriptionPosition]);
 
+  const setDescriptionState = useCallback(
+    (isClipped?: boolean, isAbove?: boolean) => {
+      setWindowState((state) =>
+        state.isDescriptionSeparate
+          ? {
+              ...state,
+              descriptionPosition: isClipped ? "left" : "right",
+              isAboveCursor: isAbove ?? false,
+            }
+          : state,
+      );
+    },
+    [setWindowState],
+  );
+
+  useEffect(() => {
+    let isMostRecentEffect = true;
+    if (windowState.isDescriptionSeparate) {
+      if (isWeb) {
+        if (isMostRecentEffect) setDescriptionState();
+      } else {
+        WindowPosition.isValidFrame({
+          height: size.maxHeight,
+          width: size.suggestionWidth + POPOUT_WIDTH,
+          anchorX: 0,
+        })
+          .then(({ isAbove, isClipped }) => {
+            if (isMostRecentEffect) setDescriptionState(isClipped, isAbove);
+          })
+          .catch((err) => {
+            logger.error("Error checking window position", { err });
+          });
+      }
+    }
+
+    return () => {
+      isMostRecentEffect = false;
+    };
+  }, [
+    isWeb,
+    setDescriptionState,
+    size.suggestionWidth,
+    size.maxHeight,
+    buffer,
+    windowState.isDescriptionSeparate,
+  ]);
+
   const hasSpecialArgDescription =
     (enableMocks ? suggestionsMock : suggestions).length === 0 &&
     Boolean(currentArg?.name || currentArg?.description);
@@ -389,7 +435,6 @@ function AutocompleteInner({
   const onResize: (size: { height?: number; width?: number }) => void =
     useCallback(
       ({ height, width }) => {
-        if (isWeb) return;
         const onLeft =
           !hasSpecialArgDescription &&
           windowState.descriptionPosition === "unknown";
@@ -407,9 +452,6 @@ function AutocompleteInner({
         windowState.descriptionPosition,
         hasSpecialArgDescription,
         isHidden,
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        (enableMocks ? suggestionsMock : suggestions)[selectedIndex]
-          ?.previewComponent,
         isWeb,
       ],
     );

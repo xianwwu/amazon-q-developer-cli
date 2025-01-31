@@ -255,14 +255,18 @@ const getTitle = (
                   }
                   key={t.id}
                 >
-                  <span className="brightness-125">{t.highlight}</span>
+                  <span className={isWeb ? "" : "brightness-125"}>
+                    {t.highlight}
+                  </span>
                 </mark>
               );
             }
             if (t.type === "prefix") {
               return (
                 <mark
-                  className="bg-transparent text-inherit underline"
+                  className={
+                    isWeb ? "" : "bg-transparent text-inherit underline"
+                  }
                   key={t.id}
                 >
                   {t.highlight}
@@ -273,7 +277,10 @@ const getTitle = (
           })}
         </>
       ))}
-      <span className="opacity-50"> {argString} </span>
+      <span className={isWeb ? "argument-type" : "opacity-50"}>
+        {" "}
+        {argString}{" "}
+      </span>
     </>
   );
 };
@@ -322,7 +329,7 @@ const Suggestion = ({
         }}
         suggestion={suggestion}
         iconPath={iconPath}
-        isWeb={isWeb}
+        isWeb={true}
       />
       <div className="suggestion-title overflow-hidden" ref={textContainerRef}>
         <div

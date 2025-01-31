@@ -20,8 +20,13 @@ class WebsocktShim {
 
   public on(
     event: "autocompleteMessage",
-    listener: (data: { data: string }) => void,
-  ) {
+    listener: (data: MessageEvent) => void,
+  ): this;
+  public on(event: "close", listener: () => void): this;
+  public on(
+    event: "autocompleteMessage" | "close",
+    listener: (data: MessageEvent) => void,
+  ): this {
     this.emitter.on(event, listener);
     return this;
   }

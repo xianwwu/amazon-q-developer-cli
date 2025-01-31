@@ -42,6 +42,7 @@ interface UrlIcon {
 interface PresetIcon {
   type: "preset";
   icon: string;
+  fileType?: "png" | "svg";
 }
 
 interface PathIcon {
@@ -128,8 +129,10 @@ function parseIcon(icon: string, iconPath: string): Icon {
   }
 }
 
-function cdnIcon(icon: IconName) {
-  return new URL(`https://specs.q.us-east-1.amazonaws.com/icons/${icon}.png`);
+function cdnIcon(icon: IconName, fileType: "png" | "svg" = "png") {
+  return new URL(
+    `https://specs.q.us-east-1.amazonaws.com/icons/${icon}.${fileType}`,
+  );
 }
 
 function transformIconUri(icon: ImgIcon, isWeb: boolean): URL | undefined {
@@ -141,7 +144,7 @@ function transformIconUri(icon: ImgIcon, isWeb: boolean): URL | undefined {
     const type = icon.icon as IconName;
     if (type) {
       if (ICONS.includes(type)) {
-        return cdnIcon(type);
+        return cdnIcon(type, icon.fileType);
       }
     }
   }
@@ -159,7 +162,11 @@ function transformIconUri(icon: ImgIcon, isWeb: boolean): URL | undefined {
 
   if (icon.type === "path") {
     if (isWeb) {
-      return cdnIcon("command");
+      if (icon.kind === "folder") {
+        return cdnIcon("folder", "svg");
+      } else {
+        return cdnIcon("file", "svg");
+      }
     } else {
       return new URL(`fig://path/${icon.path}`);
     }
@@ -209,7 +216,9 @@ function IconImg({
         minWidth: height,
         minHeight: height,
         fontSize: typeof height === "number" ? height * 0.6 : height,
-        backgroundImage: isTemplate ? `url(${cdnIcon("template")})` : `url(${url})`,
+        backgroundImage: isTemplate
+          ? `url(${cdnIcon("template")})`
+          : `url(${url})`,
       }}
     >
       {badge &&
@@ -243,12 +252,9 @@ const SuggestionIcon = ({
   isWeb,
 }: SuggestionIconProps) => {
   const { name, type } = suggestion;
-  console.log(suggestion.icon);
   const icon = parseIcon(suggestion.icon ?? "", iconPath);
   let height = style.height;
   let img;
-
-  console.log(icon);
 
   // The icon is a Emoji or text if it is <4 length
   if (icon.type === "emoji") {
@@ -281,6 +287,23 @@ const SuggestionIcon = ({
     );
   } else if (icon.type === "url") {
     img = <IconImg icon={icon} isWeb={isWeb} height={height ?? 0} />;
+  } else if (icon.type === "path" && isWeb) {
+    if (suggestion.type === "file" || suggestion.type == "folder") {
+      img = (
+        <IconImg
+          icon={{
+            type: "preset",
+            icon: suggestion.type,
+            fileType: "svg",
+          }}
+          isWeb={isWeb}
+          height={height ?? 0}
+        />
+      );
+    } else {
+      // For now icons are hidden for paths in web
+      return null;
+    }
   } else {
     const srcMap: Partial<Record<SuggestionType, ImgIcon>> = {
       folder: { type: "path", path: `${iconPath}${name}`, kind: "folder" },

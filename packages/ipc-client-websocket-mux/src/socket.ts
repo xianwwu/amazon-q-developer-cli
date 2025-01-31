@@ -7,6 +7,9 @@ export interface CsWebsocket {
     event: "autocompleteMessage",
     listener: (message: AutocompleteMessage) => void,
   ): this;
+
+  on(event: "close", listener: () => void): this;
+
   send(message: string): void;
 }
 
@@ -22,11 +25,10 @@ type WebsocketKind =
 
 export class Socket {
   websocketKind: WebsocketKind;
-  active: boolean;
+  active: boolean = true;
 
   private constructor(websocketKind: WebsocketKind) {
     this.websocketKind = websocketKind;
-    this.active = true;
   }
 
   static real(websocket: WebSocket): Socket {
@@ -38,27 +40,36 @@ export class Socket {
   }
 
   onMessage(listener: (message: string) => void) {
-    if (this.active) {
-      if (this.websocketKind.type === "cswebsocket") {
-        this.websocketKind.socket.on("autocompleteMessage", ({ data }) => {
+    if (this.websocketKind.type === "cswebsocket") {
+      this.websocketKind.socket.on("autocompleteMessage", ({ data }) => {
+        if (this.active) {
           listener(data);
-        });
-      } else {
-        this.websocketKind.socket.addEventListener("message", (event) => {
+        }
+      });
+    } else {
+      this.websocketKind.socket.addEventListener("message", (event) => {
+        if (this.active) {
           const chunk = new Uint8Array(event.data);
           const message = new TextDecoder().decode(chunk);
           listener(message);
-        });
-      }
+        }
+      });
     }
   }
 
   onClose(listener: () => void) {
-    this.active = false;
     if (this.websocketKind.type === "cswebsocket") {
-      // this.websocketKind.socket.on("close", listener)
+      this.websocketKind.socket.on("close", () => {
+        if (this.active) {
+          listener();
+        }
+      });
     } else {
-      this.websocketKind.socket.addEventListener("close", listener);
+      this.websocketKind.socket.addEventListener("close", () => {
+        if (this.active) {
+          listener();
+        }
+      });
     }
   }
 
@@ -73,11 +84,13 @@ export class Socket {
   }
 
   close() {
-    this.active = false;
-    if (this.websocketKind.type === "cswebsocket") {
-      // this.websocketKind.socket.close()
-    } else {
-      this.websocketKind.socket.close();
+    if (this.active) {
+      this.active = false;
+      if (this.websocketKind.type === "cswebsocket") {
+        // this.websocketKind.socket.close()
+      } else {
+        this.websocketKind.socket.close();
+      }
     }
   }
 }
