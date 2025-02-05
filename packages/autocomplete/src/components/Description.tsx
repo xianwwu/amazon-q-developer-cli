@@ -139,7 +139,7 @@ const Description = ({
   return (
     <div
       id="description"
-      className="popout"
+      className="description-container popout"
       ref={descriptionRef}
       style={{
         maxHeight,
@@ -147,12 +147,12 @@ const Description = ({
       }}
     >
       <div
-        className="flex w-full flex-col gap-1 pb-1 pt-0.5"
+        className="description-flex flex w-full flex-col gap-1 pb-1 pt-0.5"
         style={{
           maxHeight: maxHeight - 10,
         }}
       >
-        <div className="flex-shrink overflow-y-auto pl-1.5 pr-1">
+        <div className="description-scrollable-area flex-shrink overflow-y-auto pl-1.5 pr-1">
           {itemDescription.trim() ? (
             <span
               style={{

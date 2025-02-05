@@ -36,7 +36,6 @@ import {
   useSystemTheme,
 } from "./hooks/helpers";
 
-import Suggestion from "./components/Suggestion";
 import Description, { DescriptionPosition } from "./components/Description";
 import { setFontFamily, setFontSize, setTheme } from "./fig/themes";
 import LoadingIcon from "./components/LoadingIcon";
@@ -55,6 +54,8 @@ import {
 import DevModeWarning from "./components/DevModeWarning";
 import AutocompleteWindow from "./components/AutocompleteWindow";
 import { WindowPosition } from "@aws/amazon-q-developer-cli-api-bindings";
+import Suggestion from "./components/Suggestion";
+import type { Suggestion as SuggestionT } from "@aws/amazon-q-developer-cli-shared/internal";
 
 const getIconPath = (cwd: string): string => {
   const home = window?.fig?.constants?.home;
@@ -92,6 +93,8 @@ export interface AutocompleteProps {
       event: KeyboardEvent,
     ) => MaybePromise<{ multiplexerConnected: boolean }>,
   ) => void;
+
+  onSelect: (suggestion: SuggestionT) => void;
 }
 
 function AutocompleteInner({
@@ -101,12 +104,12 @@ function AutocompleteInner({
   setVisibilityCallback,
   // onDisconnect,
   sessionId: sessionIdProp,
+  onSelect,
 }: AutocompleteProps) {
-  // const isWeb = useMemo(
-  //   () => _ipcClientProps.type === AutocompleteConnectionType.CS_WEBSOCKET,
-  //   [_ipcClientProps.type],
-  // );
-  const isWeb = false;
+  const isWeb = useMemo(
+    () => _ipcClientProps.type === AutocompleteConnectionType.CS_WEBSOCKET,
+    [_ipcClientProps.type],
+  );
 
   const {
     generatorStates,
@@ -514,7 +517,7 @@ function AutocompleteInner({
   if (isLoading) {
     return (
       <AutocompleteWindow>
-        <LoadingIcon />
+        <LoadingIcon className="autocomplete-loading" />
       </AutocompleteWindow>
     );
   }
@@ -565,7 +568,10 @@ function AutocompleteInner({
                   (enableMocks ? suggestionsMock : suggestions)[index]
                 }
                 commonPrefix={commonPrefix || ""}
-                onClick={(item) => insertTextForItem(item)}
+                onClick={(item: SuggestionT) => {
+                  onSelect(item);
+                  insertTextForItem(item);
+                }}
                 isActive={selectedIndex === index}
                 searchTerm={searchTerm}
                 fuzzySearchEnabled={fuzzySearchEnabled}

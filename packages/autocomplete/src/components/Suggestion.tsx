@@ -265,7 +265,9 @@ const getTitle = (
               return (
                 <mark
                   className={
-                    isWeb ? "" : "bg-transparent text-inherit underline"
+                    isWeb
+                      ? "prefix-highlight"
+                      : "bg-transparent text-inherit underline"
                   }
                   key={t.id}
                 >

@@ -40,15 +40,10 @@ export class WebsocketMuxBackend implements IpcClient {
 
   constructor(websocket: CsWebsocket) {
     const socket = Socket.cs(websocket);
-    console.log("1. socket created");
     this.packetStream = new PacketStream(socket);
-    console.log("2. packet stream created");
     this.packetStream.onPacket(async (packet) => {
-      console.log("3. packet received");
       const hostbound = await packetToHostbound(packet);
-      console.log("4. decoded hostbound", { hostbound });
       this.handleHostbound(hostbound);
-      console.log("5. hostbound handled");
     });
   }
 
@@ -58,7 +53,6 @@ export class WebsocketMuxBackend implements IpcClient {
 
   private handleHostbound(message: Hostbound) {
     const submessage = message.submessage;
-    console.log(submessage);
     if (submessage.value?.$unknown && submessage.value.$unknown.length > 0) {
       console.warn("Unknown request", submessage.value);
       return;
@@ -153,7 +147,6 @@ export class WebsocketMuxBackend implements IpcClient {
   }
 
   insertText(sessionId: string, request: InsertTextRequest): void {
-    console.log("insertText");
     this.sendClientboundRequest(sessionId, undefined, {
       case: "insertText",
       value: request,
@@ -161,7 +154,6 @@ export class WebsocketMuxBackend implements IpcClient {
   }
 
   intercept(sessionId: string, request: InterceptRequest): void {
-    console.log("intercept");
     this.sendClientboundRequest(sessionId, undefined, {
       case: "intercept",
       value: request,
