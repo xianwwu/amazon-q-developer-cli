@@ -94,7 +94,7 @@ export interface AutocompleteProps {
     ) => MaybePromise<{ multiplexerConnected: boolean }>,
   ) => void;
 
-  onSelect: (suggestion: SuggestionT) => void;
+  onSelect?: (suggestion: SuggestionT) => void;
 }
 
 function AutocompleteInner({
@@ -569,7 +569,7 @@ function AutocompleteInner({
                 }
                 commonPrefix={commonPrefix || ""}
                 onClick={(item: SuggestionT) => {
-                  onSelect(item);
+                  if (onSelect) onSelect(item);
                   insertTextForItem(item);
                 }}
                 isActive={selectedIndex === index}
