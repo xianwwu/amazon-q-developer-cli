@@ -42,8 +42,12 @@ export class WebsocketMuxBackend implements IpcClient {
     const socket = Socket.cs(websocket);
     this.packetStream = new PacketStream(socket);
     this.packetStream.onPacket(async (packet) => {
-      const hostbound = await packetToHostbound(packet);
-      this.handleHostbound(hostbound);
+      try {
+        const hostbound = await packetToHostbound(packet);
+        this.handleHostbound(hostbound);
+      } catch (_err: unknown) {
+        /* ignore */
+      }
     });
   }
 
