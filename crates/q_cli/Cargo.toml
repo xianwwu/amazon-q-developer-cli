@@ -13,8 +13,17 @@ workspace = true
 [features]
 default = []
 wayland = ["arboard/wayland-data-control"]
+achat = [
+    "dep:aws-config",
+    "dep:aws-sdk-bedrockruntime",
+    "dep:aws-smithy-runtime-api",
+]
 
 [dependencies]
+aws-config = { version = "1.5.11", optional = true }
+aws-sdk-bedrockruntime = { version = "1.65.0", optional = true }
+aws-smithy-runtime-api = { version = "1.7.3", optional = true }
+
 amzn-codewhisperer-client.workspace = true
 amzn-codewhisperer-streaming-client.workspace = true
 anstream.workspace = true

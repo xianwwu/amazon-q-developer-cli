@@ -2,6 +2,7 @@
 
 pub mod app;
 mod chat;
+mod achat;
 mod completion;
 mod debug;
 mod diagnostics;
@@ -185,6 +186,12 @@ pub enum CliRootCommands {
         /// The first question to ask
         input: Option<String>,
     },
+    /// (Beta) Agentic AI assistant in your terminal
+    #[command(alias("achat"))]
+    AChat {
+        /// The first question to ask
+        input: Option<String>,
+    },
     /// Inline shell completions
     #[command(subcommand)]
     Inline(inline::InlineSubcommand),
@@ -219,6 +226,7 @@ impl CliRootCommands {
             CliRootCommands::Version => "version",
             CliRootCommands::Dashboard => "dashboard",
             CliRootCommands::Chat { .. } => "chat",
+            CliRootCommands::AChat { .. } => "achat",
             CliRootCommands::Inline(_) => "inline",
         }
     }
@@ -329,6 +337,7 @@ impl Cli {
                 CliRootCommands::Version => Self::print_version(),
                 CliRootCommands::Dashboard => launch_dashboard(false).await,
                 CliRootCommands::Chat { input } => chat::chat(input.unwrap_or_default()).await,
+                CliRootCommands::AChat { input } => achat::chat(input.unwrap_or_default()).await,
                 CliRootCommands::Inline(subcommand) => subcommand.execute(&cli_context).await,
             },
             // Root command
