@@ -287,23 +287,22 @@ const SuggestionIcon = ({
     );
   } else if (icon.type === "url") {
     img = <IconImg icon={icon} isWeb={isWeb} height={height ?? 0} />;
-  } else if (icon.type === "path" && isWeb) {
-    if (suggestion.type === "file" || suggestion.type == "folder") {
-      img = (
-        <IconImg
-          icon={{
-            type: "preset",
-            icon: suggestion.type,
-            fileType: "svg",
-          }}
-          isWeb={isWeb}
-          height={height ?? 0}
-        />
-      );
-    } else {
-      // For now icons are hidden for paths in web
-      return null;
-    }
+  } else if (
+    icon.type === "path" &&
+    (suggestion.type === "file" || suggestion.type == "folder") &&
+    isWeb
+  ) {
+    img = (
+      <IconImg
+        icon={{
+          type: "preset",
+          icon: suggestion.type,
+          fileType: "svg",
+        }}
+        isWeb={isWeb}
+        height={height ?? 0}
+      />
+    );
   } else {
     const srcMap: Partial<Record<SuggestionType, ImgIcon>> = {
       folder: { type: "path", path: `${iconPath}${name}`, kind: "folder" },

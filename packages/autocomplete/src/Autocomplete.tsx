@@ -94,7 +94,7 @@ export interface AutocompleteProps {
     ) => MaybePromise<{ multiplexerConnected: boolean }>,
   ) => void;
 
-  onSelect?: (suggestion: SuggestionT) => void;
+  onSizeChange?: () => void;
 }
 
 function AutocompleteInner({
@@ -104,7 +104,7 @@ function AutocompleteInner({
   setVisibilityCallback,
   // onDisconnect,
   sessionId: sessionIdProp,
-  onSelect,
+  onSizeChange,
 }: AutocompleteProps) {
   const isWeb = useMemo(
     () => _ipcClientProps.type === AutocompleteConnectionType.CS_WEBSOCKET,
@@ -449,9 +449,14 @@ function AutocompleteInner({
           offsetFromBaseline: -3,
         };
         logger.debug("Setting window position", { frame });
+
+        if (onSizeChange) {
+          onSizeChange();
+        }
       },
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [
+        onSizeChange,
         windowState.descriptionPosition,
         hasSpecialArgDescription,
         isHidden,
@@ -568,10 +573,7 @@ function AutocompleteInner({
                   (enableMocks ? suggestionsMock : suggestions)[index]
                 }
                 commonPrefix={commonPrefix || ""}
-                onClick={(item: SuggestionT) => {
-                  if (onSelect) onSelect(item);
-                  insertTextForItem(item);
-                }}
+                onClick={(item: SuggestionT) => insertTextForItem(item)}
                 isActive={selectedIndex === index}
                 searchTerm={searchTerm}
                 fuzzySearchEnabled={fuzzySearchEnabled}

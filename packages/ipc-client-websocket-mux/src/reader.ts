@@ -66,7 +66,8 @@ export class PacketReader {
         }
         case "error": {
           // Forward parse errors to stream consumer
-          console.error(result.error);
+          // error is suppressed for now
+          // console.error(result.error);
           this.buffer = this.buffer.slice(result.charsConsumed);
           break;
         }
