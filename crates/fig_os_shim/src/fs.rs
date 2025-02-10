@@ -67,6 +67,15 @@ impl Fs {
         Self(Inner::Fake(Arc::new(Mutex::new(map))))
     }
 
+    pub async fn create_new(&self, path: impl AsRef<Path>) -> io::Result<fs::File> {
+        use inner::Inner;
+        match &self.0 {
+            Inner::Real => fs::File::create_new(path).await,
+            Inner::Chroot(root) => fs::File::create_new(append(root.path(), path)).await,
+            Inner::Fake(_) => Err(io::Error::new(io::ErrorKind::Other, "unimplemented")),
+        }
+    }
+
     pub async fn create_dir(&self, path: impl AsRef<Path>) -> io::Result<()> {
         use inner::Inner;
         match &self.0 {
@@ -575,5 +584,12 @@ mod tests {
         } else {
             panic!("tempdir should be created under root");
         }
+    }
+
+    #[tokio::test]
+    async fn test_create_new() {
+        let fs = Fs::new_chroot();
+        fs.create_new("my_file.txt").await.unwrap();
+        assert!(fs.create_new("my_file.txt").await.is_err());
     }
 }

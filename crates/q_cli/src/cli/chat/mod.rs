@@ -1,6 +1,6 @@
 mod api;
-mod parse;
-mod prompt;
+pub mod parse;
+pub mod prompt;
 mod stdio;
 
 use std::io::{
