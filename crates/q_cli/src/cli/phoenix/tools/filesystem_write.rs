@@ -8,56 +8,13 @@ use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
 use super::{
+    Error,
     InvokeOutput,
     Tool,
-    ToolError,
     ToolSpec,
 };
 
-pub const FILESYSTEM_WRITE: &str = r#"
-{
-  "name": "filesystem_write",
-  "description": "Custom editing tool for creating and editing files\n * The `create` command cannot be used if the specified `path` already exists as a file\n * If a `command` generates a long output, it will be truncated and marked with `<response clipped>` \n Notes for using the `str_replace` command:\n * The `old_str` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces!\n * If the `old_str` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in `old_str` to make it unique\n * The `new_str` parameter should contain the edited lines that should replace the `old_str`",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "command": {
-        "type": "string",
-        "enum": [
-          "create",
-          "str_replace",
-          "insert"
-        ],
-        "description": "The commands to run. Allowed options are: `create`, `str_replace`, `insert`."
-      },
-      "file_text": {
-        "description": "Required parameter of `create` command, with the content of the file to be created.",
-        "type": "string"
-      },
-      "insert_line": {
-        "description": "Required parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`.",
-        "type": "integer"
-      },
-      "new_str": {
-        "description": "Required parameter of `str_replace` command containing the new string. Required parameter of `insert` command containing the string to insert.",
-        "type": "string"
-      },
-      "old_str": {
-        "description": "Required parameter of `str_replace` command containing the string in `path` to replace.",
-        "type": "string"
-      },
-      "path": {
-        "description": "Absolute path to file or directory, e.g. `/repo/file.py` or `/repo`.",
-        "type": "string"
-      }
-    },
-    "required": [
-      "command",
-      "path"
-    ]
-  }
-}
-"#;
+pub const FILESYSTEM_WRITE: &str = include_str!("./specs/filesystem_write.json");
 
 pub fn filesystem_write() -> ToolSpec {
     serde_json::from_str(FILESYSTEM_WRITE).expect("deserializing tool spec should succeed")
@@ -70,7 +27,7 @@ pub struct FileSystemWrite {
 }
 
 impl FileSystemWrite {
-    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, ToolError> {
+    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, Error> {
         Ok(Self {
             ctx,
             args: serde_json::from_value(args)?,
@@ -110,7 +67,7 @@ impl std::fmt::Display for FileSystemWrite {
 
 #[async_trait]
 impl Tool for FileSystemWrite {
-    async fn invoke(&self) -> Result<InvokeOutput, ToolError> {
+    async fn invoke(&self) -> Result<InvokeOutput, Error> {
         let fs = self.ctx.fs();
         match &self.args {
             FileSystemWriteArgs::Create { path, file_text } => {
@@ -122,13 +79,13 @@ impl Tool for FileSystemWrite {
                 let file = fs.read_to_string(&path).await?;
                 let matches = file.match_indices(old_str).collect::<Vec<_>>();
                 match matches.len() {
-                    0 => Err(ToolError::InvalidToolUse("no occurrences of old_str were found".into())),
+                    0 => Err(Error::InvalidToolUse("no occurrences of old_str were found".into())),
                     1 => {
                         let file = file.replacen(old_str, new_str, 1);
                         fs.write(path, file).await?;
                         Ok(Default::default())
                     },
-                    x => Err(ToolError::InvalidToolUse(
+                    x => Err(Error::InvalidToolUse(
                         format!("{x} occurrences of old_str were found when only 1 is expected").into(),
                     )),
                 }

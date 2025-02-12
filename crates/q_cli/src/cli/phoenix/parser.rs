@@ -4,20 +4,19 @@ use std::sync::Arc;
 use aws_sdk_bedrockruntime::error::SdkError;
 use aws_sdk_bedrockruntime::operation::converse_stream::{
     ConverseStreamError,
-    ConverseStreamOutput as ConverseStreamResponse,
+    // ConverseStreamOutput as ConverseStreamResponse,
 };
 use aws_sdk_bedrockruntime::types::builders::MessageBuilder;
 use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
 use aws_sdk_bedrockruntime::types::{
-    ContentBlock,
+    ContentBlock as BedrockContentBlock,
     ContentBlockDelta,
     ContentBlockDeltaEvent,
     ContentBlockStart,
-    ConversationRole,
+    ConversationRole as BedrockConversationRole,
     ConverseStreamMetadataEvent,
     ConverseStreamOutput,
-    Message,
-    StopReason,
+    Message as BedrockMessage,
     ToolUseBlock,
     ToolUseBlockStart,
 };
@@ -30,17 +29,28 @@ use tracing::{
     warn,
 };
 
+use super::client::ConverseStreamResponse;
+use super::error::Error;
 use super::tools::{
     Tool,
     ToolConfig,
-    ToolError,
 };
-use crate::cli::achat::tools::{
+use super::types::StopReason;
+use super::{
+    ConversationRole,
+    Message,
+};
+use crate::cli::phoenix::tools::{
     new_tool,
     serde_value_to_document,
 };
 
 /// State associated with parsing a [ConverseStreamResponse] into a [Message].
+///
+/// # Usage
+///
+/// You should repeatedly call [Self::recv] to receive [ResponseEvent]'s until a
+/// [ResponseEvent::EndStream] value is returned.
 #[derive(Debug)]
 pub struct ResponseParser {
     ctx: Arc<Context>,
@@ -49,7 +59,7 @@ pub struct ResponseParser {
     /// The [ToolConfig] used to generate the response.
     tool_config: ToolConfig,
     /// The list of [ContentBlock] items to be used in the final parsed message.
-    content: Vec<ContentBlock>,
+    content: Vec<BedrockContentBlock>,
     /// The [StopReason] for the associated [ConverseStreamResponse].
     stop_reason: Option<StopReason>,
     assistant_text: String,
@@ -69,9 +79,10 @@ impl ResponseParser {
         }
     }
 
-    pub async fn recv(&mut self) -> Result<ResponseEvent, RecvError> {
+    /// Consumes the associated [ConverseStreamResponse] until a valid [ResponseEvent] is parsed.
+    pub async fn recv(&mut self) -> Result<ResponseEvent, Error> {
         loop {
-            match self.response.stream.recv().await {
+            match self.response.recv().await {
                 Ok(Some(output)) => {
                     trace!(?output, "Received output");
                     match output {
@@ -81,7 +92,7 @@ impl ResponseParser {
                                 return Ok(ResponseEvent::AssistantText(text));
                             },
                             _ => {
-                                return Err(RecvError::Custom(
+                                return Err(Error::Custom(
                                     format!("Unexpected event while reading the model response: {:?}", event).into(),
                                 ));
                             },
@@ -99,10 +110,10 @@ impl ResponseParser {
                             // This should only match for the AI response.
                             assert!(event.content_block_index == 0);
                             let assistant_text = std::mem::take(&mut self.assistant_text);
-                            self.content.push(ContentBlock::Text(assistant_text));
+                            self.content.push(BedrockContentBlock::Text(assistant_text));
                         },
                         ConverseStreamOutput::MessageStart(event) => {
-                            assert!(event.role == ConversationRole::Assistant);
+                            assert!(event.role == BedrockConversationRole::Assistant);
                         },
                         ConverseStreamOutput::MessageStop(event) => {
                             match event.stop_reason {
@@ -112,7 +123,7 @@ impl ResponseParser {
                                 },
                                 StopReason::MaxTokens => {
                                     // todo - how to handle max tokens?
-                                    return Err(RecvError::MaxTokensReached("uh oh".into()));
+                                    return Err(Error::MaxTokensReached("Max tokens reached".into()));
                                 },
                                 other => {
                                     warn!("Unhandled message stop reason: {}", other);
@@ -132,33 +143,32 @@ impl ResponseParser {
                     let stop_reason = match self.stop_reason.take() {
                         Some(v) => v,
                         None => {
-                            return Err(RecvError::Custom(
+                            return Err(Error::Custom(
                                 "Unexpected end of stream before receiving a stop reason".into(),
                             ));
                         },
                     };
                     let content = std::mem::take(&mut self.content);
-                    let message = Message::builder()
-                        .role(ConversationRole::Assistant)
-                        .set_content(Some(content))
-                        .build()
-                        .expect("building the AI message should not fail");
+                    let message = Message::new(
+                        ConversationRole::Assistant,
+                        content.into_iter().map(Into::into).collect(),
+                    );
                     return Ok(ResponseEvent::EndStream {
                         stop_reason,
                         message,
                         metadata: self.metadata_event.take().map(|ev| ev.into()),
                     });
                 },
-                Err(err) => return Err(RecvError::SdkError(err)),
+                Err(err) => return Err(Error::SdkError(err)),
             }
         }
     }
 
-    async fn parse_tool_use(&mut self, start: ToolUseBlockStart) -> Result<ToolUse, RecvError> {
+    async fn parse_tool_use(&mut self, start: ToolUseBlockStart) -> Result<ToolUse, Error> {
         let mut tool_args = String::new();
         let tool_name = &start.name;
         loop {
-            match self.response.stream.recv().await {
+            match self.response.recv().await {
                 Ok(
                     ref l @ Some(ConverseStreamOutput::ContentBlockDelta(ContentBlockDeltaEvent {
                         delta: Some(ContentBlockDelta::ToolUse(ref tool)),
@@ -173,15 +183,15 @@ impl ResponseParser {
                     break;
                 },
                 Ok(event) => {
-                    return Err(RecvError::Custom(
+                    return Err(Error::Custom(
                         format!("Received unexpected event while parsing a tool use: {:?}", event).into(),
                     ));
                 },
-                Err(err) => return Err(RecvError::SdkError(err)),
+                Err(err) => return Err(Error::SdkError(err)),
             }
         }
         let value: serde_json::Value = serde_json::from_str(&tool_args)?;
-        self.content.push(ContentBlock::ToolUse(
+        self.content.push(BedrockContentBlock::ToolUse(
             ToolUseBlock::builder()
                 .tool_use_id(start.tool_use_id.clone())
                 .name(tool_name)
@@ -194,7 +204,7 @@ impl ResponseParser {
                 tool_use_id: start.tool_use_id,
                 tool: new_tool(Arc::clone(&self.ctx), &spec.name, value)?,
             }),
-            None => Err(RecvError::UnknownToolUse {
+            None => Err(Error::UnknownToolUse {
                 tool_name: tool_name.clone(),
             }),
         }
@@ -203,11 +213,20 @@ impl ResponseParser {
 
 #[derive(Debug)]
 pub enum ResponseEvent {
+    /// Text returned by the assistant. This should be displayed to the user as it is received.
     AssistantText(String),
+    /// A tool use requested by the assistant. This should be displayed to the user as it is
+    /// received.
     ToolUse(ToolUse),
+    /// Represents the end of the response. No more events will be returned.
     EndStream {
+        /// Indicates the response ended.
         stop_reason: StopReason,
+        /// The completed message containing all of the assistant text and tool use events
+        /// previously emitted. This should be stored in the conversation history and sent in
+        /// future conversation messages.
         message: Message,
+        /// Metadata associated with the response.
         metadata: Option<Metadata>,
     },
 }
@@ -220,22 +239,6 @@ impl From<ConverseStreamMetadataEvent> for Metadata {
     fn from(value: ConverseStreamMetadataEvent) -> Self {
         Self(value)
     }
-}
-
-#[derive(Debug, Error)]
-pub enum RecvError {
-    #[error(transparent)]
-    SdkError(#[from] SdkError<ConverseStreamOutputError, RawMessage>),
-    #[error(transparent)]
-    SerdeJson(#[from] serde_json::Error),
-    #[error(transparent)]
-    ToolError(#[from] ToolError),
-    #[error("Model requested the use of an unknown tool: {tool_name}")]
-    UnknownToolUse { tool_name: String },
-    #[error("{0}")]
-    MaxTokensReached(String),
-    #[error("{0}")]
-    Custom(Cow<'static, str>),
 }
 
 /// Represents a tool use requested by the assistant.

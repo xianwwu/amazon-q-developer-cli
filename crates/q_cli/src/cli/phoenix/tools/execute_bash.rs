@@ -8,31 +8,14 @@ use fig_os_shim::Context;
 use serde::Deserialize;
 
 use super::{
+    Error,
     InvokeOutput,
     OutputKind,
     Tool,
-    ToolError,
     ToolSpec,
 };
 
-pub const EXECUTE_BASH: &str = r#"
-{
-  "name": "execute_bash",
-  "description": "Execute the specified bash command",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "command": {
-        "type": "string",
-        "description": "Bash command to execute"
-      }
-    },
-    "required": [
-      "command"
-    ]
-  }
-}
-"#;
+pub const EXECUTE_BASH: &str = include_str!("./specs/execute_bash.json");
 
 pub fn execute_bash() -> ToolSpec {
     serde_json::from_str(EXECUTE_BASH).expect("deserializing tool spec should succeed")
@@ -47,7 +30,7 @@ pub struct ExecuteBash {
 }
 
 impl ExecuteBash {
-    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, ToolError> {
+    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, Error> {
         Ok(Self {
             ctx,
             args: serde_json::from_value(args)?,
@@ -65,7 +48,7 @@ impl std::fmt::Display for ExecuteBash {
 
 #[async_trait]
 impl Tool for ExecuteBash {
-    async fn invoke(&self) -> Result<InvokeOutput, ToolError> {
+    async fn invoke(&self) -> Result<InvokeOutput, Error> {
         let output = tokio::process::Command::new("bash")
             .arg("-c")
             .arg(&self.args.command)
@@ -73,12 +56,12 @@ impl Tool for ExecuteBash {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|err| {
-                ToolError::ToolInvocation(format!("Unable to spawn command '{}': {:?}", &self.args.command, err).into())
+                Error::ToolInvocation(format!("Unable to spawn command '{}': {:?}", &self.args.command, err).into())
             })?
             .wait_with_output()
             .await
             .map_err(|err| {
-                ToolError::ToolInvocation(
+                Error::ToolInvocation(
                     format!(
                         "Unable to wait on subprocess for command '{}': {:?}",
                         &self.args.command, err

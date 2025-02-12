@@ -2,7 +2,8 @@
 
 pub mod app;
 mod chat;
-mod achat;
+// #[cfg(feature = "phoenix")]
+mod phoenix;
 mod completion;
 mod debug;
 mod diagnostics;
@@ -187,8 +188,8 @@ pub enum CliRootCommands {
         input: Option<String>,
     },
     /// (Beta) Agentic AI assistant in your terminal
-    #[command(alias("achat"))]
-    AChat {
+    #[command(alias("p"))]
+    Phoenix {
         /// The first question to ask
         input: Option<String>,
     },
@@ -226,7 +227,7 @@ impl CliRootCommands {
             CliRootCommands::Version => "version",
             CliRootCommands::Dashboard => "dashboard",
             CliRootCommands::Chat { .. } => "chat",
-            CliRootCommands::AChat { .. } => "achat",
+            CliRootCommands::Phoenix { .. } => "phoenix",
             CliRootCommands::Inline(_) => "inline",
         }
     }
@@ -337,7 +338,7 @@ impl Cli {
                 CliRootCommands::Version => Self::print_version(),
                 CliRootCommands::Dashboard => launch_dashboard(false).await,
                 CliRootCommands::Chat { input } => chat::chat(input.unwrap_or_default()).await,
-                CliRootCommands::AChat { input } => achat::chat(input.unwrap_or_default()).await,
+                CliRootCommands::Phoenix { input } => phoenix::chat(input.unwrap_or_default()).await,
                 CliRootCommands::Inline(subcommand) => subcommand.execute(&cli_context).await,
             },
             // Root command

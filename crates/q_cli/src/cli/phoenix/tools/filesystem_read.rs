@@ -14,35 +14,11 @@ use super::{
     InvokeOutput,
     OutputKind,
     Tool,
-    ToolError,
+    Error,
     ToolSpec,
 };
 
-pub const FILESYSTEM_READ: &str = r#"
-{
-  "name": "filesystem_read",
-  "description": "A tool for viewing files and directories.\n* If `path` is a file, this tool displays the result of applying `cat -n`.\n* If `path` is a directory, this tool lists files and directories\n",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "description": "Absolute path to file or directory, e.g. `/repo/file.py` or `/repo`.",
-        "type": "string"
-      },
-      "read_range": {
-        "description": "Optional parameter when reading either files or directories.\n* When `path` is a file, if none is given, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file.\n* When `path` is a directory, if none is given, the results of `ls -l` are given. If provided, the current directory and indicated number of subdirectories will be shown, e.g. [2] will show the current directory and directories two levels deep.",
-        "items": {
-          "type": "integer"
-        },
-        "type": "array"
-      }
-    },
-    "required": [
-      "path"
-    ]
-  }
-}
-"#;
+pub const FILESYSTEM_READ: &str = include_str!("./specs/filesystem_read.json");
 
 pub fn filesystem_read() -> ToolSpec {
     serde_json::from_str(FILESYSTEM_READ).expect("deserializing tool spec should succeed")
@@ -55,19 +31,19 @@ pub struct FileSystemRead {
 }
 
 impl FileSystemRead {
-    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, ToolError> {
+    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, Error> {
         Ok(Self {
             ctx,
             args: serde_json::from_value(args)?,
         })
     }
 
-    pub fn read_range(&self) -> Result<Option<(i32, Option<i32>)>, ToolError> {
+    pub fn read_range(&self) -> Result<Option<(i32, Option<i32>)>, Error> {
         match &self.args.read_range {
             Some(range) => match (range.get(0), range.get(1)) {
                 (Some(depth), None) => Ok(Some((*depth, None))),
                 (Some(start), Some(end)) => Ok(Some((*start, Some(*end)))),
-                other => Err(ToolError::Custom(format!("Invalid read range: {:?}", other).into())),
+                other => Err(Error::Custom(format!("Invalid read range: {:?}", other).into())),
             },
             None => Ok(None),
         }
@@ -87,7 +63,7 @@ impl std::fmt::Display for FileSystemRead {
 
 #[async_trait]
 impl Tool for FileSystemRead {
-    async fn invoke(&self) -> Result<InvokeOutput, ToolError> {
+    async fn invoke(&self) -> Result<InvokeOutput, Error> {
         // Required for testing scenarios: since the path is passed directly as a command argument,
         // we need to pass it through the Context first.
         let path = self.ctx.fs().chroot_path_str(&self.args.path);

@@ -13,13 +13,14 @@ workspace = true
 [features]
 default = []
 wayland = ["arboard/wayland-data-control"]
-achat = [
+phoenix = [
     "dep:aws-config",
     "dep:aws-sdk-bedrockruntime",
     "dep:aws-smithy-runtime-api",
 ]
 
 [dependencies]
+# phoenix-specific dependencies
 aws-config = { version = "1.5.11", optional = true }
 aws-sdk-bedrockruntime = { version = "1.65.0", optional = true }
 aws-smithy-runtime-api = { version = "1.7.3", optional = true }

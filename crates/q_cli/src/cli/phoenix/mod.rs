@@ -1,27 +1,26 @@
+mod client;
+mod error;
 mod input_source;
 mod parser;
 mod tools;
+mod types;
 use std::io::Write;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use aws_sdk_bedrockruntime::Client as BedrockClient;
-use aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamOutput as ConverseStreamResponse;
 use aws_sdk_bedrockruntime::types::{
-    ContentBlock,
-    ConversationRole,
-    Message as BedrockMessage,
-    StopReason,
     ToolResultBlock,
     ToolResultContentBlock,
     ToolResultStatus,
 };
+use client::Client;
 use color_eyre::owo_colors::OwoColorize;
 use crossterm::{
     execute,
     style,
     terminal,
 };
+pub use error::Error;
 use eyre::{
     Result,
     bail,
@@ -37,13 +36,18 @@ use tools::{
     InvokeOutput,
     Tool,
     ToolConfig,
-    ToolError,
     load_tool_config,
 };
 use tracing::{
     debug,
     error,
     info,
+};
+use types::{
+    ContentBlock,
+    ConversationRole,
+    Message,
+    StopReason,
 };
 use winnow::Partial;
 use winnow::stream::Offset;
@@ -68,8 +72,6 @@ pub async fn chat(mut input: String) -> Result<ExitCode> {
     }
 
     region_check("chat")?;
-
-    info!("Running achat");
 
     let ctx = Context::new();
     let tool_config = load_tool_config();
@@ -104,6 +106,9 @@ fn create_system_prompt(ctx: &Context) -> Result<String> {
 You should only respond to tasks related to coding. You must never make assumptions about the user's environment. If you need more information,
 you MUST make a tool use request.
 
+When you execute a tool, do not assume that the user can see the output directly. You should either show the command output, or explain what the
+output contains in a friendly format.
+
 Context about the user's environment is provided below:
 - Current working directory: {}
 - Operating system: {}
@@ -120,7 +125,7 @@ fn ask_for_consent() -> Result<(), String> {
 
 #[async_trait::async_trait]
 impl Tool for ToolUse {
-    async fn invoke(&self) -> Result<InvokeOutput, ToolError> {
+    async fn invoke(&self) -> Result<InvokeOutput, Error> {
         debug!(?self, "invoking tool");
         self.tool.invoke().await
     }
@@ -196,13 +201,9 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                     _ => (),
                 }
 
-                messages.push(
-                    BedrockMessage::builder()
-                        .role(ConversationRole::User)
-                        .content(ContentBlock::Text(user_input))
-                        .build()
-                        .unwrap(),
-                );
+                messages.push(Message::new(ConversationRole::User, vec![ContentBlock::Text(
+                    user_input,
+                )]));
 
                 response = Some(client.send_messages(messages.clone()).await?);
             },
@@ -294,7 +295,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
 }
 
 /// Executes the list of tools and returns their results as messages.
-async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<BedrockMessage>> {
+async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<Message>> {
     debug!(?tool_uses, "processing tools");
     let mut messages = Vec::new();
     for tool_use in tool_uses {
@@ -303,105 +304,68 @@ async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<BedrockMessage>>
             match ask_for_consent() {
                 Ok(_) => (),
                 Err(reason) => {
-                    messages.push(
-                        BedrockMessage::builder()
-                            .role(ConversationRole::User)
-                            .content(ContentBlock::ToolResult(
-                                ToolResultBlock::builder()
-                                    .tool_use_id(tool_use.tool_use_id)
-                                    .content(ToolResultContentBlock::Text(format!(
-                                        "The user denied permission to execute this tool. Reason: {}",
-                                        &reason
-                                    )))
-                                    .status(ToolResultStatus::Error)
-                                    .build()
-                                    .unwrap(),
-                            ))
+                    messages.push(Message::new(ConversationRole::User, vec![ContentBlock::ToolResult(
+                        ToolResultBlock::builder()
+                            .tool_use_id(tool_use.tool_use_id)
+                            .content(ToolResultContentBlock::Text(format!(
+                                "The user denied permission to execute this tool. Reason: {}",
+                                &reason
+                            )))
+                            .status(ToolResultStatus::Error)
                             .build()
                             .unwrap(),
-                    );
+                    )]));
                     break;
                 },
             }
         }
         match tool_use.invoke().await {
             Ok(result) => {
-                messages.push(
-                    BedrockMessage::builder()
-                        .role(ConversationRole::User)
-                        .content(ContentBlock::ToolResult(
-                            ToolResultBlock::builder()
-                                .tool_use_id(tool_use.tool_use_id)
-                                .content(result.into())
-                                .status(ToolResultStatus::Success)
-                                .build()
-                                .unwrap(),
-                        ))
+                messages.push(Message::new(ConversationRole::User, vec![ContentBlock::ToolResult(
+                    ToolResultBlock::builder()
+                        .tool_use_id(tool_use.tool_use_id)
+                        .content(result.into())
+                        .status(ToolResultStatus::Success)
                         .build()
                         .unwrap(),
-                );
+                )]));
             },
             Err(err) => {
                 error!(?err, "An error occurred processing the tool");
-                messages.push(
-                    BedrockMessage::builder()
-                        .role(ConversationRole::User)
-                        .content(ContentBlock::ToolResult(
-                            ToolResultBlock::builder()
-                                .tool_use_id(tool_use.tool_use_id)
-                                .content(ToolResultContentBlock::Text(format!(
-                                    "An error occurred processing the tool: {}",
-                                    err
-                                )))
-                                .status(ToolResultStatus::Error)
-                                .build()
-                                .unwrap(),
-                        ))
+                messages.push(Message::new(ConversationRole::User, vec![ContentBlock::ToolResult(
+                    ToolResultBlock::builder()
+                        .tool_use_id(tool_use.tool_use_id)
+                        .content(ToolResultContentBlock::Text(format!(
+                            "An error occurred processing the tool: {}",
+                            err
+                        )))
+                        .status(ToolResultStatus::Error)
                         .build()
                         .unwrap(),
-                );
+                )]));
             },
         }
     }
     Ok(messages)
 }
 
-/// A client for calling the Bedrock ConverseStream API.
-#[derive(Debug)]
-pub struct Client {
-    client: BedrockClient,
-    model_id: String,
-    system_prompt: String,
-    tool_config: ToolConfig,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl Client {
-    pub async fn new(model_id: String, system_prompt: String, tool_config: ToolConfig) -> Self {
-        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(CLAUDE_REGION)
-            .load()
-            .await;
-        let client = BedrockClient::new(&sdk_config);
-        Self {
-            client,
-            model_id,
-            system_prompt,
-            tool_config,
-        }
-    }
+    #[tokio::test]
+    async fn test_flow() {
+        let user_input = vec!["test input", "y"];
+        let mut output = String::new();
 
-    pub async fn send_messages(&self, messages: Vec<BedrockMessage>) -> Result<ConverseStreamResponse> {
-        debug!(?messages, "Sending messages");
-        Ok(self
-            .client
-            .converse_stream()
-            .model_id(&self.model_id)
-            .system(aws_sdk_bedrockruntime::types::SystemContentBlock::Text(
-                self.system_prompt.clone(),
-            ))
-            .set_messages(Some(messages))
-            .tool_config(self.tool_config.clone().into())
-            .send()
-            .await?)
+        let cc = ChatContext {
+            output: &mut output,
+            session_id: None,
+            ctx: Context::new_fake(),
+            input_source: todo!(),
+            tool_config: todo!(),
+            client: todo!(),
+            terminal_width_provider: || Some(50),
+        };
     }
 }

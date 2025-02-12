@@ -2,6 +2,7 @@ pub mod custom;
 pub mod execute_bash;
 pub mod filesystem_read;
 pub mod filesystem_write;
+pub mod use_aws_read_only;
 
 use std::borrow::Cow;
 use std::collections::{
@@ -53,9 +54,6 @@ use nix::unistd::{
     getuid,
 };
 use serde::Deserialize;
-use thiserror::Error;
-use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
 use tracing::{
     debug,
     error,
@@ -63,10 +61,12 @@ use tracing::{
     warn,
 };
 
+pub use super::Error;
+
 /// Represents an executable tool use.
 #[async_trait]
 pub trait Tool: std::fmt::Debug + std::fmt::Display {
-    async fn invoke(&self) -> Result<InvokeOutput, ToolError>;
+    async fn invoke(&self) -> Result<InvokeOutput, Error>;
     fn requires_consent(&self) -> bool {
         false
     }
@@ -76,13 +76,13 @@ pub fn new_tool<C: ContextArcProvider>(
     ctx: C,
     name: &str,
     value: serde_json::Value,
-) -> Result<Box<dyn Tool + Sync>, ToolError> {
+) -> Result<Box<dyn Tool + Sync>, Error> {
     let tool = match name {
         "filesystem_read" => Box::new(FileSystemRead::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
         "filesystem_write" => Box::new(FileSystemWrite::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
         "execute_bash" => Box::new(ExecuteBash::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
         custom_name => {
-            return Err(ToolError::Custom(
+            return Err(Error::Custom(
                 format!("custom tools are not supported: model request tool {}", custom_name).into(),
             ));
         },
@@ -220,23 +220,6 @@ impl Default for OutputKind {
     fn default() -> Self {
         Self::Text(String::new())
     }
-}
-
-/// Errors for types implementing [Tool].
-#[derive(Debug, Error)]
-pub enum ToolError {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    SystemTime(#[from] std::time::SystemTimeError),
-    #[error("{0}")]
-    InvalidToolUse(Cow<'static, str>),
-    #[error("An error occurred running the tool: {0}")]
-    ToolInvocation(Cow<'static, str>),
-    #[error("{0}")]
-    Custom(Cow<'static, str>),
 }
 
 pub fn serde_value_to_document(value: serde_json::Value) -> Document {

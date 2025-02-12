@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use tracing::warn;
 
 use super::{
-    InvokeOutput, Tool, ToolError
+    InvokeOutput,
+    Tool,
+    Error,
 };
 
 #[derive(Debug)]
@@ -17,7 +19,7 @@ impl std::fmt::Display for Custom {
 
 #[async_trait]
 impl Tool for Custom {
-    async fn invoke(&self) -> Result<InvokeOutput, ToolError> {
+    async fn invoke(&self) -> Result<InvokeOutput, Error> {
         warn!("Not implemented");
         Ok(Default::default())
     }
