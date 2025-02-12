@@ -132,8 +132,12 @@ function AutocompleteInner({
   } = useAutocomplete();
 
   useMemo(() => {
-    logger.enableAll();
-  }, []);
+    if (isWeb) {
+      logger.disableAll();
+    } else {
+      logger.enableAll();
+    }
+  }, [isWeb]);
 
   const suggestionsMock: Fig.Suggestion[] = useMemo(
     () => [
@@ -199,7 +203,7 @@ function AutocompleteInner({
   useEffect(() => {
     // Default font-size is 12.8px (0.8em) and default row size is 20px = 12.8 * 1.5625
     // Row height should scale accordingly with font-size
-    console.log("settingsFontSize", settingsFontSize);
+    logger.debug("settingsFontSize", settingsFontSize);
 
     const fontSize =
       typeof settingsFontSize === "number" && settingsFontSize > 0
@@ -278,14 +282,13 @@ function AutocompleteInner({
   }, []);
 
   useFigAutocomplete(setFigState, ipcClient);
-  useParseArgumentsEffect(setIsLoadingSuggestions, ipcClient);
+  useParseArgumentsEffect(setIsLoadingSuggestions, isWeb, ipcClient);
   useFigSettings(setSettings);
   useFigKeypress(keypressCallback, ipcClient);
   useFigClearCache();
 
   useEffect(() => {
     if (setVisibilityCallback) {
-      console.log("Setting state");
       setVisibilityCallback(async (visible) => {
         const v = visible
           ? Visibility.VISIBLE
@@ -333,8 +336,15 @@ function AutocompleteInner({
     };
   }, [generatorStates]);
 
+  const disabled = useMemo(() => {
+    const val = shellContext?.environmentVariables?.find(
+      (v) => v.key === "Q_AUTOCOMPLETE_DISABLED",
+    )?.value;
+    return val && val !== "";
+  }, [shellContext?.environmentVariables]);
+
   // Make sure fig dimensions align with our desired dimensions.
-  const isHidden = visibleState !== Visibility.VISIBLE;
+  const isHidden = visibleState !== Visibility.VISIBLE || disabled;
   const anySuggestions =
     (enableMocks ? suggestionsMock : suggestions).length > 0;
   const interceptKeystrokes = Boolean(

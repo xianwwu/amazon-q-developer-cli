@@ -139,6 +139,7 @@ const awaitBatched = async <T>(
 
 export const loadHistorySource = async (
   ipcClient: IpcClient,
+  isWeb: boolean,
   items: HistoryEntry[],
   aliases: AliasMap,
 ): Promise<HistorySource> => {
@@ -184,6 +185,7 @@ export const loadHistorySource = async (
       loadSubcommandCached(
         ipcClient,
         { name, type: SpecLocationSource.GLOBAL },
+        isWeb,
         undefined,
         historyLogger,
       ).catch((e) => e),
@@ -212,6 +214,7 @@ export const loadHistorySource = async (
           };
           command.parserResult = await parseArguments(
             ipcClient,
+            isWeb,
             command.command,
             parseContext,
             true,
@@ -258,7 +261,11 @@ const loadFigHistory = async (): Promise<HistoryEntry[]> =>
     ),
   );
 
-export const loadHistory = async (ipcClient: IpcClient, aliases: AliasMap) => {
+export const loadHistory = async (
+  ipcClient: IpcClient,
+  isWeb: boolean,
+  aliases: AliasMap,
+) => {
   const loadHistoryCommand = async (
     command: string,
     shell?: string,
@@ -285,7 +292,7 @@ export const loadHistory = async (ipcClient: IpcClient, aliases: AliasMap) => {
 
     const key = shell ?? "customCommand";
     const start = performance.now();
-    const result = await loadHistorySource(ipcClient, items, aliases);
+    const result = await loadHistorySource(ipcClient, isWeb, items, aliases);
     historyLogger.info("Got history entries", {
       ...result,
       key,
@@ -297,7 +304,12 @@ export const loadHistory = async (ipcClient: IpcClient, aliases: AliasMap) => {
 
   const entries = await loadFigHistory();
   const start = performance.now();
-  historySources.fig = await loadHistorySource(ipcClient, entries, aliases);
+  historySources.fig = await loadHistorySource(
+    ipcClient,
+    isWeb,
+    entries,
+    aliases,
+  );
   historyLogger.info("Got fig history", {
     ...historySources.fig,
     time: performance.now() - start,

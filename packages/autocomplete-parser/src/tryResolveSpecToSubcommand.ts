@@ -8,6 +8,7 @@ import { IpcClient } from "@aws/amazon-q-developer-cli-ipc-client-core";
 
 export const tryResolveSpecToSubcommand = async (
   ipcClient: IpcClient,
+  isWeb: boolean,
   spec: SpecFileImport,
   location: SpecLocation,
 ): Promise<Fig.Subcommand> => {
@@ -24,11 +25,14 @@ export const tryResolveSpecToSubcommand = async (
       // Handle diff versioned specs.
       const { versionedSpecPath, version } = subcommandOrDiffVersionInfo;
       const [dirname, basename] = splitPath(versionedSpecPath);
-      const { specFile } = await importSpecFromLocation({
-        ...location,
-        name: dirname.slice(0, -1),
-        diffVersionedFile: basename,
-      });
+      const { specFile } = await importSpecFromLocation(
+        {
+          ...location,
+          name: dirname.slice(0, -1),
+          diffVersionedFile: basename,
+        },
+        isWeb,
+      );
 
       if ("versions" in specFile) {
         const result = getVersionFromVersionedSpec(

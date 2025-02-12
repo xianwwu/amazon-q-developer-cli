@@ -153,7 +153,7 @@ export const mapColor = (color: string) => {
     return `${match[1]} ${match[2]} ${match[3]}`;
   }
 
-  console.warn(`Invalid color: ${color}`);
+  logger.warn(`Invalid color: ${color}`);
 
   return color;
 };

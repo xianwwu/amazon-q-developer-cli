@@ -784,6 +784,7 @@ const getCacheKey = (
 // Parse all arguments in tokenArray.
 const parseArgumentsCached = async (
   ipcClient: IpcClient,
+  isWeb: boolean,
   command: Command,
   context: Fig.ShellContext,
   specLocations?: Internal.SpecLocation[],
@@ -829,7 +830,7 @@ const parseArgumentsCached = async (
 
     spec = await withTimeout(
       5000,
-      loadSubcommandCached(ipcClient, specPath, context, localLogger),
+      loadSubcommandCached(ipcClient, specPath, isWeb, context, localLogger),
     );
 
     if (!spec) {
@@ -875,6 +876,7 @@ const parseArgumentsCached = async (
     if (Array.isArray(loadSpecResult)) {
       state = await parseArgumentsCached(
         ipcClient,
+        isWeb,
         currentCommand,
         context,
         // authClient,
@@ -1095,6 +1097,7 @@ const firstTokenSpec: Internal.Subcommand = {
 
 export const parseArguments = async (
   ipcClient: IpcClient,
+  isWeb: boolean,
   command: Command | null,
   context: Fig.ShellContext,
   // authClient: AuthClient,
@@ -1125,6 +1128,7 @@ export const parseArguments = async (
       spec = await loadSubcommandCached(
         ipcClient,
         specPath,
+        isWeb,
         context,
         localLogger,
       );
@@ -1134,6 +1138,7 @@ export const parseArguments = async (
 
   let state = await parseArgumentsCached(
     ipcClient,
+    isWeb,
     command,
     context,
     // authClient,

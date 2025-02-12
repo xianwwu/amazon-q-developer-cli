@@ -116,6 +116,7 @@ type ResolvedSpecLocation =
 
 export const importSpecFromLocation = async (
   specLocation: SpecLocation,
+  isWeb: boolean,
   localLogger: Logger = logger,
 ): Promise<{
   specFile: SpecFileImport;
@@ -147,6 +148,7 @@ export const importSpecFromLocation = async (
       const spec = await importSpecFromFile(
         diffVersionedFile ? `${name}/${diffVersionedFile}` : name,
         devPath,
+        isWeb,
         localLogger,
       );
       specFile = spec;
@@ -163,6 +165,7 @@ export const importSpecFromLocation = async (
     specFile = await importSpecFromFile(
       basename,
       `${dirname}.fig/autocomplete/build/`,
+      isWeb,
       localLogger,
     );
   } else if (!specFile) {
@@ -186,6 +189,7 @@ export const importSpecFromLocation = async (
         specFile = await importSpecFromFile(
           name,
           `~/.fig/autocomplete/build/`,
+          isWeb,
           localLogger,
         );
       } catch (_err) {
@@ -204,6 +208,7 @@ export const importSpecFromLocation = async (
 export const loadFigSubcommand = async (
   ipcClient: IpcClient,
   specLocation: SpecLocation,
+  isWeb: boolean,
   _context?: Fig.ShellContext,
   localLogger: Logger = logger,
 ): Promise<Fig.Subcommand> => {
@@ -211,9 +216,14 @@ export const loadFigSubcommand = async (
   const location = (await isDiffVersionedSpec(name))
     ? { ...specLocation, diffVersionedFile: "index" }
     : specLocation;
-  const { specFile } = await importSpecFromLocation(location, localLogger);
+  const { specFile } = await importSpecFromLocation(
+    location,
+    isWeb,
+    localLogger,
+  );
   const subcommand = await tryResolveSpecToSubcommand(
     ipcClient,
+    isWeb,
     specFile,
     specLocation,
   );
@@ -223,6 +233,7 @@ export const loadFigSubcommand = async (
 export const loadSubcommandCached = async (
   ipcClient: IpcClient,
   specLocation: SpecLocation,
+  isWeb: boolean,
   context?: Fig.ShellContext,
   localLogger: Logger = logger,
 ): Promise<Subcommand> => {
@@ -248,7 +259,7 @@ export const loadSubcommandCached = async (
 
   const subcommand = await withTimeout(
     5000,
-    loadFigSubcommand(ipcClient, specLocation, context, localLogger),
+    loadFigSubcommand(ipcClient, specLocation, isWeb, context, localLogger),
   );
   const converted = convertSubcommand(subcommand, initializeDefault);
   specCache.set(key, converted);

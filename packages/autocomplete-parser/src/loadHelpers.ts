@@ -62,8 +62,13 @@ export const importString = async (str: string) => {
 export async function importSpecFromFile(
   name: string,
   path: string,
+  isWeb: boolean,
   localLogger: Logger = logger,
 ): Promise<SpecFileImport> {
+  if (isWeb) {
+    throw new Error("importSpecFromFile is not supported in web");
+  }
+
   const importFromPath = async (fullPath: string) => {
     localLogger.info(`Loading spec from ${fullPath}`);
     const contents = await fread(fullPath);

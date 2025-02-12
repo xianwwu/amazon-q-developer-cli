@@ -32,6 +32,7 @@ const isBufferDifferenceFromTyping = (
 
 export const useParseArgumentsEffect = (
   setLoading: React.Dispatch<React.SetStateAction<boolean>>,
+  isWeb: boolean,
   ipcClient?: IpcClient,
 ) => {
   const setParserResult = useAutocomplete((state) => state.setParserResult);
@@ -52,7 +53,7 @@ export const useParseArgumentsEffect = (
 
     setLoading(true);
     // Only run if we didn't error in bash parser.
-    parseArguments(ipcClient, command, context)
+    parseArguments(ipcClient, isWeb, command, context)
       .then((result) => {
         if (!isMostRecentEffect) return;
         setLoading(false);

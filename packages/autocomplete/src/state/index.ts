@@ -278,10 +278,10 @@ const log =
   <T>(config: NamedStateCreator<T>): StateCreator<T, [], []> =>
   (set, get, api) => {
     const namedSet: NamedSetState<T> = (name, partial, replace) => {
-      console.groupCollapsed(`applying update: ${name}`);
-      logger.info({ name, partial, replace });
+      // console.groupCollapsed(`applying update: ${name}`);
+      logger.debug({ name, partial, replace });
       set(partial, replace === false ? false : undefined);
-      console.groupEnd();
+      // console.groupEnd();
     };
     return config(namedSet, get, api);
   };
@@ -314,7 +314,7 @@ export const createAutocompleteStore = (props: AutocompleteProps) =>
                 ["currentArg", "completionObj"],
               );
 
-              console.log(parserResult);
+              logger.debug(parserResult);
 
               const newGeneratorStates =
                 generatorState.triggerGenerators(parserResult);
@@ -520,7 +520,7 @@ export const createAutocompleteStore = (props: AutocompleteProps) =>
                 ipcClient.setWebsocket(socket);
                 return { ...state, ipcClient };
               } else {
-                console.warn("Cannot setSocket");
+                logger.warn("Cannot setSocket");
               }
               return state;
             }),

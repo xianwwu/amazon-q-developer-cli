@@ -208,7 +208,6 @@ const makeInsertTextForItem =
   (get: StoreApi<AutocompleteState>["getState"]) =>
   (item: Suggestion, execute = false) => {
     const state = get();
-    console.log("here");
     const {
       parserResult: { searchTerm },
       fuzzySearchEnabled,

@@ -38,7 +38,6 @@ export const setInterceptKeystrokesBackend = (
   if (!currentTerminalSessionId) {
     return;
   }
-  console.log("intercept ->", currentTerminalSessionId);
   ipcClient?.intercept(
     currentTerminalSessionId,
     create(InterceptRequestSchema, {

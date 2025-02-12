@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from "react";
+import React, { useRef } from "react";
 import Autocomplete from "./Autocomplete";
 import Emittery from "emittery";
 import { AutocompleteConnectionType } from "./state/types";
@@ -53,11 +53,6 @@ export function Test() {
   //   undefined | ((visible: boolean) => Promise<void> | void)
   // >(undefined);
 
-  const setVisibilityCallback = useCallback((callback: unknown) => {
-    console.log("Hey!", callback);
-    // asetVisibilityCallback(callback);
-  }, []);
-
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-row gap-4 p-2">
@@ -91,7 +86,6 @@ export function Test() {
           onDisconnect={() => {
             console.error("DISCONNECT!");
           }}
-          setVisibilityCallback={setVisibilityCallback}
         />
       )}
     </div>
