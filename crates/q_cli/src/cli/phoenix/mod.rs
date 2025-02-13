@@ -61,7 +61,7 @@ use crate::util::region_check;
 const CLAUDE_REGION: &str = "us-west-2";
 const MODEL_ID: &str = "anthropic.claude-3-haiku-20240307-v1:0";
 
-const MAX_TOOL_USE_RECURSIONS: u32 = 5;
+const MAX_TOOL_USE_RECURSIONS: u32 = 50;
 
 pub async fn chat(mut input: String) -> Result<ExitCode> {
     if !fig_util::system_info::in_cloudshell() && !fig_auth::is_logged_in().await {
