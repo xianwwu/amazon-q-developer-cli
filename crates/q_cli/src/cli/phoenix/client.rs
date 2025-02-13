@@ -4,16 +4,19 @@ use std::sync::{
 };
 
 use aws_sdk_bedrockruntime::Client as BedrockClient;
-use aws_sdk_bedrockruntime::error::SdkError;
+use aws_sdk_bedrockruntime::error::{
+    DisplayErrorContext,
+    SdkError,
+};
 use aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamOutput as BedrockConverseStreamResponse;
 use aws_sdk_bedrockruntime::types::ConverseStreamOutput;
 use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
 use aws_smithy_types::event_stream::RawMessage;
+use aws_types::sdk_config::StalledStreamProtectionConfig;
 use eyre::{
     Result,
     bail,
 };
-use thiserror::Error;
 use tracing::debug;
 
 use super::Message;
@@ -61,6 +64,11 @@ mod inner {
 impl Client {
     pub async fn new(model_id: String, system_prompt: String, tool_config: ToolConfig) -> Self {
         let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .stalled_stream_protection(
+                StalledStreamProtectionConfig::enabled()
+                    .grace_period(std::time::Duration::from_secs(100))
+                    .build(),
+            )
             .region(CLAUDE_REGION)
             .load()
             .await;
@@ -128,10 +136,16 @@ enum StreamResponse {
     Fake(Vec<ConverseStreamOutput>),
 }
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    SdkError(#[from] SdkError<ConverseStreamOutputError, RawMessage>),
+#[derive(Debug)]
+pub struct Error(SdkError<ConverseStreamOutputError, RawMessage>);
+
+impl std::error::Error for Error {}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", DisplayErrorContext(&self.0))?;
+        Ok(())
+    }
 }
 
 // #[derive(Debug)]

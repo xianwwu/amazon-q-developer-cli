@@ -58,8 +58,7 @@ use crate::cli::chat::parse::{
 };
 use crate::util::region_check;
 
-const CLAUDE_REGION: &str = "us-west-2";
-const MODEL_ID: &str = "anthropic.claude-3-haiku-20240307-v1:0";
+const MODEL_ID: &str = "anthropic.claude-3-5-sonnet-20241022-v2:0";
 
 const MAX_TOOL_USE_RECURSIONS: u32 = 50;
 
