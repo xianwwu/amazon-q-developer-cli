@@ -25,6 +25,7 @@ import { clientboundToPacket, packetToHostbound } from "./mux.js";
 import { EditBufferHook } from "@aws/amazon-q-developer-cli-proto/local";
 import Emittery, { UnsubscribeFunction } from "emittery";
 import { create } from "@bufbuild/protobuf";
+import logger from "loglevel";
 
 export { CsWebsocket };
 
@@ -45,8 +46,8 @@ export class WebsocketMuxBackend implements IpcClient {
       try {
         const hostbound = await packetToHostbound(packet);
         this.handleHostbound(hostbound);
-      } catch (_err: unknown) {
-        /* ignore */
+      } catch (err: unknown) {
+        logger.warn("Failed to handled hostbound:", err);
       }
     });
   }
@@ -58,7 +59,7 @@ export class WebsocketMuxBackend implements IpcClient {
   private handleHostbound(message: Hostbound) {
     const submessage = message.submessage;
     if (submessage.value?.$unknown && submessage.value.$unknown.length > 0) {
-      console.warn("Unknown request", submessage.value);
+      logger.warn("Unknown request", submessage.value);
       return;
     }
     switch (submessage?.case) {
@@ -72,7 +73,7 @@ export class WebsocketMuxBackend implements IpcClient {
         this.handleHostboundPong(submessage.value);
         break;
       default:
-        console.warn("Unknown submessage", submessage);
+        logger.warn("Unknown submessage", submessage);
         break;
     }
   }
@@ -82,7 +83,7 @@ export class WebsocketMuxBackend implements IpcClient {
       request.inner.value?.$unknown &&
       request.inner.value.$unknown.length > 0
     ) {
-      console.warn("Unknown request", request.inner);
+      logger.warn("Unknown request", request.inner);
       return;
     }
     switch (request.inner.case) {
@@ -102,7 +103,7 @@ export class WebsocketMuxBackend implements IpcClient {
         this.emitter.emit(PromptHookSymbol, request.inner.value);
         break;
       default:
-        console.warn("Unknown request", request.inner);
+        logger.warn("Unknown request", request.inner);
         break;
     }
   }
@@ -116,7 +117,7 @@ export class WebsocketMuxBackend implements IpcClient {
         );
         break;
       default:
-        console.warn("Unknown response", response.inner);
+        logger.warn("Unknown response", response.inner);
         break;
     }
   }

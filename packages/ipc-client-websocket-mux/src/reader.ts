@@ -1,6 +1,7 @@
 import { Packet, PacketSchema } from "@aws/amazon-q-developer-cli-proto/mux";
 import { Socket } from "./socket.js";
 import { fromBinary } from "@bufbuild/protobuf";
+import logger from "loglevel";
 import Emittery from "emittery";
 
 const PacketSymbol = Symbol("packet");
@@ -59,7 +60,7 @@ export class PacketReader {
             return;
           }
           // If we have enough chars but parse still failed, there might be an issue
-          console.error(
+          logger.error(
             "Parser reported needs more characters but buffer contains requested amount",
           );
           return;
@@ -67,7 +68,7 @@ export class PacketReader {
         case "error": {
           // Forward parse errors to stream consumer
           // error is suppressed for now
-          // console.error(result.error);
+          logger.error(result.error);
           this.buffer = this.buffer.slice(result.charsConsumed);
           break;
         }

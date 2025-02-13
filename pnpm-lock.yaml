@@ -772,6 +772,9 @@ importers:
       emittery:
         specifier: ^1.0.3
         version: 1.0.3
+      loglevel:
+        specifier: ^1.9.2
+        version: 1.9.2
     devDependencies:
       '@amzn/eslint-config':
         specifier: workspace:^
