@@ -18,7 +18,7 @@ use super::{
     ToolSpec,
 };
 
-pub const FILESYSTEM_READ: &str = include_str!("./specs/filesystem_read.json");
+pub const FILESYSTEM_READ: &str = include_str!("./filesystem_read.json");
 
 pub fn filesystem_read() -> ToolSpec {
     serde_json::from_str(FILESYSTEM_READ).expect("deserializing tool spec should succeed")

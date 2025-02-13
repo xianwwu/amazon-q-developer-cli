@@ -1,0 +1,23 @@
+{
+  "name": "filesystem_read",
+  "description": "A tool for viewing files and directories.\n* If `path` is a file, this tool displays the result of applying `cat -n`.\n* If `path` is a directory, this tool lists files and directories\n",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "description": "Absolute path to file or directory, e.g. `/repo/file.py` or `/repo`.",
+        "type": "string"
+      },
+      "read_range": {
+        "description": "Optional parameter when reading either files or directories.\n* When `path` is a file, if none is given, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file.\n* When `path` is a directory, if none is given, the results of `ls -l` are given. If provided, the current directory and indicated number of subdirectories will be shown, e.g. [2] will show the current directory and directories two levels deep.",
+        "items": {
+          "type": "integer"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "path"
+    ]
+  }
+}

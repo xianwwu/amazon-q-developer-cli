@@ -15,7 +15,7 @@ use super::{
     ToolSpec,
 };
 
-pub const EXECUTE_BASH: &str = include_str!("./specs/execute_bash.json");
+pub const EXECUTE_BASH: &str = include_str!("./execute_bash.json");
 
 pub fn execute_bash() -> ToolSpec {
     serde_json::from_str(EXECUTE_BASH).expect("deserializing tool spec should succeed")

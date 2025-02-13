@@ -14,7 +14,7 @@ use super::{
     ToolSpec,
 };
 
-pub const FILESYSTEM_WRITE: &str = include_str!("./specs/filesystem_write.json");
+pub const FILESYSTEM_WRITE: &str = include_str!("./filesystem_write.json");
 
 pub fn filesystem_write() -> ToolSpec {
     serde_json::from_str(FILESYSTEM_WRITE).expect("deserializing tool spec should succeed")

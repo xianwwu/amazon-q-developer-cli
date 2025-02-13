@@ -1,0 +1,16 @@
+{
+  "name": "execute_bash",
+  "description": "Execute the specified bash command",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "Bash command to execute"
+      }
+    },
+    "required": [
+      "command"
+    ]
+  }
+}
