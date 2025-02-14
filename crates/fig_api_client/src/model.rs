@@ -150,6 +150,7 @@ pub enum ChatResponseStream {
     AssistantResponseEvent {
         content: String,
     },
+    /// Streaming response event for generated code text.
     CodeEvent {
         content: String,
     },
@@ -166,6 +167,12 @@ pub enum ChatResponseStream {
         utterance_id: Option<String>,
     },
     SupplementaryWebLinksEvent(()),
+    ToolUseEvent {
+        tool_use_id: String,
+        name: String,
+        input: Option<String>,
+        stop: Option<bool>,
+    },
 
     #[non_exhaustive]
     Unknown,
@@ -213,6 +220,20 @@ impl From<amzn_codewhisperer_streaming_client::types::ChatResponseStream> for Ch
                 conversation_id,
                 utterance_id,
             },
+            amzn_codewhisperer_streaming_client::types::ChatResponseStream::ToolUseEvent(
+                amzn_codewhisperer_streaming_client::types::ToolUseEvent {
+                    tool_use_id,
+                    name,
+                    input,
+                    stop,
+                    ..
+                },
+            ) => ChatResponseStream::ToolUseEvent {
+                tool_use_id,
+                name,
+                input,
+                stop,
+            },
             amzn_codewhisperer_streaming_client::types::ChatResponseStream::SupplementaryWebLinksEvent(_) => {
                 ChatResponseStream::SupplementaryWebLinksEvent(())
             },
@@ -254,6 +275,20 @@ impl From<amzn_qdeveloper_streaming_client::types::ChatResponseStream> for ChatR
             ) => ChatResponseStream::MessageMetadataEvent {
                 conversation_id,
                 utterance_id,
+            },
+            amzn_qdeveloper_streaming_client::types::ChatResponseStream::ToolUseEvent(
+                amzn_qdeveloper_streaming_client::types::ToolUseEvent {
+                    tool_use_id,
+                    name,
+                    input,
+                    stop,
+                    ..
+                },
+            ) => ChatResponseStream::ToolUseEvent {
+                tool_use_id,
+                name,
+                input,
+                stop,
             },
             amzn_qdeveloper_streaming_client::types::ChatResponseStream::SupplementaryWebLinksEvent(_) => {
                 ChatResponseStream::SupplementaryWebLinksEvent(())

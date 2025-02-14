@@ -2,6 +2,7 @@ mod client;
 mod error;
 mod input_source;
 mod parser;
+mod parser2;
 mod tools;
 mod types;
 use std::io::Write;

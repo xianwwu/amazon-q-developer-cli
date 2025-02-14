@@ -144,6 +144,7 @@ impl StreamingClient {
     }
 }
 
+#[derive(Debug)]
 pub enum SendMessageOutput {
     Codewhisperer(
         amzn_codewhisperer_streaming_client::operation::generate_assistant_response::GenerateAssistantResponseOutput,

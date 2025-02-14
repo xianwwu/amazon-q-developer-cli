@@ -10,6 +10,8 @@ pub enum Error {
     #[error(transparent)]
     SdkError(#[from] SdkError<ConverseStreamOutputError, RawMessage>),
     #[error(transparent)]
+    Api(#[from] fig_api_client::Error),
+    #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
     ClientError(#[from] super::client::Error),

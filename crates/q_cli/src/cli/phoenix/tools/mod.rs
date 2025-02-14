@@ -101,12 +101,18 @@ pub fn load_tool_config() -> ToolConfig {
     ]))
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ToolConfig(HashMap<String, ToolSpec>);
 
 impl ToolConfig {
     pub fn get_by_name(&self, tool_name: impl AsRef<str>) -> Option<&ToolSpec> {
         self.0.get(tool_name.as_ref())
+    }
+}
+
+impl From<HashMap<String, ToolSpec>> for ToolConfig {
+    fn from(value: HashMap<String, ToolSpec>) -> Self {
+        Self(value)
     }
 }
 
