@@ -1,3 +1,5 @@
+use aws_smithy_types::Document;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileContext {
@@ -114,6 +116,73 @@ impl TryFrom<ChatMessage> for amzn_qdeveloper_streaming_client::types::ChatMessa
             },
         })
     }
+}
+
+/// Information about a tool that can be used.
+#[derive(Debug, Clone)]
+pub enum Tool {
+    ToolSpecification(ToolSpecification),
+}
+
+impl From<Tool> for amzn_codewhisperer_streaming_client::types::Tool {
+    fn from(value: Tool) -> Self {
+        match value {
+            Tool::ToolSpecification(v) => amzn_codewhisperer_streaming_client::types::Tool::ToolSpecification(v.into()),
+        }
+    }
+}
+
+/// The specification for the tool.
+#[derive(Debug, Clone)]
+pub struct ToolSpecification {
+    /// The name for the tool.
+    name: String,
+    /// The description for the tool.
+    description: String,
+    /// The input schema for the tool in JSON format.
+    input_schema: ToolInputSchema,
+}
+
+impl From<ToolSpecification> for amzn_codewhisperer_streaming_client::types::ToolSpecification {
+    fn from(value: ToolSpecification) -> Self {
+        Self::builder()
+            .name(value.name)
+            .description(value.description)
+            .input_schema(value.input_schema.into())
+            .build()
+            .expect("building ToolSpecification should not fail")
+    }
+}
+
+/// The input schema for the tool in JSON format.
+#[derive(Debug, Clone)]
+pub struct ToolInputSchema {
+    pub json: Option<Document>,
+}
+
+impl From<ToolInputSchema> for amzn_codewhisperer_streaming_client::types::ToolInputSchema {
+    fn from(value: ToolInputSchema) -> Self {
+        Self::builder().set_json(value.json).build()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolResult {
+    pub tool_use_id: String,
+    pub content: Vec<ToolResultContentBlock>,
+    pub status: ToolResultStatus,
+}
+
+#[derive(Debug, Clone)]
+pub enum ToolResultContentBlock {
+    Json(Document),
+    Text(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum ToolResultStatus {
+    Error,
+    Success,
 }
 
 #[derive(Debug, Clone)]
@@ -467,6 +536,8 @@ pub struct UserInputMessageContext {
     pub shell_state: Option<ShellState>,
     pub env_state: Option<EnvState>,
     pub git_state: Option<GitState>,
+    pub tool_results: Option<Vec<ToolResult>>,
+    pub tools: Option<Vec<Tool>>,
 }
 
 impl From<UserInputMessageContext> for amzn_codewhisperer_streaming_client::types::UserInputMessageContext {
@@ -538,6 +609,18 @@ mod tests {
                 git_state: Some(GitState {
                     status: "test status".to_string(),
                 }),
+                tool_results: Some(vec![ToolResult {
+                    tool_use_id: "test id".to_string(),
+                    content: vec![ToolResultContentBlock::Text("test text".to_string())],
+                    status: ToolResultStatus::Success,
+                }]),
+                tools: Some(vec![Tool::ToolSpecification(ToolSpecification {
+                    name: "test tool name".to_string(),
+                    description: "test tool description".to_string(),
+                    input_schema: ToolInputSchema {
+                        json: Some(Document::Null),
+                    },
+                })]),
             }),
             user_intent: Some(UserIntent::ApplyCommonBestPractices),
         };

@@ -156,7 +156,6 @@ impl ResponseParser {
                     return Ok(ResponseEvent::EndStream {
                         stop_reason,
                         message,
-                        metadata: self.metadata_event.take().map(|ev| ev.into()),
                     });
                 },
                 Err(err) => return Err(Error::SdkError(err)),
@@ -213,6 +212,8 @@ impl ResponseParser {
 
 #[derive(Debug)]
 pub enum ResponseEvent {
+    /// Conversation identifier returned by the backend.
+    ConversationId(String),
     /// Text returned by the assistant. This should be displayed to the user as it is received.
     AssistantText(String),
     /// A tool use requested by the assistant. This should be displayed to the user as it is
@@ -226,8 +227,6 @@ pub enum ResponseEvent {
         /// previously emitted. This should be stored in the conversation history and sent in
         /// future conversation messages.
         message: Message,
-        /// Metadata associated with the response.
-        metadata: Option<Metadata>,
     },
 }
 

@@ -83,7 +83,6 @@ pub async fn chat(mut input: String) -> Result<ExitCode> {
 
     try_chat(ChatContext {
         output: &mut stdout,
-        session_id: None,
         ctx: Context::new(),
         input_source: InputSource::new()?,
         tool_config,
@@ -141,7 +140,6 @@ impl std::fmt::Display for ToolUse {
 struct ChatContext<'w, W> {
     /// The [Write] destination for printing conversation text.
     output: &'w mut W,
-    session_id: Option<String>,
     ctx: Arc<Context>,
     input_source: InputSource,
     tool_config: ToolConfig,
@@ -154,7 +152,6 @@ struct ChatContext<'w, W> {
 async fn try_chat<W: Write>(chat_ctx: ChatContext<'_, W>) -> Result<()> {
     let ChatContext {
         output,
-        session_id: conversation_id,
         ctx,
         mut input_source,
         client,
@@ -172,6 +169,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
         })
     )?;
 
+    let mut conversation_id = None;
     let mut messages = Vec::new(); // Holds the entire conversation message history.
     let mut stop_reason = None; // StopReason associated with each model response.
     let mut tool_uses = Vec::new();
@@ -235,6 +233,9 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
             loop {
                 match parser.recv().await {
                     Ok(msg_event) => match msg_event {
+                        parser::ResponseEvent::ConversationId(id) => {
+                            conversation_id = Some(id);
+                        },
                         parser::ResponseEvent::AssistantText(text) => {
                             buf.push_str(&text);
                         },
@@ -245,9 +246,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                         parser::ResponseEvent::EndStream {
                             stop_reason: sr,
                             message,
-                            metadata,
                         } => {
-                            debug!(?metadata, "Metadata on last response");
                             buf.push_str("\n\n");
                             stop_reason = Some(sr);
                             messages.push(message);
@@ -360,7 +359,6 @@ mod tests {
 
         let cc = ChatContext {
             output: &mut output,
-            session_id: None,
             ctx: Context::new_fake(),
             input_source: todo!(),
             tool_config: todo!(),

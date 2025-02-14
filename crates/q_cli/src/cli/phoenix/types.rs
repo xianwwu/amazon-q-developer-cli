@@ -33,6 +33,8 @@ impl From<ConversationRole> for BedrockConversationRole {
 
 pub type StopReason = BedrockStopReason;
 
+pub type ChatMessage = fig_api_client::model::ChatMessage;
+
 #[derive(Debug, Clone)]
 pub struct Message {
     role: ConversationRole,
