@@ -1,13 +1,5 @@
-use std::borrow::Cow;
 use std::sync::Arc;
 
-use aws_sdk_bedrockruntime::error::SdkError;
-use aws_sdk_bedrockruntime::operation::converse_stream::{
-    ConverseStreamError,
-    // ConverseStreamOutput as ConverseStreamResponse,
-};
-use aws_sdk_bedrockruntime::types::builders::MessageBuilder;
-use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
 use aws_sdk_bedrockruntime::types::{
     ContentBlock as BedrockContentBlock,
     ContentBlockDelta,
@@ -16,25 +8,18 @@ use aws_sdk_bedrockruntime::types::{
     ConversationRole as BedrockConversationRole,
     ConverseStreamMetadataEvent,
     ConverseStreamOutput,
-    Message as BedrockMessage,
     ToolUseBlock,
     ToolUseBlockStart,
 };
-use aws_smithy_types::event_stream::RawMessage;
 use fig_os_shim::Context;
-use thiserror::Error;
 use tracing::{
-    error,
     trace,
     warn,
 };
 
 use super::client::ConverseStreamResponse;
 use super::error::Error;
-use super::tools::{
-    Tool,
-    ToolConfig,
-};
+use super::tools::Tool;
 use super::types::StopReason;
 use super::{
     ConversationRole,
@@ -56,8 +41,6 @@ pub struct ResponseParser {
     ctx: Arc<Context>,
     /// The response to consume and parse into a sequence of [Ev].
     response: ConverseStreamResponse,
-    /// The [ToolConfig] used to generate the response.
-    tool_config: ToolConfig,
     /// The list of [ContentBlock] items to be used in the final parsed message.
     content: Vec<BedrockContentBlock>,
     /// The [StopReason] for the associated [ConverseStreamResponse].
@@ -67,13 +50,12 @@ pub struct ResponseParser {
 }
 
 impl ResponseParser {
-    pub fn new(ctx: Arc<Context>, response: ConverseStreamResponse, tool_config: ToolConfig) -> Self {
+    pub fn new(ctx: Arc<Context>, response: ConverseStreamResponse) -> Self {
         Self {
             ctx,
             response,
             content: Vec::new(),
             stop_reason: None,
-            tool_config,
             assistant_text: String::new(),
             metadata_event: None,
         }
@@ -153,10 +135,7 @@ impl ResponseParser {
                         ConversationRole::Assistant,
                         content.into_iter().map(Into::into).collect(),
                     );
-                    return Ok(ResponseEvent::EndStream {
-                        stop_reason,
-                        message,
-                    });
+                    return Ok(ResponseEvent::EndStream { stop_reason, message });
                 },
                 Err(err) => return Err(Error::SdkError(err)),
             }
@@ -189,6 +168,7 @@ impl ResponseParser {
                 Err(err) => return Err(Error::SdkError(err)),
             }
         }
+
         let value: serde_json::Value = serde_json::from_str(&tool_args)?;
         self.content.push(BedrockContentBlock::ToolUse(
             ToolUseBlock::builder()
@@ -198,15 +178,11 @@ impl ResponseParser {
                 .build()
                 .unwrap(),
         ));
-        match self.tool_config.get_by_name(tool_name) {
-            Some(spec) => Ok(ToolUse {
-                tool_use_id: start.tool_use_id,
-                tool: new_tool(Arc::clone(&self.ctx), &spec.name, value)?,
-            }),
-            None => Err(Error::UnknownToolUse {
-                tool_name: tool_name.clone(),
-            }),
-        }
+
+        new_tool(Arc::clone(&self.ctx), tool_name, value).map(|tool| ToolUse {
+            tool_use_id: start.tool_use_id,
+            tool,
+        })
     }
 }
 

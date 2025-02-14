@@ -11,14 +11,7 @@ use super::{
     Error,
     InvokeOutput,
     Tool,
-    ToolSpec,
 };
-
-pub const FILESYSTEM_WRITE: &str = include_str!("./filesystem_write.json");
-
-pub fn filesystem_write() -> ToolSpec {
-    serde_json::from_str(FILESYSTEM_WRITE).expect("deserializing tool spec should succeed")
-}
 
 #[derive(Debug)]
 pub struct FileSystemWrite {
@@ -184,11 +177,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_spec_deser() {
-        filesystem_write();
-    }
-
-    #[test]
     fn test_fs_write_deserialize() {
         let ctx = Context::new_fake();
         let path = "/my-file";
@@ -297,7 +285,7 @@ mod tests {
                 .next()
                 .unwrap(),
             "1: Goodbye world!",
-            "expected the only occurence to be replaced"
+            "expected the only occurrence to be replaced"
         );
     }
 

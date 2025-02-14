@@ -11,18 +11,11 @@ use serde::Deserialize;
 use tracing::warn;
 
 use super::{
+    Error,
     InvokeOutput,
     OutputKind,
     Tool,
-    Error,
-    ToolSpec,
 };
-
-pub const FILESYSTEM_READ: &str = include_str!("./filesystem_read.json");
-
-pub fn filesystem_read() -> ToolSpec {
-    serde_json::from_str(FILESYSTEM_READ).expect("deserializing tool spec should succeed")
-}
 
 #[derive(Debug)]
 pub struct FileSystemRead {
@@ -40,7 +33,7 @@ impl FileSystemRead {
 
     pub fn read_range(&self) -> Result<Option<(i32, Option<i32>)>, Error> {
         match &self.args.read_range {
-            Some(range) => match (range.get(0), range.get(1)) {
+            Some(range) => match (range.first(), range.get(1)) {
                 (Some(depth), None) => Ok(Some((*depth, None))),
                 (Some(start), Some(end)) => Ok(Some((*start, Some(*end)))),
                 other => Err(Error::Custom(format!("Invalid read range: {:?}", other).into())),
@@ -230,11 +223,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_spec_deser() {
-        filesystem_read();
-    }
-
-    #[test]
     fn test_fs_read_creation() {
         let ctx = Context::new_fake();
         let v = serde_json::json!({ "path": "/test_file.txt", "read_range": vec![1, 2] });
@@ -260,8 +248,12 @@ mod tests {
                     "read_range": $range,
                 });
                 let output = FileSystemRead::from_value(Arc::clone(&ctx), v).unwrap().invoke().await.unwrap();
-                let text = output.text().unwrap();
-                assert_eq!(text, $expected.join("\n"), "actual(left) does not equal expected(right) for range: {:?}", $range);
+
+                if let OutputKind::Text(text) = output.output {
+                    assert_eq!(text, $expected.join("\n"), "actual(left) does not equal expected(right) for range: {:?}", $range);
+                } else {
+                    panic!("expected text output");
+                }
             }
         }
         assert_lines!((1, 2), lines[..=1]);
@@ -297,9 +289,12 @@ mod tests {
             .invoke()
             .await
             .unwrap();
-        let lines = output.text().unwrap().lines().collect::<Vec<_>>();
-        // println!("{}", output.text().unwrap());
-        assert_eq!(lines.len(), 4);
+
+        if let OutputKind::Text(text) = output.output {
+            assert_eq!(text.lines().collect::<Vec<_>>().len(), 4);
+        } else {
+            panic!("expected text output");
+        }
 
         // Testing with depth level 1
         let v = serde_json::json!({
@@ -311,12 +306,16 @@ mod tests {
             .invoke()
             .await
             .unwrap();
-        let lines = output.text().unwrap().lines().collect::<Vec<_>>();
-        // println!("{}", output.text().unwrap());
-        assert_eq!(lines.len(), 7);
-        assert!(
-            !lines.iter().any(|l| l.contains("cccc1")),
-            "directory at depth level 2 should not be included in output"
-        );
+
+        if let OutputKind::Text(text) = output.output {
+            let lines = text.lines().collect::<Vec<_>>();
+            assert_eq!(lines.len(), 7);
+            assert!(
+                !lines.iter().any(|l| l.contains("cccc1")),
+                "directory at depth level 2 should not be included in output"
+            );
+        } else {
+            panic!("expected text output");
+        }
     }
 }

@@ -12,14 +12,7 @@ use super::{
     InvokeOutput,
     OutputKind,
     Tool,
-    ToolSpec,
 };
-
-pub const EXECUTE_BASH: &str = include_str!("./execute_bash.json");
-
-pub fn execute_bash() -> ToolSpec {
-    serde_json::from_str(EXECUTE_BASH).expect("deserializing tool spec should succeed")
-}
 
 #[derive(Debug)]
 pub struct ExecuteBash {
@@ -91,11 +84,6 @@ pub struct ExecuteBashArgs {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_tool_spec_deser() {
-        execute_bash();
-    }
-
     #[tokio::test]
     async fn test_execute_bash_tool() {
         let ctx = Context::new_fake();
@@ -109,10 +97,14 @@ mod tests {
             .invoke()
             .await
             .unwrap();
-        let json = out.json().unwrap();
-        assert_eq!(json.get("exit_status").unwrap(), 0);
-        assert_eq!(json.get("stdout").unwrap(), "Hello, world!\n");
-        assert_eq!(json.get("stderr").unwrap(), "");
+
+        if let OutputKind::Json(json) = out.output {
+            assert_eq!(json.get("exit_status").unwrap(), 0);
+            assert_eq!(json.get("stdout").unwrap(), "Hello, world!\n");
+            assert_eq!(json.get("stderr").unwrap(), "");
+        } else {
+            panic!("Expected JSON output");
+        }
 
         // Verifying stderr
         let v = serde_json::json!({
@@ -123,10 +115,14 @@ mod tests {
             .invoke()
             .await
             .unwrap();
-        let json = out.json().unwrap();
-        assert_eq!(json.get("exit_status").unwrap(), 0);
-        assert_eq!(json.get("stdout").unwrap(), "");
-        assert_eq!(json.get("stderr").unwrap(), "Hello, world!\n");
+
+        if let OutputKind::Json(json) = out.output {
+            assert_eq!(json.get("exit_status").unwrap(), 0);
+            assert_eq!(json.get("stdout").unwrap(), "");
+            assert_eq!(json.get("stderr").unwrap(), "Hello, world!\n");
+        } else {
+            panic!("Expected JSON output");
+        }
 
         // Verifying exit code
         let v = serde_json::json!({
@@ -137,9 +133,13 @@ mod tests {
             .invoke()
             .await
             .unwrap();
-        let json = out.json().unwrap();
-        assert_eq!(json.get("exit_status").unwrap(), 1);
-        assert_eq!(json.get("stdout").unwrap(), "");
-        assert_eq!(json.get("stderr").unwrap(), "");
+
+        if let OutputKind::Json(json) = out.output {
+            assert_eq!(json.get("exit_status").unwrap(), 1);
+            assert_eq!(json.get("stdout").unwrap(), "");
+            assert_eq!(json.get("stderr").unwrap(), "");
+        } else {
+            panic!("Expected JSON output");
+        }
     }
 }

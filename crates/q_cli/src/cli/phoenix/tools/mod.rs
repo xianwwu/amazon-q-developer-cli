@@ -1,24 +1,10 @@
-pub mod custom;
 pub mod execute_bash;
-pub mod filesystem_read;
-pub mod filesystem_write;
-pub mod use_aws_read_only;
-
-use std::borrow::Cow;
-use std::collections::{
-    HashMap,
-    VecDeque,
-};
-use std::fs::Metadata;
-use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
-use std::process::Stdio;
-use std::sync::Arc;
+pub mod fs_read;
+pub mod fs_write;
 
 use async_trait::async_trait;
 use aws_sdk_bedrockruntime::types::{
     Tool as BedrockTool,
-    ToolConfiguration as BedrockToolConfiguration,
     ToolInputSchema as BedrockToolInputSchema,
     ToolResultContentBlock,
     ToolSpecification as BedrockToolSpecification,
@@ -27,39 +13,12 @@ use aws_smithy_types::{
     Document,
     Number as SmithyNumber,
 };
-use bstr::ByteSlice;
-use execute_bash::{
-    ExecuteBash,
-    execute_bash,
-};
-use eyre::{
-    Result,
-    bail,
-};
-use fig_os_shim::{
-    Context,
-    ContextArcProvider,
-};
-use filesystem_read::{
-    FileSystemRead,
-    filesystem_read,
-};
-use filesystem_write::{
-    FileSystemWrite,
-    filesystem_write,
-};
-use nix::NixPath;
-use nix::unistd::{
-    geteuid,
-    getuid,
-};
+use execute_bash::ExecuteBash;
+use eyre::Result;
+use fig_os_shim::ContextArcProvider;
+use fs_read::FileSystemRead;
+use fs_write::FileSystemWrite;
 use serde::Deserialize;
-use tracing::{
-    debug,
-    error,
-    info,
-    warn,
-};
 
 pub use super::Error;
 
@@ -67,9 +26,6 @@ pub use super::Error;
 #[async_trait]
 pub trait Tool: std::fmt::Debug + std::fmt::Display {
     async fn invoke(&self) -> Result<InvokeOutput, Error>;
-    fn requires_consent(&self) -> bool {
-        false
-    }
 }
 
 pub fn new_tool<C: ContextArcProvider>(
@@ -78,73 +34,17 @@ pub fn new_tool<C: ContextArcProvider>(
     value: serde_json::Value,
 ) -> Result<Box<dyn Tool + Sync>, Error> {
     let tool = match name {
-        "filesystem_read" => Box::new(FileSystemRead::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
-        "filesystem_write" => Box::new(FileSystemWrite::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
+        "fs_read" => Box::new(FileSystemRead::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
+        "fs_write" => Box::new(FileSystemWrite::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
         "execute_bash" => Box::new(ExecuteBash::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
-        custom_name => {
-            return Err(Error::Custom(
-                format!("custom tools are not supported: model request tool {}", custom_name).into(),
-            ));
+        unknown => {
+            return Err(Error::UnknownToolUse {
+                tool_name: unknown.to_string(),
+            });
         },
     };
+
     Ok(tool)
-}
-
-pub fn load_tool_config() -> ToolConfig {
-    let fs_read = filesystem_read();
-    let fs_write = filesystem_write();
-    let execute_bash = execute_bash();
-    ToolConfig(HashMap::from([
-        (fs_read.name.clone(), fs_read),
-        (fs_write.name.clone(), fs_write),
-        (execute_bash.name.clone(), execute_bash),
-    ]))
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ToolConfig(HashMap<String, ToolSpec>);
-
-impl ToolConfig {
-    pub fn get_by_name(&self, tool_name: impl AsRef<str>) -> Option<&ToolSpec> {
-        self.0.get(tool_name.as_ref())
-    }
-}
-
-impl From<HashMap<String, ToolSpec>> for ToolConfig {
-    fn from(value: HashMap<String, ToolSpec>) -> Self {
-        Self(value)
-    }
-}
-
-impl From<ToolConfig> for BedrockToolConfiguration {
-    fn from(value: ToolConfig) -> Self {
-        BedrockToolConfiguration::builder()
-            .set_tools(Some(value.0.values().cloned().map(Into::into).collect::<_>()))
-            .build()
-            .expect("building the tool configuration should not fail with tools set")
-    }
-}
-
-#[derive(Debug)]
-pub enum BuiltinToolName {
-    FileSystemRead,
-    FileSystemWrite,
-    ExecuteBash,
-}
-impl BuiltinToolName {
-    const fn name(&self) -> &'static str {
-        match self {
-            BuiltinToolName::FileSystemRead => "filesystem_read",
-            BuiltinToolName::FileSystemWrite => "filesystem_write",
-            BuiltinToolName::ExecuteBash => "execute_bash",
-        }
-    }
-}
-
-impl std::fmt::Display for BuiltinToolName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name())
-    }
 }
 
 /// A tool specification to be sent to the model as part of a conversation. Maps to
@@ -188,22 +88,6 @@ impl From<InputSchema> for BedrockToolInputSchema {
 #[derive(Debug, Default)]
 pub struct InvokeOutput {
     pub output: OutputKind,
-}
-
-impl InvokeOutput {
-    fn text(&self) -> Option<&str> {
-        match &self.output {
-            OutputKind::Text(text) => Some(text),
-            _ => None,
-        }
-    }
-
-    fn json(&self) -> Option<&serde_json::Value> {
-        match &self.output {
-            OutputKind::Json(value) => Some(value),
-            _ => None,
-        }
-    }
 }
 
 impl From<InvokeOutput> for ToolResultContentBlock {

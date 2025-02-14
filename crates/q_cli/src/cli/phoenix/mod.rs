@@ -36,13 +36,10 @@ use parser::{
 use tools::{
     InvokeOutput,
     Tool,
-    ToolConfig,
-    load_tool_config,
 };
 use tracing::{
     debug,
     error,
-    info,
 };
 use types::{
     ContentBlock,
@@ -74,18 +71,15 @@ pub async fn chat(mut input: String) -> Result<ExitCode> {
     region_check("chat")?;
 
     let ctx = Context::new();
-    let tool_config = load_tool_config();
-    debug!(?tool_config, "Using tool configuration");
 
     let system_prompt = create_system_prompt(&ctx)?;
-    let client = Client::new(MODEL_ID.to_string(), system_prompt, tool_config.clone()).await;
+    let client = Client::new(MODEL_ID.to_string(), system_prompt).await;
     let mut stdout = std::io::stdout();
 
     try_chat(ChatContext {
         output: &mut stdout,
         ctx: Context::new(),
         input_source: InputSource::new()?,
-        tool_config,
         client,
         terminal_width_provider: || terminal::window_size().map(|s| s.columns.into()).ok(),
     })
@@ -142,7 +136,6 @@ struct ChatContext<'w, W> {
     output: &'w mut W,
     ctx: Arc<Context>,
     input_source: InputSource,
-    tool_config: ToolConfig,
     /// The client to use to interact with the model.
     client: Client,
     /// Width of the terminal, required for [ParseState].
@@ -155,7 +148,6 @@ async fn try_chat<W: Write>(chat_ctx: ChatContext<'_, W>) -> Result<()> {
         ctx,
         mut input_source,
         client,
-        tool_config,
         terminal_width_provider,
     } = chat_ctx;
 
@@ -163,7 +155,7 @@ async fn try_chat<W: Write>(chat_ctx: ChatContext<'_, W>) -> Result<()> {
     execute!(
         output,
         style::Print(color_print::cstr! {"
-Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, and even perform actions on your behalf! 🐦
+Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, and even perform actions on your behalf!
 
 "
         })
@@ -227,7 +219,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
             let mut buf = String::new();
             let mut offset = 0;
             let mut ended = false;
-            let mut parser = ResponseParser::new(Arc::clone(&ctx), response, tool_config.clone());
+            let mut parser = ResponseParser::new(Arc::clone(&ctx), response);
             let mut state = ParseState::new(terminal_width_provider());
 
             loop {
@@ -298,26 +290,24 @@ async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<Message>> {
     debug!(?tool_uses, "processing tools");
     let mut messages = Vec::new();
     for tool_use in tool_uses {
-        if tool_use.requires_consent() {
-            // prompt user first, if required, return if denied
-            match ask_for_consent() {
-                Ok(_) => (),
-                Err(reason) => {
-                    messages.push(Message::new(ConversationRole::User, vec![ContentBlock::ToolResult(
-                        ToolResultBlock::builder()
-                            .tool_use_id(tool_use.tool_use_id)
-                            .content(ToolResultContentBlock::Text(format!(
-                                "The user denied permission to execute this tool. Reason: {}",
-                                &reason
-                            )))
-                            .status(ToolResultStatus::Error)
-                            .build()
-                            .unwrap(),
-                    )]));
-                    break;
-                },
-            }
+        match ask_for_consent() {
+            Ok(_) => (),
+            Err(reason) => {
+                messages.push(Message::new(ConversationRole::User, vec![ContentBlock::ToolResult(
+                    ToolResultBlock::builder()
+                        .tool_use_id(tool_use.tool_use_id)
+                        .content(ToolResultContentBlock::Text(format!(
+                            "The user denied permission to execute this tool. Reason: {}",
+                            &reason
+                        )))
+                        .status(ToolResultStatus::Error)
+                        .build()
+                        .unwrap(),
+                )]));
+                break;
+            },
         }
+
         match tool_use.invoke().await {
             Ok(result) => {
                 messages.push(Message::new(ConversationRole::User, vec![ContentBlock::ToolResult(
@@ -346,24 +336,4 @@ async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<Message>> {
         }
     }
     Ok(messages)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_flow() {
-        let user_input = vec!["test input", "y"];
-        let mut output = String::new();
-
-        let cc = ChatContext {
-            output: &mut output,
-            ctx: Context::new_fake(),
-            input_source: todo!(),
-            tool_config: todo!(),
-            client: todo!(),
-            terminal_width_provider: || Some(50),
-        };
-    }
 }

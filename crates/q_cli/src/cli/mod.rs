@@ -3,7 +3,6 @@
 pub mod app;
 mod chat;
 // #[cfg(feature = "phoenix")]
-mod phoenix;
 mod completion;
 mod debug;
 mod diagnostics;
@@ -15,6 +14,7 @@ mod installation;
 mod integrations;
 pub mod internal;
 mod issue;
+mod phoenix;
 mod settings;
 mod telemetry;
 mod theme;

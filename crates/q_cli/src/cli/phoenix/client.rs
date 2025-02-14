@@ -9,29 +9,20 @@ use aws_sdk_bedrockruntime::error::{
     SdkError,
 };
 use aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamOutput as BedrockConverseStreamResponse;
-use aws_sdk_bedrockruntime::types::ConverseStreamOutput;
 use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
+use aws_sdk_bedrockruntime::types::{
+    ConverseStreamOutput,
+    ToolConfiguration,
+};
 use aws_smithy_types::event_stream::RawMessage;
 use aws_types::sdk_config::StalledStreamProtectionConfig;
-use eyre::{
-    Result,
-    bail,
-};
+use eyre::Result;
 use tracing::debug;
 
 use super::Message;
-use super::tools::ToolConfig;
+use super::tools::ToolSpec;
 
 const CLAUDE_REGION: &str = "us-west-2";
-
-/// A client for calling the Bedrock ConverseStream API.
-// #[derive(Debug)]
-// pub struct Client {
-//     client: BedrockClient,
-//     model_id: String,
-//     system_prompt: String,
-//     tool_config: ToolConfig,
-// }
 
 #[derive(Debug)]
 pub struct Client(inner::Inner);
@@ -43,9 +34,9 @@ mod inner {
     };
 
     use aws_sdk_bedrockruntime::Client as BedrockClient;
+    use aws_sdk_bedrockruntime::types::ToolConfiguration;
 
     use super::ConverseStreamResponse;
-    use crate::cli::phoenix::tools::ToolConfig;
 
     #[derive(Debug)]
     pub enum Inner {
@@ -53,7 +44,7 @@ mod inner {
             client: BedrockClient,
             model_id: String,
             system_prompt: String,
-            tool_config: ToolConfig,
+            tool_index: ToolConfiguration,
         },
         Fake {
             responses: Arc<Mutex<std::vec::IntoIter<ConverseStreamResponse>>>,
@@ -62,7 +53,7 @@ mod inner {
 }
 
 impl Client {
-    pub async fn new(model_id: String, system_prompt: String, tool_config: ToolConfig) -> Self {
+    pub async fn new(model_id: String, system_prompt: String) -> Self {
         let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
             .stalled_stream_protection(
                 StalledStreamProtectionConfig::enabled()
@@ -72,12 +63,26 @@ impl Client {
             .region(CLAUDE_REGION)
             .load()
             .await;
+
         let client = BedrockClient::new(&sdk_config);
+
+        let tools: Vec<ToolSpec> = serde_json::from_str(include_str!("tools/tool_index.json")).unwrap();
+
+        let tool_index = ToolConfiguration::builder()
+            .set_tools(Some(
+                tools
+                    .into_iter()
+                    .map(aws_sdk_bedrockruntime::types::Tool::from)
+                    .collect(),
+            ))
+            .build()
+            .unwrap();
+
         Self(inner::Inner::Real {
             client,
             model_id,
             system_prompt,
-            tool_config,
+            tool_index,
         })
     }
 
@@ -95,7 +100,7 @@ impl Client {
                 client,
                 model_id,
                 system_prompt,
-                tool_config,
+                tool_index,
             } => Ok(ConverseStreamResponse(StreamResponse::Bedrock(
                 client
                     .converse_stream()
@@ -104,7 +109,7 @@ impl Client {
                         system_prompt.clone(),
                     ))
                     .set_messages(Some(messages))
-                    .tool_config(tool_config.clone().into())
+                    .tool_config(tool_index.clone())
                     .send()
                     .await?,
             ))),
@@ -125,7 +130,7 @@ impl ConverseStreamResponse {
     ) -> Result<Option<ConverseStreamOutput>, SdkError<ConverseStreamOutputError, RawMessage>> {
         match &mut self.0 {
             StreamResponse::Bedrock(converse_stream_output) => Ok(converse_stream_output.stream.recv().await?),
-            StreamResponse::Fake(vec) => todo!(),
+            StreamResponse::Fake(_vec) => todo!(),
         }
     }
 }

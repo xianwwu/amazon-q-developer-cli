@@ -13,10 +13,7 @@ use tracing::{
 };
 
 use super::error::Error;
-use super::tools::{
-    Tool,
-    ToolConfig,
-};
+use super::tools::Tool;
 use super::types::StopReason;
 use crate::cli::phoenix::tools::new_tool;
 
@@ -33,8 +30,6 @@ pub struct ResponseParser {
     response: SendMessageOutput,
     /// Buffer to hold the next event in [SendMessageOutput].
     peek: Option<ChatResponseStream>,
-    /// The [ToolConfig] used to generate the response.
-    tool_config: ToolConfig,
     /// Message identifier for the assistant's response.
     message_id: Option<String>,
     /// Buffer for holding the accumulated assistant response.
@@ -44,12 +39,11 @@ pub struct ResponseParser {
 }
 
 impl ResponseParser {
-    pub fn new(ctx: Arc<Context>, response: SendMessageOutput, tool_config: ToolConfig) -> Self {
+    pub fn new(ctx: Arc<Context>, response: SendMessageOutput) -> Self {
         Self {
             ctx,
             response,
             peek: None,
-            tool_config,
             message_id: None,
             assistant_text: String::new(),
             received_tool_use: false,
@@ -135,18 +129,7 @@ impl ResponseParser {
         }
         self.assistant_text.push_str(&tool_args);
         let value: serde_json::Value = serde_json::from_str(&tool_args)?;
-        match self.tool_config.get_by_name(&tool_name) {
-            Some(spec) => {
-                self.received_tool_use = true;
-                Ok(ToolUse {
-                    tool_use_id,
-                    tool: new_tool(Arc::clone(&self.ctx), &spec.name, value)?,
-                })
-            },
-            None => Err(Error::UnknownToolUse {
-                tool_name: tool_name.clone(),
-            }),
-        }
+        new_tool(Arc::clone(&self.ctx), &tool_name, value).map(|tool| ToolUse { tool_use_id, tool })
     }
 
     /// Returns the next event in the [SendMessageOutput] without consuming it.
@@ -202,17 +185,12 @@ pub struct ToolUse {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
-    use crate::cli::phoenix::tools::ToolSpec;
-    use crate::cli::phoenix::tools::execute_bash::execute_bash;
 
     #[tokio::test]
     async fn test_parse() {
         let tool_use_id = "TEST_ID".to_string();
         let tool_name = "execute_bash".to_string();
-        let tool_config: HashMap<String, ToolSpec> = [(tool_name.clone(), execute_bash())].into();
         let tool_use = serde_json::json!({
             "command": "echo hello"
         })
@@ -246,7 +224,7 @@ mod tests {
         ];
         events.reverse();
         let mock = SendMessageOutput::Mock(events);
-        let mut parser = ResponseParser::new(Context::new_fake(), mock, tool_config.into());
+        let mut parser = ResponseParser::new(Context::new_fake(), mock);
 
         for _ in 0..5 {
             println!("{:?}", parser.recv().await.unwrap());
