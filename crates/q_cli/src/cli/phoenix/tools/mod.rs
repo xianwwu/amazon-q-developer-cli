@@ -1,18 +1,15 @@
+pub mod aws_tool;
 pub mod execute_bash;
 pub mod fs_read;
 pub mod fs_write;
 
 use async_trait::async_trait;
 use aws_sdk_bedrockruntime::types::{
-    Tool as BedrockTool,
-    ToolInputSchema as BedrockToolInputSchema,
-    ToolResultContentBlock,
+    Tool as BedrockTool, ToolInputSchema as BedrockToolInputSchema, ToolResultContentBlock,
     ToolSpecification as BedrockToolSpecification,
 };
-use aws_smithy_types::{
-    Document,
-    Number as SmithyNumber,
-};
+use aws_smithy_types::{Document, Number as SmithyNumber};
+use aws_tool::AwsTool;
 use execute_bash::ExecuteBash;
 use eyre::Result;
 use fig_os_shim::ContextArcProvider;
@@ -37,6 +34,7 @@ pub fn new_tool<C: ContextArcProvider>(
         "fs_read" => Box::new(FileSystemRead::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
         "fs_write" => Box::new(FileSystemWrite::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
         "execute_bash" => Box::new(ExecuteBash::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
+        "use_aws_read_only" => Box::new(AwsTool::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
         unknown => {
             return Err(Error::UnknownToolUse {
                 tool_name: unknown.to_string(),

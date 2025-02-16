@@ -7,11 +7,7 @@ use fig_os_shim::Context;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
-use super::{
-    Error,
-    InvokeOutput,
-    Tool,
-};
+use super::{Error, InvokeOutput, Tool};
 
 #[derive(Debug)]
 pub struct FileSystemWrite {

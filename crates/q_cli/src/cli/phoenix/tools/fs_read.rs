@@ -10,12 +10,7 @@ use fig_os_shim::Context;
 use serde::Deserialize;
 use tracing::warn;
 
-use super::{
-    Error,
-    InvokeOutput,
-    OutputKind,
-    Tool,
-};
+use super::{Error, InvokeOutput, OutputKind, Tool};
 
 #[derive(Debug)]
 pub struct FileSystemRead {
