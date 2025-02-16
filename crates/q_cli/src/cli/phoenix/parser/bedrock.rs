@@ -8,6 +8,7 @@ use aws_sdk_bedrockruntime::types::{
     ConversationRole as BedrockConversationRole,
     ConverseStreamMetadataEvent,
     ConverseStreamOutput,
+    StopReason as BedrockStopReason,
     ToolUseBlock,
     ToolUseBlockStart,
 };
@@ -17,20 +18,20 @@ use tracing::{
     warn,
 };
 
-use super::client::ConverseStreamResponse;
-use super::error::Error;
-use super::tools::Tool;
-use super::types::StopReason;
-use super::{
-    ConversationRole,
-    Message,
-};
+use crate::cli::phoenix::ConversationRole;
+use crate::cli::phoenix::client::bedrock::SendMessageOutput;
+use crate::cli::phoenix::error::Error;
 use crate::cli::phoenix::tools::{
+    Tool,
     new_tool,
     serde_value_to_document,
 };
+use crate::cli::phoenix::types::{
+    Message,
+    StopReason,
+};
 
-/// State associated with parsing a [ConverseStreamResponse] into a [Message].
+/// State associated with parsing a [SendMessageOutput] into a [Message].
 ///
 /// # Usage
 ///
@@ -40,17 +41,17 @@ use crate::cli::phoenix::tools::{
 pub struct ResponseParser {
     ctx: Arc<Context>,
     /// The response to consume and parse into a sequence of [Ev].
-    response: ConverseStreamResponse,
+    response: SendMessageOutput,
     /// The list of [ContentBlock] items to be used in the final parsed message.
     content: Vec<BedrockContentBlock>,
-    /// The [StopReason] for the associated [ConverseStreamResponse].
+    /// The [StopReason] for the associated [SendMessageOutput].
     stop_reason: Option<StopReason>,
     assistant_text: String,
     metadata_event: Option<ConverseStreamMetadataEvent>,
 }
 
 impl ResponseParser {
-    pub fn new(ctx: Arc<Context>, response: ConverseStreamResponse) -> Self {
+    pub fn new(ctx: Arc<Context>, response: SendMessageOutput) -> Self {
         Self {
             ctx,
             response,
@@ -61,10 +62,10 @@ impl ResponseParser {
         }
     }
 
-    /// Consumes the associated [ConverseStreamResponse] until a valid [ResponseEvent] is parsed.
+    /// Consumes the associated [SendMessageOutput] until a valid [ResponseEvent] is parsed.
     pub async fn recv(&mut self) -> Result<ResponseEvent, Error> {
         loop {
-            match self.response.recv().await {
+            match self.response.stream.recv().await {
                 Ok(Some(output)) => {
                     trace!(?output, "Received output");
                     match output {
@@ -97,20 +98,14 @@ impl ResponseParser {
                         ConverseStreamOutput::MessageStart(event) => {
                             assert!(event.role == BedrockConversationRole::Assistant);
                         },
-                        ConverseStreamOutput::MessageStop(event) => {
-                            match event.stop_reason {
-                                StopReason::EndTurn | StopReason::ToolUse => {
-                                    assert!(self.stop_reason.is_none());
-                                    self.stop_reason = Some(event.stop_reason);
-                                },
-                                StopReason::MaxTokens => {
-                                    // todo - how to handle max tokens?
-                                    return Err(Error::MaxTokensReached("Max tokens reached".into()));
-                                },
-                                other => {
-                                    warn!("Unhandled message stop reason: {}", other);
-                                },
-                            }
+                        ConverseStreamOutput::MessageStop(event) => match event.stop_reason {
+                            BedrockStopReason::EndTurn | BedrockStopReason::ToolUse => {
+                                assert!(self.stop_reason.is_none());
+                                self.stop_reason = Some(event.stop_reason.into());
+                            },
+                            other => {
+                                warn!("Unhandled message stop reason: {:?}", other);
+                            },
                         },
                         ConverseStreamOutput::Metadata(event) => {
                             if self.stop_reason.is_none() {
@@ -146,7 +141,7 @@ impl ResponseParser {
         let mut tool_args = String::new();
         let tool_name = &start.name;
         loop {
-            match self.response.recv().await {
+            match self.response.stream.recv().await {
                 Ok(
                     ref l @ Some(ConverseStreamOutput::ContentBlockDelta(ContentBlockDeltaEvent {
                         delta: Some(ContentBlockDelta::ToolUse(ref tool)),

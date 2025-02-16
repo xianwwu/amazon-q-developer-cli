@@ -74,7 +74,7 @@ impl From<ToolSpec> for BedrockToolSpecification {
 
 /// The schema specification describing a tool's fields. Maps to [BedrockToolInputSchema].
 #[derive(Debug, Clone, Deserialize)]
-pub struct InputSchema(serde_json::Value);
+pub struct InputSchema(pub serde_json::Value);
 
 impl From<InputSchema> for BedrockToolInputSchema {
     fn from(value: InputSchema) -> Self {

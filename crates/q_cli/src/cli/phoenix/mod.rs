@@ -2,18 +2,13 @@ mod client;
 mod error;
 mod input_source;
 mod parser;
-mod parser2;
 mod tools;
 mod types;
+use std::collections::HashMap;
 use std::io::Write;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use aws_sdk_bedrockruntime::types::{
-    ToolResultBlock,
-    ToolResultContentBlock,
-    ToolResultStatus,
-};
 use client::Client;
 use color_eyre::owo_colors::OwoColorize;
 use crossterm::{
@@ -36,16 +31,19 @@ use parser::{
 use tools::{
     InvokeOutput,
     Tool,
+    ToolSpec,
 };
 use tracing::{
     debug,
     error,
 };
 use types::{
-    ContentBlock,
     ConversationRole,
-    Message,
+    ConversationState,
     StopReason,
+    ToolResult,
+    ToolResultContentBlock,
+    ToolResultStatus,
 };
 use winnow::Partial;
 use winnow::stream::Offset;
@@ -55,8 +53,6 @@ use crate::cli::chat::parse::{
     interpret_markdown,
 };
 use crate::util::region_check;
-
-const MODEL_ID: &str = "anthropic.claude-3-5-sonnet-20241022-v2:0";
 
 const MAX_TOOL_USE_RECURSIONS: u32 = 50;
 
@@ -71,15 +67,17 @@ pub async fn chat(mut input: String) -> Result<ExitCode> {
     region_check("chat")?;
 
     let ctx = Context::new();
+    let tool_config = load_tools()?;
+    debug!(?tool_config, "Using tools");
 
-    let system_prompt = create_system_prompt(&ctx)?;
-    let client = Client::new(MODEL_ID.to_string(), system_prompt).await;
+    let client = Client::new(&ctx, tool_config.clone()).await?;
     let mut stdout = std::io::stdout();
 
     try_chat(ChatContext {
         output: &mut stdout,
         ctx: Context::new(),
         input_source: InputSource::new()?,
+        tool_config,
         client,
         terminal_width_provider: || terminal::window_size().map(|s| s.columns.into()).ok(),
     })
@@ -88,28 +86,17 @@ pub async fn chat(mut input: String) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// Creates a system prompt with context about the user's environment.
-fn create_system_prompt(ctx: &Context) -> Result<String> {
-    let cwd = ctx.env().current_dir()?;
-    let cwd = cwd.to_string_lossy();
-    let os = ctx.platform().os();
-    let system_prompt = format!(
-        r#"You are an expert programmer and CLI chat assistant. You are given a list of tools to use to answer a given prompt.
+/// The tools that can be used by the model.
+#[derive(Debug, Clone)]
+pub struct ToolConfiguration {
+    tools: HashMap<String, ToolSpec>,
+}
 
-You should only respond to tasks related to coding. You must never make assumptions about the user's environment. If you need more information,
-you MUST make a tool use request.
-
-When you execute a tool, do not assume that the user can see the output directly. You should either show the command output, or explain what the
-output contains in a friendly format.
-
-Context about the user's environment is provided below:
-- Current working directory: {}
-- Operating system: {}
-"#,
-        cwd, os
-    );
-
-    Ok(system_prompt)
+fn load_tools() -> Result<ToolConfiguration> {
+    let tools: Vec<ToolSpec> = serde_json::from_str(include_str!("tools/tool_index.json"))?;
+    Ok(ToolConfiguration {
+        tools: tools.into_iter().map(|spec| (spec.name.clone(), spec)).collect(),
+    })
 }
 
 fn ask_for_consent() -> Result<(), String> {
@@ -136,6 +123,7 @@ struct ChatContext<'w, W> {
     output: &'w mut W,
     ctx: Arc<Context>,
     input_source: InputSource,
+    tool_config: ToolConfiguration,
     /// The client to use to interact with the model.
     client: Client,
     /// Width of the terminal, required for [ParseState].
@@ -147,6 +135,7 @@ async fn try_chat<W: Write>(chat_ctx: ChatContext<'_, W>) -> Result<()> {
         output,
         ctx,
         mut input_source,
+        tool_config,
         client,
         terminal_width_provider,
     } = chat_ctx;
@@ -162,7 +151,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
     )?;
 
     let mut conversation_id = None;
-    let mut messages = Vec::new(); // Holds the entire conversation message history.
+    let mut conversation_state = ConversationState::new(tool_config.clone());
     let mut stop_reason = None; // StopReason associated with each model response.
     let mut tool_uses = Vec::new();
     let mut tool_use_recursions = 0;
@@ -191,11 +180,9 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                     _ => (),
                 }
 
-                messages.push(Message::new(ConversationRole::User, vec![ContentBlock::Text(
-                    user_input,
-                )]));
+                conversation_state.append_new_user_message(user_input);
 
-                response = Some(client.send_messages(messages.clone()).await?);
+                response = Some(client.send_messages(&mut conversation_state).await?);
             },
             Some(StopReason::ToolUse) => {
                 tool_use_recursions += 1;
@@ -204,13 +191,10 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                 }
 
                 let uses = std::mem::take(&mut tool_uses);
-                let mut tool_results = handle_tool_use(uses).await?;
-                messages.append(&mut tool_results);
+                let tool_results = handle_tool_use(uses).await?;
+                conversation_state.add_tool_results(tool_results);
 
-                response = Some(client.send_messages(messages.clone()).await?);
-            },
-            Some(other) => {
-                bail!("Unknown stop reason: {:?}", other);
+                response = Some(client.send_messages(&mut conversation_state).await?);
             },
         }
 
@@ -241,7 +225,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                         } => {
                             buf.push_str("\n\n");
                             stop_reason = Some(sr);
-                            messages.push(message);
+                            conversation_state.push_assistant_message(message);
                             ended = true;
                         },
                     },
@@ -286,54 +270,46 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
 }
 
 /// Executes the list of tools and returns their results as messages.
-async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<Message>> {
+// async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<Message>> {
+async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<ToolResult>> {
     debug!(?tool_uses, "processing tools");
-    let mut messages = Vec::new();
+    let mut results = Vec::new();
     for tool_use in tool_uses {
         match ask_for_consent() {
             Ok(_) => (),
             Err(reason) => {
-                messages.push(Message::new(ConversationRole::User, vec![ContentBlock::ToolResult(
-                    ToolResultBlock::builder()
-                        .tool_use_id(tool_use.tool_use_id)
-                        .content(ToolResultContentBlock::Text(format!(
-                            "The user denied permission to execute this tool. Reason: {}",
-                            &reason
-                        )))
-                        .status(ToolResultStatus::Error)
-                        .build()
-                        .unwrap(),
-                )]));
+                results.push(ToolResult {
+                    tool_use_id: tool_use.tool_use_id,
+                    content: vec![ToolResultContentBlock::Text(format!(
+                        "The user denied permission to execute this tool. Reason: {}",
+                        &reason
+                    ))],
+                    status: ToolResultStatus::Error,
+                });
                 break;
             },
         }
 
         match tool_use.invoke().await {
             Ok(result) => {
-                messages.push(Message::new(ConversationRole::User, vec![ContentBlock::ToolResult(
-                    ToolResultBlock::builder()
-                        .tool_use_id(tool_use.tool_use_id)
-                        .content(result.into())
-                        .status(ToolResultStatus::Success)
-                        .build()
-                        .unwrap(),
-                )]));
+                results.push(ToolResult {
+                    tool_use_id: tool_use.tool_use_id,
+                    content: vec![result.into()],
+                    status: ToolResultStatus::Success,
+                });
             },
             Err(err) => {
                 error!(?err, "An error occurred processing the tool");
-                messages.push(Message::new(ConversationRole::User, vec![ContentBlock::ToolResult(
-                    ToolResultBlock::builder()
-                        .tool_use_id(tool_use.tool_use_id)
-                        .content(ToolResultContentBlock::Text(format!(
-                            "An error occurred processing the tool: {}",
-                            err
-                        )))
-                        .status(ToolResultStatus::Error)
-                        .build()
-                        .unwrap(),
-                )]));
+                results.push(ToolResult {
+                    tool_use_id: tool_use.tool_use_id,
+                    content: vec![ToolResultContentBlock::Text(format!(
+                        "An error occurred processing the tool: {}",
+                        err
+                    ))],
+                    status: ToolResultStatus::Error,
+                });
             },
         }
     }
-    Ok(messages)
+    Ok(results)
 }

@@ -12,10 +12,15 @@ use tracing::{
     trace,
 };
 
-use super::error::Error;
-use super::tools::Tool;
-use super::types::StopReason;
-use crate::cli::phoenix::tools::new_tool;
+use crate::cli::phoenix::error::Error;
+use crate::cli::phoenix::tools::{
+    Tool,
+    new_tool,
+};
+use crate::cli::phoenix::types::{
+    Message,
+    StopReason,
+};
 
 /// State associated with parsing a [ConverseStreamResponse] into a [Message].
 ///
@@ -93,10 +98,10 @@ impl ResponseParser {
                     } else {
                         StopReason::EndTurn
                     };
-                    let message = ChatMessage::AssistantResponseMessage(AssistantResponseMessage {
+                    let message = Message(ChatMessage::AssistantResponseMessage(AssistantResponseMessage {
                         message_id: self.message_id.take(),
                         content: std::mem::take(&mut self.assistant_text),
-                    });
+                    }));
                     return Ok(ResponseEvent::EndStream { stop_reason, message });
                 },
                 Err(err) => return Err(err.into()),
@@ -171,7 +176,7 @@ pub enum ResponseEvent {
         /// The completed message containing all of the assistant text and tool use events
         /// previously emitted. This should be stored in the conversation history and sent in
         /// subsequent requests.
-        message: ChatMessage,
+        message: Message,
     },
 }
 

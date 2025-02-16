@@ -132,18 +132,37 @@ impl From<Tool> for amzn_codewhisperer_streaming_client::types::Tool {
     }
 }
 
+impl From<Tool> for amzn_qdeveloper_streaming_client::types::Tool {
+    fn from(value: Tool) -> Self {
+        match value {
+            Tool::ToolSpecification(v) => amzn_qdeveloper_streaming_client::types::Tool::ToolSpecification(v.into()),
+        }
+    }
+}
+
 /// The specification for the tool.
 #[derive(Debug, Clone)]
 pub struct ToolSpecification {
     /// The name for the tool.
-    name: String,
+    pub name: String,
     /// The description for the tool.
-    description: String,
+    pub description: String,
     /// The input schema for the tool in JSON format.
-    input_schema: ToolInputSchema,
+    pub input_schema: ToolInputSchema,
 }
 
 impl From<ToolSpecification> for amzn_codewhisperer_streaming_client::types::ToolSpecification {
+    fn from(value: ToolSpecification) -> Self {
+        Self::builder()
+            .name(value.name)
+            .description(value.description)
+            .input_schema(value.input_schema.into())
+            .build()
+            .expect("building ToolSpecification should not fail")
+    }
+}
+
+impl From<ToolSpecification> for amzn_qdeveloper_streaming_client::types::ToolSpecification {
     fn from(value: ToolSpecification) -> Self {
         Self::builder()
             .name(value.name)
@@ -166,11 +185,39 @@ impl From<ToolInputSchema> for amzn_codewhisperer_streaming_client::types::ToolI
     }
 }
 
+impl From<ToolInputSchema> for amzn_qdeveloper_streaming_client::types::ToolInputSchema {
+    fn from(value: ToolInputSchema) -> Self {
+        Self::builder().set_json(value.json).build()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ToolResult {
     pub tool_use_id: String,
     pub content: Vec<ToolResultContentBlock>,
     pub status: ToolResultStatus,
+}
+
+impl From<ToolResult> for amzn_codewhisperer_streaming_client::types::ToolResult {
+    fn from(value: ToolResult) -> Self {
+        Self::builder()
+            .tool_use_id(value.tool_use_id)
+            .set_content(Some(value.content.into_iter().map(Into::into).collect::<_>()))
+            .status(value.status.into())
+            .build()
+            .expect("building ToolResult should not fail")
+    }
+}
+
+impl From<ToolResult> for amzn_qdeveloper_streaming_client::types::ToolResult {
+    fn from(value: ToolResult) -> Self {
+        Self::builder()
+            .tool_use_id(value.tool_use_id)
+            .set_content(Some(value.content.into_iter().map(Into::into).collect::<_>()))
+            .status(value.status.into())
+            .build()
+            .expect("building ToolResult should not fail")
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -179,10 +226,46 @@ pub enum ToolResultContentBlock {
     Text(String),
 }
 
+impl From<ToolResultContentBlock> for amzn_codewhisperer_streaming_client::types::ToolResultContentBlock {
+    fn from(value: ToolResultContentBlock) -> Self {
+        match value {
+            ToolResultContentBlock::Json(document) => Self::Json(document),
+            ToolResultContentBlock::Text(text) => Self::Text(text),
+        }
+    }
+}
+
+impl From<ToolResultContentBlock> for amzn_qdeveloper_streaming_client::types::ToolResultContentBlock {
+    fn from(value: ToolResultContentBlock) -> Self {
+        match value {
+            ToolResultContentBlock::Json(document) => Self::Json(document),
+            ToolResultContentBlock::Text(text) => Self::Text(text),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ToolResultStatus {
     Error,
     Success,
+}
+
+impl From<ToolResultStatus> for amzn_codewhisperer_streaming_client::types::ToolResultStatus {
+    fn from(value: ToolResultStatus) -> Self {
+        match value {
+            ToolResultStatus::Error => Self::Error,
+            ToolResultStatus::Success => Self::Success,
+        }
+    }
+}
+
+impl From<ToolResultStatus> for amzn_qdeveloper_streaming_client::types::ToolResultStatus {
+    fn from(value: ToolResultStatus) -> Self {
+        match value {
+            ToolResultStatus::Error => Self::Error,
+            ToolResultStatus::Success => Self::Success,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -546,6 +629,8 @@ impl From<UserInputMessageContext> for amzn_codewhisperer_streaming_client::type
             .set_shell_state(value.shell_state.map(Into::into))
             .set_env_state(value.env_state.map(Into::into))
             .set_git_state(value.git_state.map(Into::into))
+            .set_tool_results(value.tool_results.map(|t| t.into_iter().map(Into::into).collect()))
+            .set_tools(value.tools.map(|t| t.into_iter().map(Into::into).collect()))
             .build()
     }
 }
@@ -556,6 +641,8 @@ impl From<UserInputMessageContext> for amzn_qdeveloper_streaming_client::types::
             .set_shell_state(value.shell_state.map(Into::into))
             .set_env_state(value.env_state.map(Into::into))
             .set_git_state(value.git_state.map(Into::into))
+            .set_tool_results(value.tool_results.map(|t| t.into_iter().map(Into::into).collect()))
+            .set_tools(value.tools.map(|t| t.into_iter().map(Into::into).collect()))
             .build()
     }
 }
@@ -849,6 +936,40 @@ mod tests {
         assert_eq!(
             ChatResponseStream::from(user_input_event),
             ChatResponseStream::SupplementaryWebLinksEvent(())
+        );
+
+        let user_input_event = amzn_codewhisperer_streaming_client::types::ChatResponseStream::ToolUseEvent(
+            amzn_codewhisperer_streaming_client::types::ToolUseEvent::builder()
+                .tool_use_id("tool use id".to_string())
+                .name("tool name".to_string())
+                .build()
+                .unwrap(),
+        );
+        assert_eq!(
+            ChatResponseStream::from(user_input_event),
+            ChatResponseStream::ToolUseEvent {
+                tool_use_id: "tool_use_id".to_string(),
+                name: "tool_name".to_string(),
+                input: None,
+                stop: None,
+            }
+        );
+
+        let user_input_event = amzn_qdeveloper_streaming_client::types::ChatResponseStream::ToolUseEvent(
+            amzn_qdeveloper_streaming_client::types::ToolUseEvent::builder()
+                .tool_use_id("tool_use_id".to_string())
+                .name("tool_name".to_string())
+                .build()
+                .unwrap(),
+        );
+        assert_eq!(
+            ChatResponseStream::from(user_input_event),
+            ChatResponseStream::ToolUseEvent {
+                tool_use_id: "tool_use_id".to_string(),
+                name: "tool_name".to_string(),
+                input: None,
+                stop: None,
+            }
         );
     }
 }
