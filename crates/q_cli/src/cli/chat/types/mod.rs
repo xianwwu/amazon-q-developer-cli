@@ -27,7 +27,6 @@ use fig_api_client::model::{
     GitState,
     ShellHistoryEntry,
     ShellState,
-    UserIntent,
 };
 use fig_util::Shell;
 use regex::Regex;
@@ -75,18 +74,6 @@ impl ContextModifiers {
     /// Returns `true` if any context modifiers are set
     fn any(&self) -> bool {
         self.env || self.history || self.git
-    }
-
-    /// Returns a [`UserIntent`] that disables RAG if any context modifiers are set
-    #[allow(clippy::unused_self)]
-    fn user_intent(&self) -> Option<UserIntent> {
-        // disabled while user intents all change prompt
-        // if self.any() {
-        //     Some(UserIntent::ApplyCommonBestPractices)
-        // } else {
-        //     None
-        // }
-        None
     }
 }
 

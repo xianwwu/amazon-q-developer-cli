@@ -1,8 +1,8 @@
 mod client;
 mod error;
 mod input_source;
-mod parser;
 mod parse;
+mod parser;
 mod prompt;
 mod tools;
 mod types;
@@ -45,17 +45,12 @@ use spinners::{
     Spinners,
 };
 use tools::ToolSpec;
-use tracing::{
-    debug,
-    error,
-};
+use tracing::debug;
 use types::{
     ConversationRole,
     ConversationState,
     StopReason,
     ToolResult,
-    ToolResultContentBlock,
-    ToolResultStatus,
 };
 use winnow::Partial;
 use winnow::stream::Offset;
@@ -168,7 +163,6 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
         )?;
     }
 
-    let mut conversation_id = None;
     let mut conversation_state = ConversationState::new(tool_config.clone());
     let mut stop_reason = None; // StopReason associated with each model response.
     let mut tool_uses = Vec::new();
@@ -193,8 +187,9 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
 
                 match user_input.trim() {
                     "exit" | "quit" => {
-                        if let Some(conversation_id) = conversation_id {
-                            // fig_telemetry::send_end_chat(conversation_id.clone()).await;
+                        if let Some(_id) = conversation_state.conversation_id {
+                            // TODO: telemetry
+                            // fig_telemetry::send_end_chat(id.clone()).await;
                         }
                         return Ok(());
                     },
@@ -253,7 +248,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
                 match parser.recv().await {
                     Ok(msg_event) => match msg_event {
                         parser::ResponseEvent::ConversationId(id) => {
-                            conversation_id = Some(id);
+                            conversation_state.conversation_id = Some(id);
                         },
                         parser::ResponseEvent::AssistantText(text) => {
                             buf.push_str(&text);
@@ -337,13 +332,17 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
     Ok(())
 }
 
-async fn handle_tool_uses(output: &mut impl Write, ctx: &Context, tool_uses: Vec<ToolUse>) -> Result<Vec<ToolResult>> {
+async fn handle_tool_uses(
+    _output: &mut impl Write,
+    _ctx: &Context,
+    _tool_uses: Vec<ToolUse>,
+) -> Result<Vec<ToolResult>> {
     Ok(vec![])
 }
 
 // async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<Message>> {
-// async fn handle_tool_uses(output: &mut impl Write, ctx: &Context, tool_uses: Vec<ToolUse>) -> Result<Vec<ToolResult>> {
-//     debug!(?tool_uses, "processing tools");
+// async fn handle_tool_uses(output: &mut impl Write, ctx: &Context, tool_uses: Vec<ToolUse>) ->
+// Result<Vec<ToolResult>> {     debug!(?tool_uses, "processing tools");
 //     let mut results = Vec::new();
 //
 //     for tool_use in tool_uses {

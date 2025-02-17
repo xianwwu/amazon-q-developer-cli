@@ -86,8 +86,8 @@ impl Tool for FsWrite {
 }
 
 impl Display for FsWrite {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
     }
 }
 
@@ -95,6 +95,7 @@ impl Display for FsWrite {
 ///
 /// If the str exceeds `max_len`, then the first `max_len` characters are returned with a suffix of
 /// `"<...Truncated>`. Otherwise, the str is returned as is.
+#[allow(dead_code)]
 fn truncate_str(text: &str, max_len: usize) -> Cow<'_, str> {
     if text.len() > max_len {
         let mut out = String::new();

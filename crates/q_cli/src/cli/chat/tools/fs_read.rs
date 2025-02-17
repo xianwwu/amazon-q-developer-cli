@@ -169,8 +169,8 @@ fn format_mode(mode: u32) -> [char; 9] {
 }
 
 impl Display for FsRead {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
     }
 }
 

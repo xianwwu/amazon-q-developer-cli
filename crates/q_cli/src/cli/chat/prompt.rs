@@ -22,8 +22,6 @@ use rustyline::{
 };
 use winnow::stream::AsChar;
 
-pub const PROMPT: &str = "> ";
-
 const MODIFIERS: &[&str] = &["@history", "@git", "@env"];
 
 pub struct ChatCompleater {}

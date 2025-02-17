@@ -15,6 +15,7 @@ mod inner {
     #[derive(Debug)]
     pub enum Inner {
         Readline(Editor<ChatHelper, FileHistory>),
+        #[allow(dead_code)]
         Mock { index: usize, lines: Vec<String> },
     }
 }
@@ -24,6 +25,7 @@ impl InputSource {
         Ok(Self(inner::Inner::Readline(rl()?)))
     }
 
+    #[allow(dead_code)]
     pub fn new_mock(lines: Vec<String>) -> Self {
         Self(inner::Inner::Mock { index: 0, lines })
     }

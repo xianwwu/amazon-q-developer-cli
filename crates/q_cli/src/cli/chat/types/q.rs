@@ -107,7 +107,7 @@ impl From<ConversationState> for FigConversationState {
             user_input_message: value
                 .next_message
                 .and_then(|m| match m.0 {
-                    ChatMessage::AssistantResponseMessage(assistant_response_message) => None,
+                    ChatMessage::AssistantResponseMessage(_) => None,
                     ChatMessage::UserInputMessage(user_input_message) => Some(user_input_message),
                 })
                 .expect("no user input message available"),
@@ -121,6 +121,7 @@ pub struct Message(pub ChatMessage);
 
 pub type ToolResult = fig_api_client::model::ToolResult;
 pub type ToolResultContentBlock = fig_api_client::model::ToolResultContentBlock;
+#[allow(dead_code)]
 pub type ToolResultStatus = fig_api_client::model::ToolResultStatus;
 
 impl From<InvokeOutput> for ToolResultContentBlock {

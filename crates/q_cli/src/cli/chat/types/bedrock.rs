@@ -120,6 +120,7 @@ impl From<Message> for BedrockMessage {
     }
 }
 
+#[allow(clippy::fallible_impl_from)]
 impl From<BedrockStopReason> for StopReason {
     fn from(value: BedrockStopReason) -> Self {
         match value {
@@ -149,6 +150,7 @@ impl From<ContentBlock> for BedrockContentBlock {
     }
 }
 
+#[allow(clippy::fallible_impl_from)]
 impl From<BedrockContentBlock> for ContentBlock {
     fn from(value: BedrockContentBlock) -> Self {
         match value {

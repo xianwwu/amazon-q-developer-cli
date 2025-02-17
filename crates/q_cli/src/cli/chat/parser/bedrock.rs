@@ -18,11 +18,11 @@ use tracing::{
     warn,
 };
 
+use super::ToolUse;
 use crate::cli::chat::ConversationRole;
 use crate::cli::chat::client::bedrock::SendMessageOutput;
 use crate::cli::chat::error::Error;
 use crate::cli::chat::tools::{
-    Tool,
     parse_tool,
     serde_value_to_document,
 };
@@ -39,7 +39,7 @@ use crate::cli::chat::types::{
 /// [ResponseEvent::EndStream] value is returned.
 #[derive(Debug)]
 pub struct ResponseParser {
-    ctx: Arc<Context>,
+    _ctx: Arc<Context>,
     /// The response to consume and parse into a sequence of [Ev].
     response: SendMessageOutput,
     /// The list of [ContentBlock] items to be used in the final parsed message.
@@ -53,7 +53,7 @@ pub struct ResponseParser {
 impl ResponseParser {
     pub fn new(ctx: Arc<Context>, response: SendMessageOutput) -> Self {
         Self {
-            ctx,
+            _ctx: ctx,
             response,
             content: Vec::new(),
             stop_reason: None,
@@ -112,6 +112,10 @@ impl ResponseParser {
                                 warn!(?event, "Unexpected Metadata event before MessageStop");
                             }
                             self.metadata_event = Some(event);
+
+                            // Conversation id's are defined by the Q model. Just doing a random
+                            // one here for consistency sake.
+                            return Ok(ResponseEvent::ConversationId(rand::random::<u32>().to_string()));
                         },
                         _ => (),
                     }
@@ -132,7 +136,7 @@ impl ResponseParser {
                     );
                     return Ok(ResponseEvent::EndStream { stop_reason, message });
                 },
-                Err(err) => return Err(Error::SdkError(err)),
+                Err(err) => return Err(Error::Sdk(err)),
             }
         }
     }
@@ -160,7 +164,7 @@ impl ResponseParser {
                         format!("Received unexpected event while parsing a tool use: {:?}", event).into(),
                     ));
                 },
-                Err(err) => return Err(Error::SdkError(err)),
+                Err(err) => return Err(Error::Sdk(err)),
             }
         }
 
@@ -199,22 +203,4 @@ pub enum ResponseEvent {
         /// future conversation messages.
         message: Message,
     },
-}
-
-/// Metadata associated with an assistant response, e.g. token usage.
-#[derive(Debug)]
-pub struct Metadata(ConverseStreamMetadataEvent);
-
-impl From<ConverseStreamMetadataEvent> for Metadata {
-    fn from(value: ConverseStreamMetadataEvent) -> Self {
-        Self(value)
-    }
-}
-
-/// Represents a tool use requested by the assistant.
-#[derive(Debug)]
-pub struct ToolUse {
-    /// Corresponds to the `"toolUseId"` returned by the model.
-    pub tool_use_id: String,
-    pub tool: Box<dyn Tool>,
 }

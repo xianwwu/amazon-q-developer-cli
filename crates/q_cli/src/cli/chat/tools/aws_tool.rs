@@ -118,12 +118,10 @@ impl Display for UseAws {
         if let Some(ref profile_name) = self.profile_name {
             writeln!(f, "Profile name: {}", profile_name)?;
         } else {
-            writeln!(f, "Profile name: {}", "default")?;
+            writeln!(f, "Profile name: default")?;
         }
         if let Some(ref label) = self.label {
             writeln!(f, "Label: {}", label)?;
-        } else {
-            writeln!(f, "Label: {}", "")?;
         }
 
         Ok(())

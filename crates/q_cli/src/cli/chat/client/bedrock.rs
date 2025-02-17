@@ -121,8 +121,8 @@ impl From<ToolConfiguration> for BedrockToolConfiguration {
             .set_tools(Some(
                 value
                     .tools
-                    .into_iter()
-                    .map(|(_, v)| BedrockTool::ToolSpec(v.into()))
+                    .into_values()
+                    .map(|v| BedrockTool::ToolSpec(v.into()))
                     .collect(),
             ))
             .build()
