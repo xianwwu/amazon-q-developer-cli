@@ -5,16 +5,21 @@ pub mod fs_write;
 
 use async_trait::async_trait;
 use aws_sdk_bedrockruntime::types::{
-    Tool as BedrockTool, ToolInputSchema as BedrockToolInputSchema, ToolResultContentBlock,
+    Tool as BedrockTool,
+    ToolInputSchema as BedrockToolInputSchema,
+    ToolResultContentBlock,
     ToolSpecification as BedrockToolSpecification,
 };
-use aws_smithy_types::{Document, Number as SmithyNumber};
-use aws_tool::AwsTool;
+use aws_smithy_types::{
+    Document,
+    Number as SmithyNumber,
+};
+use aws_tool::UseAws;
 use execute_bash::ExecuteBash;
 use eyre::Result;
-use fig_os_shim::ContextArcProvider;
-use fs_read::FileSystemRead;
-use fs_write::FileSystemWrite;
+use fig_os_shim::Context;
+use fs_read::FsRead;
+use fs_write::FsWrite;
 use serde::Deserialize;
 
 pub use super::Error;
@@ -22,19 +27,19 @@ pub use super::Error;
 /// Represents an executable tool use.
 #[async_trait]
 pub trait Tool: std::fmt::Debug + std::fmt::Display {
-    async fn invoke(&self) -> Result<InvokeOutput, Error>;
+    // shouldn't be a method but traits are broken in rust
+    /// The display name of a tool
+    fn display_name(&self) -> String;
+    /// Invokes the tool asynchronously
+    async fn invoke(&self, context: &Context) -> Result<InvokeOutput, Error>;
 }
 
-pub fn new_tool<C: ContextArcProvider>(
-    ctx: C,
-    name: &str,
-    value: serde_json::Value,
-) -> Result<Box<dyn Tool + Sync>, Error> {
+pub fn parse_tool(name: &str, value: serde_json::Value) -> Result<Box<dyn Tool>, Error> {
     let tool = match name {
-        "fs_read" => Box::new(FileSystemRead::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
-        "fs_write" => Box::new(FileSystemWrite::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
-        "execute_bash" => Box::new(ExecuteBash::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
-        "use_aws_read_only" => Box::new(AwsTool::from_value(ctx.context_arc(), value)?) as Box<dyn Tool + Sync>,
+        "fs_read" => Box::new(serde_json::from_value::<FsRead>(value)?) as Box<dyn Tool>,
+        "fs_write" => Box::new(serde_json::from_value::<FsWrite>(value)?) as Box<dyn Tool>,
+        "execute_bash" => Box::new(serde_json::from_value::<ExecuteBash>(value)?) as Box<dyn Tool>,
+        "use_aws_read_only" => Box::new(serde_json::from_value::<UseAws>(value)?) as Box<dyn Tool>,
         unknown => {
             return Err(Error::UnknownToolUse {
                 tool_name: unknown.to_string(),

@@ -42,11 +42,7 @@ use spinners::{
     Spinner,
     Spinners,
 };
-use tools::{
-    InvokeOutput,
-    Tool,
-    ToolSpec,
-};
+use tools::ToolSpec;
 use tracing::{
     debug,
     error,
@@ -131,24 +127,6 @@ fn load_tools() -> Result<ToolConfiguration> {
     })
 }
 
-fn ask_for_consent() -> Result<(), String> {
-    Ok(())
-}
-
-#[async_trait::async_trait]
-impl Tool for ToolUse {
-    async fn invoke(&self) -> Result<InvokeOutput, Error> {
-        debug!(?self, "invoking tool");
-        self.tool.invoke().await
-    }
-}
-
-impl std::fmt::Display for ToolUse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.tool)
-    }
-}
-
 #[derive(Debug)]
 struct ChatContext<'w, W> {
     /// The [Write] destination for printing conversation text.
@@ -181,7 +159,7 @@ async fn try_chat<W: Write>(chat_ctx: ChatContext<'_, W>) -> Result<()> {
         execute!(
             output,
             style::Print(color_print::cstr! {"
-Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, and even perform actions on your behalf!
+Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling, and help execute ops related tasks on your behalf!
 
 "
             })
@@ -193,8 +171,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
     let mut stop_reason = None; // StopReason associated with each model response.
     let mut tool_uses = Vec::new();
     let mut tool_use_recursions = 0;
-    #[allow(unused_assignments)] // not sure why this is triggering a lint warning
-    let mut response = None;
+    let mut response;
     let mut spinner = None;
 
     loop {
@@ -255,7 +232,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                 }
 
                 let uses = std::mem::take(&mut tool_uses);
-                let tool_results = handle_tool_use(uses).await?;
+                let tool_results = handle_tool_uses(output, &ctx, uses).await?;
                 conversation_state.add_tool_results(tool_results);
 
                 response = Some(client.send_messages(&mut conversation_state).await?);
@@ -360,9 +337,17 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
 
 /// Executes the list of tools and returns their results as messages.
 // async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<Message>> {
-async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<ToolResult>> {
+async fn handle_tool_uses(output: &mut impl Write, ctx: &Context, tool_uses: Vec<ToolUse>) -> Result<Vec<ToolResult>> {
     debug!(?tool_uses, "processing tools");
     let mut results = Vec::new();
+
+    for tool_use in tool_uses {
+        queue!(output, style::SetAttribute(Attribute::Bold))?;
+        // queue!(output, style::Print())
+        queue!(output, style::Print(tool_use.tool.display_name()))?;
+        queue!(output, cur)?;
+    }
+
     for tool_use in tool_uses {
         match ask_for_consent() {
             Ok(_) => (),
@@ -379,7 +364,7 @@ async fn handle_tool_use(tool_uses: Vec<ToolUse>) -> Result<Vec<ToolResult>> {
             },
         }
 
-        match tool_use.invoke().await {
+        match tool_use.tool.invoke(&ctx).await {
             Ok(result) => {
                 results.push(ToolResult {
                     tool_use_id: tool_use.tool_use_id,

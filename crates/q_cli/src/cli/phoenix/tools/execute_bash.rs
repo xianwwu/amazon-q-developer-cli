@@ -1,5 +1,5 @@
+use std::fmt::Display;
 use std::process::Stdio;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use bstr::ByteSlice;
@@ -7,44 +7,33 @@ use eyre::Result;
 use fig_os_shim::Context;
 use serde::Deserialize;
 
-use super::{Error, InvokeOutput, OutputKind, Tool};
+use super::{
+    Error,
+    InvokeOutput,
+    OutputKind,
+    Tool,
+};
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct ExecuteBash {
-    // todo - add process mocking to Context?
-    #[allow(dead_code)]
-    ctx: Arc<Context>,
-    pub args: ExecuteBashArgs,
-}
-
-impl ExecuteBash {
-    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, Error> {
-        Ok(Self {
-            ctx,
-            args: serde_json::from_value(args)?,
-        })
-    }
-}
-
-impl std::fmt::Display for ExecuteBash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Execute Bash Command")?;
-        writeln!(f, "- Command: `{}`", self.args.command)?;
-        Ok(())
-    }
+    pub command: String,
 }
 
 #[async_trait]
 impl Tool for ExecuteBash {
-    async fn invoke(&self) -> Result<InvokeOutput, Error> {
+    fn display_name(&self) -> String {
+        "Execute bash command".to_owned()
+    }
+
+    async fn invoke(&self, _: &Context) -> Result<InvokeOutput, Error> {
         let output = tokio::process::Command::new("bash")
             .arg("-c")
-            .arg(&self.args.command)
+            .arg(&self.command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|err| {
-                Error::ToolInvocation(format!("Unable to spawn command '{}': {:?}", &self.args.command, err).into())
+                Error::ToolInvocation(format!("Unable to spawn command '{}': {:?}", &self.command, err).into())
             })?
             .wait_with_output()
             .await
@@ -52,7 +41,7 @@ impl Tool for ExecuteBash {
                 Error::ToolInvocation(
                     format!(
                         "Unable to wait on subprocess for command '{}': {:?}",
-                        &self.args.command, err
+                        &self.command, err
                     )
                     .into(),
                 )
@@ -70,9 +59,10 @@ impl Tool for ExecuteBash {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ExecuteBashArgs {
-    pub command: String,
+impl Display for ExecuteBash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -87,9 +77,9 @@ mod tests {
         let v = serde_json::json!({
             "command": "echo Hello, world!"
         });
-        let out = ExecuteBash::from_value(Arc::clone(&ctx), v)
+        let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke()
+            .invoke(&ctx)
             .await
             .unwrap();
 
@@ -105,9 +95,9 @@ mod tests {
         let v = serde_json::json!({
             "command": "echo Hello, world! 1>&2"
         });
-        let out = ExecuteBash::from_value(Arc::clone(&ctx), v)
+        let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke()
+            .invoke(&ctx)
             .await
             .unwrap();
 
@@ -123,12 +113,11 @@ mod tests {
         let v = serde_json::json!({
             "command": "exit 1"
         });
-        let out = ExecuteBash::from_value(Arc::clone(&ctx), v)
+        let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke()
+            .invoke(&ctx)
             .await
             .unwrap();
-
         if let OutputKind::Json(json) = out.output {
             assert_eq!(json.get("exit_status").unwrap(), 1);
             assert_eq!(json.get("stdout").unwrap(), "");

@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
+use std::fmt::Display;
 use std::fs::Metadata;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use eyre::Result;
@@ -10,24 +10,22 @@ use fig_os_shim::Context;
 use serde::Deserialize;
 use tracing::warn;
 
-use super::{Error, InvokeOutput, OutputKind, Tool};
+use super::{
+    Error,
+    InvokeOutput,
+    OutputKind,
+    Tool,
+};
 
-#[derive(Debug)]
-pub struct FileSystemRead {
-    ctx: Arc<Context>,
-    pub args: FileSystemReadArgs,
+#[derive(Debug, Deserialize)]
+pub struct FsRead {
+    pub path: String,
+    pub read_range: Option<Vec<i32>>,
 }
 
-impl FileSystemRead {
-    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, Error> {
-        Ok(Self {
-            ctx,
-            args: serde_json::from_value(args)?,
-        })
-    }
-
+impl FsRead {
     pub fn read_range(&self) -> Result<Option<(i32, Option<i32>)>, Error> {
-        match &self.args.read_range {
+        match &self.read_range {
             Some(range) => match (range.first(), range.get(1)) {
                 (Some(depth), None) => Ok(Some((*depth, None))),
                 (Some(start), Some(end)) => Ok(Some((*start, Some(*end)))),
@@ -38,28 +36,21 @@ impl FileSystemRead {
     }
 }
 
-impl std::fmt::Display for FileSystemRead {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "File System Read")?;
-        writeln!(f, "- Path: `{}`", self.args.path)?;
-        if let Some(range) = &self.args.read_range {
-            writeln!(f, "- Range: `{:?}`", range)?;
-        }
-        Ok(())
-    }
-}
-
 #[async_trait]
-impl Tool for FileSystemRead {
-    async fn invoke(&self) -> Result<InvokeOutput, Error> {
+impl Tool for FsRead {
+    fn display_name(&self) -> String {
+        "Read from filesystem".to_owned()
+    }
+
+    async fn invoke(&self, ctx: &Context) -> Result<InvokeOutput, Error> {
         // Required for testing scenarios: since the path is passed directly as a command argument,
         // we need to pass it through the Context first.
-        let path = self.ctx.fs().chroot_path_str(&self.args.path);
-        let is_file = self.ctx.fs().symlink_metadata(&self.args.path).await?.is_file();
+        let path = ctx.fs().chroot_path_str(&self.path);
+        let is_file = ctx.fs().symlink_metadata(&self.path).await?.is_file();
 
         if is_file {
             // TODO: file size limit?
-            let file = self.ctx.fs().read_to_string(&path).await?;
+            let file = ctx.fs().read_to_string(&path).await?;
 
             if let Some((start, Some(end))) = self.read_range()? {
                 let line_count = file.lines().count();
@@ -102,7 +93,7 @@ impl Tool for FileSystemRead {
                 if depth > max_depth {
                     break;
                 }
-                let mut read_dir = self.ctx.fs().read_dir(path).await?;
+                let mut read_dir = ctx.fs().read_dir(path).await?;
                 while let Some(ent) = read_dir.next_entry().await? {
                     use std::os::unix::fs::MetadataExt;
                     let md = ent.metadata().await?;
@@ -141,12 +132,6 @@ impl Tool for FileSystemRead {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct FileSystemReadArgs {
-    pub path: String,
-    pub read_range: Option<Vec<i32>>,
-}
-
 fn format_ftype(md: &Metadata) -> char {
     if md.is_symlink() {
         'l'
@@ -183,8 +168,16 @@ fn format_mode(mode: u32) -> [char; 9] {
     res
 }
 
+impl Display for FsRead {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     const TEST_FILE_CONTENTS: &str = "\
@@ -219,16 +212,17 @@ mod tests {
 
     #[test]
     fn test_fs_read_creation() {
-        let ctx = Context::new_fake();
         let v = serde_json::json!({ "path": "/test_file.txt", "read_range": vec![1, 2] });
-        let fr = FileSystemRead::from_value(Arc::clone(&ctx), v).unwrap();
-        assert_eq!(fr.args.path, TEST_FILE_PATH);
-        assert_eq!(fr.args.read_range.unwrap(), vec![1, 2]);
+        let fr = serde_json::from_value::<FsRead>(v).unwrap();
+
+        assert_eq!(fr.path, TEST_FILE_PATH);
+        assert_eq!(fr.read_range.unwrap(), vec![1, 2]);
 
         let v = serde_json::json!({ "path": "/test_file.txt", "read_range": vec![-1] });
-        let fr = FileSystemRead::from_value(Arc::clone(&ctx), v).unwrap();
-        assert_eq!(fr.args.path, TEST_FILE_PATH);
-        assert_eq!(fr.args.read_range.unwrap(), vec![-1]);
+        let fr = serde_json::from_value::<FsRead>(v).unwrap();
+
+        assert_eq!(fr.path, TEST_FILE_PATH);
+        assert_eq!(fr.read_range.unwrap(), vec![-1]);
     }
 
     #[tokio::test]
@@ -242,7 +236,7 @@ mod tests {
                     "path": TEST_FILE_PATH,
                     "read_range": $range,
                 });
-                let output = FileSystemRead::from_value(Arc::clone(&ctx), v).unwrap().invoke().await.unwrap();
+                let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx).await.unwrap();
 
                 if let OutputKind::Text(text) = output.output {
                     assert_eq!(text, $expected.join("\n"), "actual(left) does not equal expected(right) for range: {:?}", $range);
@@ -279,11 +273,7 @@ mod tests {
             "path": "/",
             "read_range": None::<()>,
         });
-        let output = FileSystemRead::from_value(Arc::clone(&ctx), v)
-            .unwrap()
-            .invoke()
-            .await
-            .unwrap();
+        let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx).await.unwrap();
 
         if let OutputKind::Text(text) = output.output {
             assert_eq!(text.lines().collect::<Vec<_>>().len(), 4);
@@ -296,11 +286,7 @@ mod tests {
             "path": "/",
             "read_range": Some(vec![1]),
         });
-        let output = FileSystemRead::from_value(Arc::clone(&ctx), v)
-            .unwrap()
-            .invoke()
-            .await
-            .unwrap();
+        let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx).await.unwrap();
 
         if let OutputKind::Text(text) = output.output {
             let lines = text.lines().collect::<Vec<_>>();

@@ -23,7 +23,7 @@ use crate::cli::phoenix::client::bedrock::SendMessageOutput;
 use crate::cli::phoenix::error::Error;
 use crate::cli::phoenix::tools::{
     Tool,
-    new_tool,
+    parse_tool,
     serde_value_to_document,
 };
 use crate::cli::phoenix::types::{
@@ -174,7 +174,7 @@ impl ResponseParser {
                 .unwrap(),
         ));
 
-        new_tool(Arc::clone(&self.ctx), tool_name, value).map(|tool| ToolUse {
+        parse_tool(tool_name, value).map(|tool| ToolUse {
             tool_use_id: start.tool_use_id,
             tool,
         })
@@ -216,5 +216,5 @@ impl From<ConverseStreamMetadataEvent> for Metadata {
 pub struct ToolUse {
     /// Corresponds to the `"toolUseId"` returned by the model.
     pub tool_use_id: String,
-    pub tool: Box<dyn Tool + Sync>,
+    pub tool: Box<dyn Tool>,
 }

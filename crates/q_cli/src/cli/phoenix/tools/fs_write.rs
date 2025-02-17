@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::fmt::Display;
 
 use async_trait::async_trait;
 use eyre::Result;
@@ -7,64 +7,46 @@ use fig_os_shim::Context;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
-use super::{Error, InvokeOutput, Tool};
+use super::{
+    Error,
+    InvokeOutput,
+    Tool,
+};
 
-#[derive(Debug)]
-pub struct FileSystemWrite {
-    ctx: Arc<Context>,
-    pub args: FileSystemWriteArgs,
-}
-
-impl FileSystemWrite {
-    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, Error> {
-        Ok(Self {
-            ctx,
-            args: serde_json::from_value(args)?,
-        })
-    }
-}
-
-impl std::fmt::Display for FileSystemWrite {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        const MAX_LEN: usize = 50;
-        match &self.args {
-            FileSystemWriteArgs::Create { path, file_text } => {
-                writeln!(f, "Create File")?;
-                writeln!(f, "- Path: `{}`", path)?;
-                writeln!(f, "- File Text: `{}`", truncate_str(file_text, MAX_LEN))?;
-            },
-            FileSystemWriteArgs::StrReplace { path, old_str, new_str } => {
-                writeln!(f, "Update File")?;
-                writeln!(f, "- Path: `{}`", path)?;
-                writeln!(f, "- Previous Text: `{}`", truncate_str(old_str, MAX_LEN))?;
-                writeln!(f, "- New Text: `{}`", truncate_str(new_str, MAX_LEN))?;
-            },
-            FileSystemWriteArgs::Insert {
-                path,
-                insert_line,
-                new_str,
-            } => {
-                writeln!(f, "Insert Into File")?;
-                writeln!(f, "- Path: `{}`", path)?;
-                writeln!(f, "- Line Number: `{}`", insert_line)?;
-                writeln!(f, "- Text: `{}`", truncate_str(new_str, MAX_LEN))?;
-            },
-        }
-        Ok(())
-    }
+#[derive(Debug, Deserialize)]
+#[serde(tag = "command")]
+pub enum FsWrite {
+    #[serde(rename = "create")]
+    Create { path: String, file_text: String },
+    #[serde(rename = "str_replace")]
+    StrReplace {
+        path: String,
+        old_str: String,
+        new_str: String,
+    },
+    #[serde(rename = "insert")]
+    Insert {
+        path: String,
+        insert_line: usize,
+        new_str: String,
+    },
 }
 
 #[async_trait]
-impl Tool for FileSystemWrite {
-    async fn invoke(&self) -> Result<InvokeOutput, Error> {
-        let fs = self.ctx.fs();
-        match &self.args {
-            FileSystemWriteArgs::Create { path, file_text } => {
+impl Tool for FsWrite {
+    fn display_name(&self) -> String {
+        "Write to filesystem".to_owned()
+    }
+
+    async fn invoke(&self, ctx: &Context) -> Result<InvokeOutput, Error> {
+        let fs = ctx.fs();
+        match self {
+            FsWrite::Create { path, file_text } => {
                 let mut file = fs.create_new(path).await?;
                 file.write_all(file_text.as_bytes()).await?;
                 Ok(Default::default())
             },
-            FileSystemWriteArgs::StrReplace { path, old_str, new_str } => {
+            FsWrite::StrReplace { path, old_str, new_str } => {
                 let file = fs.read_to_string(&path).await?;
                 let matches = file.match_indices(old_str).collect::<Vec<_>>();
                 match matches.len() {
@@ -79,7 +61,7 @@ impl Tool for FileSystemWrite {
                     )),
                 }
             },
-            FileSystemWriteArgs::Insert {
+            FsWrite::Insert {
                 path,
                 insert_line,
                 new_str,
@@ -103,23 +85,10 @@ impl Tool for FileSystemWrite {
     }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "command")]
-pub enum FileSystemWriteArgs {
-    #[serde(rename = "create")]
-    Create { path: String, file_text: String },
-    #[serde(rename = "str_replace")]
-    StrReplace {
-        path: String,
-        old_str: String,
-        new_str: String,
-    },
-    #[serde(rename = "insert")]
-    Insert {
-        path: String,
-        insert_line: usize,
-        new_str: String,
-    },
+impl Display for FsWrite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
 }
 
 /// Limits the passed str to `max_len`.
@@ -140,6 +109,8 @@ fn truncate_str(text: &str, max_len: usize) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     const TEST_FILE_CONTENTS: &str = "\
@@ -174,7 +145,6 @@ mod tests {
 
     #[test]
     fn test_fs_write_deserialize() {
-        let ctx = Context::new_fake();
         let path = "/my-file";
         let file_text = "hello world";
 
@@ -184,8 +154,8 @@ mod tests {
             "command": "create",
             "file_text": file_text
         });
-        let fw = FileSystemWrite::from_value(Arc::clone(&ctx), v).unwrap();
-        assert!(matches!(fw.args, FileSystemWriteArgs::Create { .. }));
+        let fw = serde_json::from_value::<FsWrite>(v).unwrap();
+        assert!(matches!(fw, FsWrite::Create { .. }));
 
         // str_replace
         let v = serde_json::json!({
@@ -194,8 +164,8 @@ mod tests {
             "old_str": "prev string",
             "new_str": "new string",
         });
-        let fw = FileSystemWrite::from_value(Arc::clone(&ctx), v).unwrap();
-        assert!(matches!(fw.args, FileSystemWriteArgs::StrReplace { .. }));
+        let fw = serde_json::from_value::<FsWrite>(v).unwrap();
+        assert!(matches!(fw, FsWrite::StrReplace { .. }));
 
         // insert
         let v = serde_json::json!({
@@ -204,8 +174,8 @@ mod tests {
             "insert_line": 3,
             "new_str": "new string",
         });
-        let fw = FileSystemWrite::from_value(Arc::clone(&ctx), v).unwrap();
-        assert!(matches!(fw.args, FileSystemWriteArgs::Insert { .. }));
+        let fw = serde_json::from_value::<FsWrite>(v).unwrap();
+        assert!(matches!(fw, FsWrite::Insert { .. }));
     }
 
     #[tokio::test]
@@ -218,11 +188,12 @@ mod tests {
             "command": "create",
             "file_text": file_text
         });
-        FileSystemWrite::from_value(Arc::clone(&ctx), v)
+        serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke()
+            .invoke(&ctx)
             .await
             .unwrap();
+
         assert_eq!(ctx.fs().read_to_string("/my-file").await.unwrap(), file_text);
     }
 
@@ -238,9 +209,9 @@ mod tests {
             "new_str": "1623749",
         });
         assert!(
-            FileSystemWrite::from_value(Arc::clone(&ctx), v)
+            serde_json::from_value::<FsWrite>(v)
                 .unwrap()
-                .invoke()
+                .invoke(&ctx)
                 .await
                 .is_err()
         );
@@ -253,9 +224,9 @@ mod tests {
             "new_str": "Goodbye world!",
         });
         assert!(
-            FileSystemWrite::from_value(Arc::clone(&ctx), v)
+            serde_json::from_value::<FsWrite>(v)
                 .unwrap()
-                .invoke()
+                .invoke(&ctx)
                 .await
                 .is_err()
         );
@@ -267,9 +238,9 @@ mod tests {
             "old_str": "1: Hello world!",
             "new_str": "1: Goodbye world!",
         });
-        FileSystemWrite::from_value(Arc::clone(&ctx), v)
+        serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke()
+            .invoke(&ctx)
             .await
             .unwrap();
         assert_eq!(
@@ -295,9 +266,9 @@ mod tests {
             "insert_line": 0,
             "new_str": new_str,
         });
-        FileSystemWrite::from_value(Arc::clone(&ctx), v)
+        serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke()
+            .invoke(&ctx)
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(TEST_FILE_PATH).await.unwrap();
@@ -324,9 +295,10 @@ mod tests {
             "insert_line": 1,
             "new_str": new_str,
         });
-        FileSystemWrite::from_value(Arc::clone(&ctx), v)
+
+        serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke()
+            .invoke(&ctx)
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(TEST_FILE_PATH).await.unwrap();
@@ -359,9 +331,9 @@ mod tests {
             "insert_line": 1,
             "new_str": new_str,
         });
-        FileSystemWrite::from_value(Arc::clone(&ctx), v)
+        serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke()
+            .invoke(&ctx)
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(test_file_path).await.unwrap();
@@ -374,9 +346,9 @@ mod tests {
             "insert_line": 0,
             "new_str": new_str,
         });
-        FileSystemWrite::from_value(Arc::clone(&ctx), v)
+        serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke()
+            .invoke(&ctx)
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(test_file_path).await.unwrap();

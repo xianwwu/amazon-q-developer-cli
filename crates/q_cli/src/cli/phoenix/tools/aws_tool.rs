@@ -1,10 +1,18 @@
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::process::Stdio;
+
 use async_trait::async_trait;
 use bstr::ByteSlice;
 use fig_os_shim::Context;
 use serde::Deserialize;
-use std::{collections::HashMap, process::Stdio, sync::Arc};
 
-use super::{Error, InvokeOutput, OutputKind, Tool};
+use super::{
+    Error,
+    InvokeOutput,
+    OutputKind,
+    Tool,
+};
 
 const ALLOWED_OPS: [&str; 6] = ["get", "describe", "list", "ls", "search", "batch_get"];
 
@@ -23,34 +31,21 @@ impl std::fmt::Display for AwsToolError {
 
 // TODO: we should perhaps composite this struct with an interface that we can use to mock the
 // actual cli with. That will allow us to more thoroughly test it.
-#[derive(Debug)]
-pub struct AwsTool {
-    #[allow(dead_code)]
-    ctx: Arc<Context>,
-    pub args: AwsToolArgs,
+#[derive(Debug, Deserialize)]
+pub struct UseAws {
+    pub service_name: String,
+    pub operation_name: String,
+    pub parameters: HashMap<String, String>,
+    pub region: String,
+    pub profile_name: Option<String>,
+    pub label: Option<String>,
 }
 
-impl std::fmt::Display for AwsTool {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Aws tool")?;
-        self.args.fmt(f)?;
-
-        Ok(())
-    }
-}
-
-impl AwsTool {
-    pub fn from_value(ctx: Arc<Context>, args: serde_json::Value) -> Result<Self, Error> {
-        Ok(Self {
-            ctx,
-            args: serde_json::from_value(args)?,
-        })
-    }
-
+impl UseAws {
     fn validate_operation(&self) -> Result<(), AwsToolError> {
-        let operation_name = &self.args.operation_name;
+        let operation_name = &self.operation_name;
         for op in ALLOWED_OPS {
-            if self.args.operation_name.starts_with(op) {
+            if self.operation_name.starts_with(op) {
                 return Ok(());
             }
         }
@@ -59,22 +54,17 @@ impl AwsTool {
 }
 
 #[async_trait]
-impl Tool for AwsTool {
-    async fn invoke(&self) -> Result<InvokeOutput, Error> {
-        let AwsToolArgs {
-            service_name,
-            operation_name,
-            parameters,
-            region,
-            profile_name,
-            label: _,
-        } = &self.args;
-        self.validate_operation().map_err(|err| {
-            Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self.args, err).into())
-        })?;
+impl Tool for UseAws {
+    fn display_name(&self) -> String {
+        "Use AWS".to_owned()
+    }
+
+    async fn invoke(&self, _: &Context) -> Result<InvokeOutput, Error> {
+        self.validate_operation()
+            .map_err(|err| Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?;
 
         let mut command = tokio::process::Command::new("aws");
-        let profile_name = if let Some(ref profile_name) = profile_name {
+        let profile_name = if let Some(ref profile_name) = self.profile_name {
             profile_name
         } else {
             "default"
@@ -82,12 +72,12 @@ impl Tool for AwsTool {
         command
             .envs(std::env::vars())
             .arg("--region")
-            .arg(region)
+            .arg(&self.region)
             .arg("--profile")
             .arg(profile_name)
-            .arg(service_name)
-            .arg(operation_name);
-        for (param_name, val) in parameters {
+            .arg(&self.service_name)
+            .arg(&self.operation_name);
+        for (param_name, val) in &self.parameters {
             if param_name.starts_with("--") {
                 command.arg(param_name).arg(val);
             } else {
@@ -98,14 +88,10 @@ impl Tool for AwsTool {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|err| {
-                Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self.args, err).into())
-            })?
+            .map_err(|err| Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?
             .wait_with_output()
             .await
-            .map_err(|err| {
-                Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self.args, err).into())
-            })?;
+            .map_err(|err| Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?;
         let status = output.status.code();
         let stdout = output.stdout.to_str_lossy();
         let stderr = output.stderr.to_str_lossy();
@@ -120,17 +106,7 @@ impl Tool for AwsTool {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct AwsToolArgs {
-    pub service_name: String,
-    pub operation_name: String,
-    pub parameters: HashMap<String, String>,
-    pub region: String,
-    pub profile_name: Option<String>,
-    pub label: Option<String>,
-}
-
-impl std::fmt::Display for AwsToolArgs {
+impl Display for UseAws {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Service name: {}", self.service_name)?;
         writeln!(f, "Operation name: {}", self.operation_name)?;
@@ -172,8 +148,8 @@ mod tests {
             "profile_name": "default",
             "label": ""
         });
-        let out = AwsTool::from_value(Arc::clone(&ctx), v).unwrap().invoke().await;
-        assert!(out.is_err());
+
+        assert!(serde_json::from_value::<UseAws>(v).unwrap().invoke(&ctx).await.is_err());
     }
 
     #[tokio::test]
@@ -188,11 +164,7 @@ mod tests {
             "profile_name": "default",
             "label": ""
         });
-        let out = AwsTool::from_value(Arc::clone(&ctx), v)
-            .unwrap()
-            .invoke()
-            .await
-            .unwrap();
+        let out = serde_json::from_value::<UseAws>(v).unwrap().invoke(&ctx).await.unwrap();
 
         if let OutputKind::Json(json) = out.output {
             // depending on where the test is ran we might get different outcome here but it does
@@ -223,11 +195,7 @@ mod tests {
             "profile_name": "default",
             "label": ""
         });
-        let out = AwsTool::from_value(Arc::clone(&ctx), v)
-            .unwrap()
-            .invoke()
-            .await
-            .unwrap();
+        let out = serde_json::from_value::<UseAws>(v).unwrap().invoke(&ctx).await.unwrap();
 
         if let OutputKind::Json(json) = out.output {
             // depending on where the test is ran we might get different outcome here but it does
