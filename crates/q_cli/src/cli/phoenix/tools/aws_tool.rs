@@ -74,6 +74,11 @@ impl Tool for AwsTool {
         })?;
 
         let mut command = tokio::process::Command::new("aws");
+        let profile_name = if let Some(ref profile_name) = profile_name {
+            profile_name
+        } else {
+            "default"
+        };
         command
             .envs(std::env::vars())
             .arg("--region")
@@ -121,8 +126,8 @@ pub struct AwsToolArgs {
     pub operation_name: String,
     pub parameters: HashMap<String, String>,
     pub region: String,
-    pub profile_name: String,
-    pub label: String,
+    pub profile_name: Option<String>,
+    pub label: Option<String>,
 }
 
 impl std::fmt::Display for AwsToolArgs {
@@ -134,8 +139,16 @@ impl std::fmt::Display for AwsToolArgs {
             writeln!(f, "{}: {}", name, value)?;
         }
         writeln!(f, "Region: {}", self.region)?;
-        writeln!(f, "Profile name: {}", self.profile_name)?;
-        writeln!(f, "Label: {}", self.label)?;
+        if let Some(ref profile_name) = self.profile_name {
+            writeln!(f, "Profile name: {}", profile_name)?;
+        } else {
+            writeln!(f, "Profile name: {}", "default")?;
+        }
+        if let Some(ref label) = self.label {
+            writeln!(f, "Label: {}", label)?;
+        } else {
+            writeln!(f, "Label: {}", "")?;
+        }
 
         Ok(())
     }
@@ -222,6 +235,7 @@ mod tests {
             let exit_status = json.get("exit_status").unwrap();
             if exit_status == 0 {
                 assert_eq!(json.get("stderr").unwrap(), "");
+                println!("query result: {}", json.get("stdout").unwrap());
             } else {
                 assert_ne!(json.get("stderr").unwrap(), "");
             }
