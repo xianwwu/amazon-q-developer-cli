@@ -1,5 +1,4 @@
 use fig_api_client::model::{
-    AssistantResponseMessage,
     ChatMessage,
     ConversationState as FigConversationState,
     Tool,
@@ -8,8 +7,15 @@ use fig_api_client::model::{
     UserInputMessage,
     UserInputMessageContext,
 };
+use fig_settings::history::History;
 use tracing::error;
 
+use super::{
+    build_env_state,
+    build_git_state,
+    build_shell_state,
+    input_to_modifiers,
+};
 use crate::cli::phoenix::ToolConfiguration;
 use crate::cli::phoenix::tools::{
     InputSchema,
@@ -47,11 +53,17 @@ impl ConversationState {
         }
     }
 
-    pub fn append_new_user_message(&mut self, input: String) {
+    pub async fn append_new_user_message(&mut self, input: String) {
         if self.next_message.is_some() {
             error!("Replacing the next_message with a new message with input: {}", input);
         }
-        let user_input_message_context = UserInputMessageContext {
+
+        let (ctx, input) = input_to_modifiers(input);
+        let history = History::new();
+
+        let mut user_input_message_context = UserInputMessageContext {
+            shell_state: Some(build_shell_state(ctx.history, &history)),
+            env_state: Some(build_env_state(&ctx)),
             tool_results: if self.tool_results.is_empty() {
                 None
             } else {
@@ -64,6 +76,13 @@ impl ConversationState {
             },
             ..Default::default()
         };
+
+        if ctx.git {
+            if let Ok(git_state) = build_git_state(None).await {
+                user_input_message_context.git_state = Some(git_state);
+            }
+        }
+
         let msg = Message(ChatMessage::UserInputMessage(UserInputMessage {
             content: input,
             user_input_message_context: Some(user_input_message_context),

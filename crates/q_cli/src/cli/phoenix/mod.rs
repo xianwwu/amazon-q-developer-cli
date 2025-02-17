@@ -1,4 +1,5 @@
 mod client;
+mod consent;
 mod error;
 mod input_source;
 mod parser;
@@ -11,10 +12,9 @@ use std::sync::Arc;
 
 use client::Client;
 use color_eyre::owo_colors::OwoColorize;
+use crossterm::style::Color;
 use crossterm::{
-    execute,
-    style,
-    terminal,
+    execute, queue, style, terminal
 };
 pub use error::Error;
 use eyre::{
@@ -179,6 +179,18 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                     },
                     _ => (),
                 }
+
+                queue!(output, style::SetForegroundColor(Color::Magenta))?;
+                if user_input.contains("@history") {
+                    queue!(output, style::Print("Using shell history\n"))?;
+                }
+                if user_input.contains("@git") {
+                    queue!(output, style::Print("Using git context\n"))?;
+                }
+                if user_input.contains("@env") {
+                    queue!(output, style::Print("Using environment\n"))?;
+                }
+                queue!(output, style::SetForegroundColor(Color::Reset))?;
 
                 conversation_state.append_new_user_message(user_input);
 
