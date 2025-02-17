@@ -236,6 +236,12 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                     queue!(output, style::SetForegroundColor(Color::Reset))?;
                     queue!(output, cursor::Hide)?;
                     spinner = Some(Spinner::new(Spinners::Dots, "Generating your answer...".to_owned()));
+                    tokio::spawn(async {
+                        tokio::signal::ctrl_c().await.unwrap();
+                        execute!(std::io::stdout(), cursor::Show).unwrap();
+                        #[allow(clippy::exit)]
+                        std::process::exit(0);
+                    });
                     execute!(output, style::Print("\n"))?;
                 }
                 conversation_state.append_new_user_message(user_input);
