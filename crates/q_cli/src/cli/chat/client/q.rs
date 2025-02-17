@@ -3,8 +3,8 @@ use fig_api_client::StreamingClient;
 use fig_api_client::clients::SendMessageOutput;
 use fig_os_shim::Context;
 
-use crate::cli::phoenix::ToolConfiguration;
-use crate::cli::phoenix::types::ConversationState;
+use crate::cli::chat::ToolConfiguration;
+use crate::cli::chat::types::ConversationState;
 
 #[derive(Debug)]
 pub struct Client(StreamingClient);

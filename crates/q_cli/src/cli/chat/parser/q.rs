@@ -12,8 +12,8 @@ use tracing::{
     trace,
 };
 
-use crate::cli::phoenix::error::Error;
-use crate::cli::phoenix::tools::{
+use crate::cli::chat::error::Error;
+use crate::cli::chat::tools::{
     Tool,
     new_tool,
 };

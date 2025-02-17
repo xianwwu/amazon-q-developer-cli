@@ -19,8 +19,8 @@ use fig_os_shim::Context;
 use tracing::debug;
 
 use super::super::types::ConversationState;
-use crate::cli::phoenix::ToolConfiguration;
-use crate::cli::phoenix::types::{
+use crate::cli::chat::ToolConfiguration;
+use crate::cli::chat::types::{
     ContentBlock,
     ConversationRole,
     Message,

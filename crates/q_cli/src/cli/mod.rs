@@ -2,7 +2,6 @@
 
 pub mod app;
 mod chat;
-// #[cfg(feature = "phoenix")]
 mod completion;
 mod debug;
 mod diagnostics;
@@ -14,7 +13,6 @@ mod installation;
 mod integrations;
 pub mod internal;
 mod issue;
-mod phoenix;
 mod settings;
 mod telemetry;
 mod theme;
@@ -187,12 +185,6 @@ pub enum CliRootCommands {
         /// The first question to ask
         input: Option<String>,
     },
-    /// (Beta) Agentic AI assistant in your terminal
-    #[command(alias("p"))]
-    Phoenix {
-        /// The first question to ask
-        input: Option<String>,
-    },
     /// Inline shell completions
     #[command(subcommand)]
     Inline(inline::InlineSubcommand),
@@ -227,7 +219,6 @@ impl CliRootCommands {
             CliRootCommands::Version => "version",
             CliRootCommands::Dashboard => "dashboard",
             CliRootCommands::Chat { .. } => "chat",
-            CliRootCommands::Phoenix { .. } => "phoenix",
             CliRootCommands::Inline(_) => "inline",
         }
     }
@@ -337,8 +328,7 @@ impl Cli {
                 CliRootCommands::Telemetry(subcommand) => subcommand.execute().await,
                 CliRootCommands::Version => Self::print_version(),
                 CliRootCommands::Dashboard => launch_dashboard(false).await,
-                CliRootCommands::Chat { input } => chat::chat(input.unwrap_or_default()).await,
-                CliRootCommands::Phoenix { input } => phoenix::chat(input).await,
+                CliRootCommands::Chat { input } => chat::chat(input).await,
                 CliRootCommands::Inline(subcommand) => subcommand.execute(&cli_context).await,
             },
             // Root command

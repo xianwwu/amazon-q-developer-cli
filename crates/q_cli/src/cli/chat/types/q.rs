@@ -16,8 +16,8 @@ use super::{
     build_shell_state,
     input_to_modifiers,
 };
-use crate::cli::phoenix::ToolConfiguration;
-use crate::cli::phoenix::tools::{
+use crate::cli::chat::ToolConfiguration;
+use crate::cli::chat::tools::{
     InputSchema,
     InvokeOutput,
     serde_value_to_document,
@@ -126,8 +126,8 @@ pub type ToolResultStatus = fig_api_client::model::ToolResultStatus;
 impl From<InvokeOutput> for ToolResultContentBlock {
     fn from(value: InvokeOutput) -> Self {
         match value.output {
-            crate::cli::phoenix::tools::OutputKind::Text(text) => Self::Text(text),
-            crate::cli::phoenix::tools::OutputKind::Json(value) => Self::Json(serde_value_to_document(value)),
+            crate::cli::chat::tools::OutputKind::Text(text) => Self::Text(text),
+            crate::cli::chat::tools::OutputKind::Json(value) => Self::Json(serde_value_to_document(value)),
         }
     }
 }

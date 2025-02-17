@@ -18,15 +18,15 @@ use tracing::{
     warn,
 };
 
-use crate::cli::phoenix::ConversationRole;
-use crate::cli::phoenix::client::bedrock::SendMessageOutput;
-use crate::cli::phoenix::error::Error;
-use crate::cli::phoenix::tools::{
+use crate::cli::chat::ConversationRole;
+use crate::cli::chat::client::bedrock::SendMessageOutput;
+use crate::cli::chat::error::Error;
+use crate::cli::chat::tools::{
     Tool,
     parse_tool,
     serde_value_to_document,
 };
-use crate::cli::phoenix::types::{
+use crate::cli::chat::types::{
     Message,
     StopReason,
 };

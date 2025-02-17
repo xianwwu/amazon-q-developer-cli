@@ -17,7 +17,7 @@ use super::{
     ConversationRole,
     StopReason,
 };
-use crate::cli::phoenix::ToolConfiguration;
+use crate::cli::chat::ToolConfiguration;
 
 impl From<ConversationRole> for BedrockConversationRole {
     fn from(value: ConversationRole) -> Self {
