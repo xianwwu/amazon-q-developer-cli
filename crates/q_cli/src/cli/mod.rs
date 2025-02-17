@@ -338,7 +338,7 @@ impl Cli {
                 CliRootCommands::Version => Self::print_version(),
                 CliRootCommands::Dashboard => launch_dashboard(false).await,
                 CliRootCommands::Chat { input } => chat::chat(input.unwrap_or_default()).await,
-                CliRootCommands::Phoenix { input } => phoenix::chat(input.unwrap_or_default()).await,
+                CliRootCommands::Phoenix { input } => phoenix::chat(input).await,
                 CliRootCommands::Inline(subcommand) => subcommand.execute(&cli_context).await,
             },
             // Root command

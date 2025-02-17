@@ -1,20 +1,30 @@
 mod client;
-mod consent;
 mod error;
 mod input_source;
 mod parser;
 mod tools;
 mod types;
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{
+    IsTerminal,
+    Read,
+    Write,
+};
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use client::Client;
 use color_eyre::owo_colors::OwoColorize;
-use crossterm::style::Color;
+use crossterm::style::{
+    Attribute,
+    Color,
+};
 use crossterm::{
-    execute, queue, style, terminal
+    cursor,
+    execute,
+    queue,
+    style,
+    terminal,
 };
 pub use error::Error;
 use eyre::{
@@ -27,6 +37,10 @@ use input_source::InputSource;
 use parser::{
     ResponseParser,
     ToolUse,
+};
+use spinners::{
+    Spinner,
+    Spinners,
 };
 use tools::{
     InvokeOutput,
@@ -56,7 +70,7 @@ use crate::util::region_check;
 
 const MAX_TOOL_USE_RECURSIONS: u32 = 50;
 
-pub async fn chat(mut input: String) -> Result<ExitCode> {
+pub async fn chat(initial_input: Option<String>) -> Result<ExitCode> {
     if !fig_util::system_info::in_cloudshell() && !fig_auth::is_logged_in().await {
         bail!(
             "You are not logged in, please log in with {}",
@@ -66,24 +80,42 @@ pub async fn chat(mut input: String) -> Result<ExitCode> {
 
     region_check("chat")?;
 
+    let stdin = std::io::stdin();
+    let is_interactive = stdin.is_terminal();
+    let initial_input = if !is_interactive {
+        // append to input string any extra info that was provided.
+        let mut input = initial_input.unwrap_or_default();
+        stdin.lock().read_to_string(&mut input)?;
+        Some(input)
+    } else {
+        initial_input
+    };
+
     let ctx = Context::new();
     let tool_config = load_tools()?;
     debug!(?tool_config, "Using tools");
 
     let client = Client::new(&ctx, tool_config.clone()).await?;
-    let mut stdout = std::io::stdout();
+    let mut output = std::io::stdout();
 
-    try_chat(ChatContext {
-        output: &mut stdout,
+    let result = try_chat(ChatContext {
+        output: &mut output,
         ctx: Context::new(),
+        initial_input,
         input_source: InputSource::new()?,
+        is_interactive,
         tool_config,
         client,
         terminal_width_provider: || terminal::window_size().map(|s| s.columns.into()).ok(),
     })
-    .await?;
+    .await;
 
-    Ok(ExitCode::SUCCESS)
+    if is_interactive {
+        queue!(output, style::SetAttribute(Attribute::Reset), style::ResetColor).ok();
+    }
+    output.flush().ok();
+
+    result.map(|_| ExitCode::SUCCESS)
 }
 
 /// The tools that can be used by the model.
@@ -122,7 +154,9 @@ struct ChatContext<'w, W> {
     /// The [Write] destination for printing conversation text.
     output: &'w mut W,
     ctx: Arc<Context>,
+    initial_input: Option<String>,
     input_source: InputSource,
+    is_interactive: bool,
     tool_config: ToolConfiguration,
     /// The client to use to interact with the model.
     client: Client,
@@ -134,21 +168,25 @@ async fn try_chat<W: Write>(chat_ctx: ChatContext<'_, W>) -> Result<()> {
     let ChatContext {
         output,
         ctx,
+        mut initial_input,
         mut input_source,
+        is_interactive,
         tool_config,
         client,
         terminal_width_provider,
     } = chat_ctx;
 
     // todo: what should we set this to?
-    execute!(
-        output,
-        style::Print(color_print::cstr! {"
+    if is_interactive {
+        execute!(
+            output,
+            style::Print(color_print::cstr! {"
 Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, and even perform actions on your behalf!
 
 "
-        })
-    )?;
+            })
+        )?;
+    }
 
     let mut conversation_id = None;
     let mut conversation_state = ConversationState::new(tool_config.clone());
@@ -157,6 +195,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
     let mut tool_use_recursions = 0;
     #[allow(unused_assignments)] // not sure why this is triggering a lint warning
     let mut response = None;
+    let mut spinner = None;
 
     loop {
         match stop_reason {
@@ -165,9 +204,12 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
             // In both cases, send the next user's prompt.
             Some(StopReason::EndTurn) | None => {
                 tool_use_recursions = 0;
-                let user_input = match input_source.read_line(Some("> "))? {
-                    Some(line) => line,
-                    None => break,
+                let user_input = match initial_input.take() {
+                    Some(input) => input,
+                    None => match input_source.read_line(Some("> "))? {
+                        Some(line) => line,
+                        None => break,
+                    },
                 };
 
                 match user_input.trim() {
@@ -180,18 +222,22 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                     _ => (),
                 }
 
-                queue!(output, style::SetForegroundColor(Color::Magenta))?;
-                if user_input.contains("@history") {
-                    queue!(output, style::Print("Using shell history\n"))?;
+                if is_interactive {
+                    queue!(output, style::SetForegroundColor(Color::Magenta))?;
+                    if user_input.contains("@history") {
+                        queue!(output, style::Print("Using shell history\n"))?;
+                    }
+                    if user_input.contains("@git") {
+                        queue!(output, style::Print("Using git context\n"))?;
+                    }
+                    if user_input.contains("@env") {
+                        queue!(output, style::Print("Using environment\n"))?;
+                    }
+                    queue!(output, style::SetForegroundColor(Color::Reset))?;
+                    queue!(output, cursor::Hide)?;
+                    spinner = Some(Spinner::new(Spinners::Dots, "Generating your answer...".to_owned()));
+                    execute!(output, style::Print("\n"))?;
                 }
-                if user_input.contains("@git") {
-                    queue!(output, style::Print("Using git context\n"))?;
-                }
-                if user_input.contains("@env") {
-                    queue!(output, style::Print("Using environment\n"))?;
-                }
-                queue!(output, style::SetForegroundColor(Color::Reset))?;
-
                 conversation_state.append_new_user_message(user_input);
 
                 response = Some(client.send_messages(&mut conversation_state).await?);
@@ -235,7 +281,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                             stop_reason: sr,
                             message,
                         } => {
-                            buf.push_str("\n\n");
+                            // buf.push_str("\n\n");
                             stop_reason = Some(sr);
                             conversation_state.push_assistant_message(message);
                             ended = true;
@@ -251,6 +297,16 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                 // still left in the buffer. I'm not sure how this is intended to be handled.
                 if ended {
                     buf.push('\n');
+                }
+
+                if !buf.is_empty() && is_interactive && spinner.is_some() {
+                    drop(spinner.take());
+                    queue!(
+                        output,
+                        terminal::Clear(terminal::ClearType::CurrentLine),
+                        cursor::MoveToColumn(0),
+                        cursor::Show
+                    )?;
                 }
 
                 // Print the response
@@ -271,7 +327,22 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your shell and CLI tools, 
                 }
 
                 if ended {
-                    output.flush()?;
+                    if is_interactive {
+                        queue!(output, style::ResetColor, style::SetAttribute(Attribute::Reset))?;
+                        execute!(output, style::Print("\n"))?;
+
+                        for (i, citation) in &state.citations {
+                            queue!(
+                                output,
+                                style::Print("\n"),
+                                style::SetForegroundColor(Color::Blue),
+                                style::Print(format!("[^{i}]: ")),
+                                style::SetForegroundColor(Color::DarkGrey),
+                                style::Print(format!("{citation}\n")),
+                                style::SetForegroundColor(Color::Reset)
+                            )?;
+                        }
+                    }
                     break;
                 }
             }
