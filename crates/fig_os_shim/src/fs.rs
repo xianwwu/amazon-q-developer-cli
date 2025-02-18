@@ -94,6 +94,18 @@ impl Fs {
         }
     }
 
+    /// Attempts to open a file in read-only mode.
+    ///
+    /// This is a proxy to [`tokio::fs::File::open`].
+    pub async fn open(&self, path: impl AsRef<Path>) -> io::Result<fs::File> {
+        use inner::Inner;
+        match &self.0 {
+            Inner::Real => fs::File::open(path).await,
+            Inner::Chroot(root) => fs::File::open(append(root.path(), path)).await,
+            Inner::Fake(_) => Err(io::Error::new(io::ErrorKind::Other, "unimplemented")),
+        }
+    }
+
     pub async fn read(&self, path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
         use inner::Inner;
         match &self.0 {
@@ -573,6 +585,10 @@ mod tests {
         fs.write("/rename_2", "123").await.unwrap();
         fs.rename("/rename_2", "/rename_1").await.unwrap();
         assert_eq!(fs.read_to_string("/rename_1").await.unwrap(), "123");
+
+        // Checking open
+        assert!(fs.open("/does_not_exist").await.is_err());
+        assert!(fs.open("/rename_1").await.is_ok());
     }
 
     #[tokio::test]

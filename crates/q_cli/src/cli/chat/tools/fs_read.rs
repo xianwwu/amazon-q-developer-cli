@@ -1,16 +1,40 @@
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fs::Metadata;
+use std::io::Stdout;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{
+    Path,
+    PathBuf,
+};
 
 use async_trait::async_trait;
+use crossterm::style::{
+    self,
+    Color,
+};
+use crossterm::{
+    execute,
+    queue,
+};
 use eyre::Result;
 use fig_os_shim::Context;
 use serde::Deserialize;
+use tokio::fs::File;
+use tokio::io::{
+    AsyncBufRead,
+    AsyncBufReadExt,
+    BufReader,
+};
 use tracing::warn;
 
-use super::{Error, InvokeOutput, OutputKind, Tool};
+use super::{
+    Error,
+    InvokeOutput,
+    OutputKind,
+    Tool,
+    relative_path,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct FsRead {
@@ -44,17 +68,18 @@ impl Tool for FsRead {
         "Read from filesystem".to_owned()
     }
 
-    async fn invoke(&self, ctx: &Context) -> Result<InvokeOutput, Error> {
+    async fn invoke(&self, ctx: &Context, mut updates: Stdout) -> Result<InvokeOutput, Error> {
         // Required for testing scenarios: since the path is passed directly as a command argument,
         // we need to pass it through the Context first.
         let path = ctx.fs().chroot_path_str(&self.path);
         let is_file = ctx.fs().symlink_metadata(&self.path).await?.is_file();
 
         if is_file {
-            // TODO: file size limit?
-            let file = ctx.fs().read_to_string(&path).await?;
-
+            let relative_path = relative_path(ctx.env().current_dir()?, &path);
             if let Some((start, Some(end))) = self.read_range()? {
+                // TODO: file size limit?
+                // TODO: don't read entire file in memory
+                let file = ctx.fs().read_to_string(&path).await?;
                 let line_count = file.lines().count();
 
                 // Convert negative 1-based indices to positive 0-based indices.
@@ -66,6 +91,14 @@ impl Tool for FsRead {
                     }
                 };
                 let (start, end) = (convert_index(start), convert_index(end));
+                queue!(
+                    updates,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print(format!("Reading lines {}-{} in {}", start + 1, end + 1, relative_path)),
+                    style::ResetColor,
+                    style::Print("\n"),
+                )?;
+
                 if start > end {
                     return Ok(InvokeOutput {
                         output: OutputKind::Text(String::new()),
@@ -83,10 +116,19 @@ impl Tool for FsRead {
                     output: OutputKind::Text(f),
                 });
             }
+
+            queue!(
+                updates,
+                style::SetForegroundColor(Color::Green),
+                style::Print(format!("Reading {}", relative_path)),
+                style::ResetColor,
+                style::Print("\n"),
+            )?;
             return Ok(InvokeOutput {
-                output: OutputKind::Text(file),
+                output: OutputKind::Text(ctx.fs().read_to_string(&path).await?),
             });
         } else {
+            let cwd = ctx.env().current_dir()?;
             let max_depth = self.read_range()?.map_or(0, |(d, _)| d);
             let mut result = Vec::new();
             let mut dir_queue = VecDeque::new();
@@ -95,6 +137,14 @@ impl Tool for FsRead {
                 if depth > max_depth {
                     break;
                 }
+                let relative_path = relative_path(&cwd, &path);
+                queue!(
+                    updates,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print(format!("Reading directory {}", &relative_path)),
+                    style::ResetColor,
+                    style::Print("\n"),
+                )?;
                 let mut read_dir = ctx.fs().read_dir(path).await?;
                 while let Some(ent) = read_dir.next_entry().await? {
                     use std::os::unix::fs::MetadataExt;
@@ -244,6 +294,7 @@ impl Display for FsRead {
 
 #[cfg(test)]
 mod tests {
+    use std::io::stdout;
     use std::sync::Arc;
 
     use super::*;
@@ -304,7 +355,7 @@ mod tests {
                     "path": TEST_FILE_PATH,
                     "read_range": $range,
                 });
-                let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx).await.unwrap();
+                let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx, stdout()).await.unwrap();
 
                 if let OutputKind::Text(text) = output.output {
                     assert_eq!(text, $expected.join("\n"), "actual(left) does not equal expected(right) for range: {:?}", $range);
@@ -341,7 +392,11 @@ mod tests {
             "path": "/",
             "read_range": None::<()>,
         });
-        let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx).await.unwrap();
+        let output = serde_json::from_value::<FsRead>(v)
+            .unwrap()
+            .invoke(&ctx, stdout())
+            .await
+            .unwrap();
 
         if let OutputKind::Text(text) = output.output {
             assert_eq!(text.lines().collect::<Vec<_>>().len(), 4);
@@ -354,7 +409,11 @@ mod tests {
             "path": "/",
             "read_range": Some(vec![1]),
         });
-        let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx).await.unwrap();
+        let output = serde_json::from_value::<FsRead>(v)
+            .unwrap()
+            .invoke(&ctx, stdout())
+            .await
+            .unwrap();
 
         if let OutputKind::Text(text) = output.output {
             let lines = text.lines().collect::<Vec<_>>();

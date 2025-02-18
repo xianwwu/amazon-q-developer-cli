@@ -1,13 +1,24 @@
 use std::borrow::Cow;
 use std::fmt::Display;
+use std::io::Stdout;
 
 use async_trait::async_trait;
+use crossterm::queue;
+use crossterm::style::{
+    self,
+    Color,
+};
 use eyre::Result;
 use fig_os_shim::Context;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
-use super::{Error, InvokeOutput, Tool};
+use super::{
+    Error,
+    InvokeOutput,
+    Tool,
+    relative_path,
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "command")]
@@ -34,10 +45,18 @@ impl Tool for FsWrite {
         "Write to filesystem".to_owned()
     }
 
-    async fn invoke(&self, ctx: &Context) -> Result<InvokeOutput, Error> {
+    async fn invoke(&self, ctx: &Context, mut updates: Stdout) -> Result<InvokeOutput, Error> {
         let fs = ctx.fs();
+        let cwd = ctx.env().current_dir()?;
         match self {
             FsWrite::Create { path, file_text } => {
+                queue!(
+                    updates,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print(format!("Creating a new file at {}", relative_path(&cwd, path))),
+                    style::ResetColor,
+                    style::Print("\n"),
+                )?;
                 let mut file = fs.create_new(path).await?;
                 file.write_all(file_text.as_bytes()).await?;
                 Ok(Default::default())
@@ -45,6 +64,13 @@ impl Tool for FsWrite {
             FsWrite::StrReplace { path, old_str, new_str } => {
                 let file = fs.read_to_string(&path).await?;
                 let matches = file.match_indices(old_str).collect::<Vec<_>>();
+                queue!(
+                    updates,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print(format!("Updating {}", relative_path(&cwd, path))),
+                    style::ResetColor,
+                    style::Print("\n"),
+                )?;
                 match matches.len() {
                     0 => Err(Error::InvalidToolUse("no occurrences of old_str were found".into())),
                     1 => {
@@ -62,6 +88,17 @@ impl Tool for FsWrite {
                 insert_line,
                 new_str,
             } => {
+                queue!(
+                    updates,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print(format!(
+                        "Inserting at line {} in {}",
+                        insert_line,
+                        relative_path(&cwd, path)
+                    )),
+                    style::ResetColor,
+                    style::Print("\n"),
+                )?;
                 let path = fs.chroot_path_str(path);
                 let mut file = fs.read_to_string(&path).await?;
 
@@ -184,6 +221,7 @@ fn truncate_str(text: &str, max_len: usize) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::stdout;
     use std::sync::Arc;
 
     use super::*;
@@ -265,7 +303,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx)
+            .invoke(&ctx, stdout())
             .await
             .unwrap();
 
@@ -286,7 +324,7 @@ mod tests {
         assert!(
             serde_json::from_value::<FsWrite>(v)
                 .unwrap()
-                .invoke(&ctx)
+                .invoke(&ctx, stdout())
                 .await
                 .is_err()
         );
@@ -301,7 +339,7 @@ mod tests {
         assert!(
             serde_json::from_value::<FsWrite>(v)
                 .unwrap()
-                .invoke(&ctx)
+                .invoke(&ctx, stdout())
                 .await
                 .is_err()
         );
@@ -315,7 +353,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx)
+            .invoke(&ctx, stdout())
             .await
             .unwrap();
         assert_eq!(
@@ -343,7 +381,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx)
+            .invoke(&ctx, stdout())
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(TEST_FILE_PATH).await.unwrap();
@@ -373,7 +411,7 @@ mod tests {
 
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx)
+            .invoke(&ctx, stdout())
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(TEST_FILE_PATH).await.unwrap();
@@ -408,7 +446,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx)
+            .invoke(&ctx, stdout())
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(test_file_path).await.unwrap();
@@ -423,7 +461,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx)
+            .invoke(&ctx, stdout())
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(test_file_path).await.unwrap();

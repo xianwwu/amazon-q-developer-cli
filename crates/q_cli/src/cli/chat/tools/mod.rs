@@ -3,12 +3,20 @@ pub mod execute_bash;
 pub mod fs_read;
 pub mod fs_write;
 
+use std::io::Stdout;
+use std::path::Path;
+
 use async_trait::async_trait;
 use aws_sdk_bedrockruntime::types::{
-    Tool as BedrockTool, ToolInputSchema as BedrockToolInputSchema, ToolResultContentBlock,
+    Tool as BedrockTool,
+    ToolInputSchema as BedrockToolInputSchema,
+    ToolResultContentBlock,
     ToolSpecification as BedrockToolSpecification,
 };
-use aws_smithy_types::{Document, Number as SmithyNumber};
+use aws_smithy_types::{
+    Document,
+    Number as SmithyNumber,
+};
 use aws_tool::UseAws;
 use execute_bash::ExecuteBash;
 use eyre::Result;
@@ -26,7 +34,7 @@ pub trait Tool: std::fmt::Debug + std::fmt::Display {
     /// The display name of a tool
     fn display_name(&self) -> String;
     /// Invokes the tool asynchronously
-    async fn invoke(&self, ctx: &Context) -> Result<InvokeOutput, Error>;
+    async fn invoke(&self, context: &Context, updates: Stdout) -> Result<InvokeOutput, Error>;
     /// Queues up a tool's intention in a human readable format
     async fn show_readable_intention(&self) -> Result<(), Error>;
     /// Validates the tool with the arguments supplied
@@ -136,5 +144,14 @@ pub fn serde_value_to_document(value: serde_json::Value) -> Document {
                 .map(|(k, v)| (k, serde_value_to_document(v)))
                 .collect::<_>(),
         ),
+    }
+}
+
+/// Returns a display-friendly [String] of `path` relative to `cwd`, returning `path` if either
+/// `cwd` or `path` is invalid UTF-8, or `path` is not prefixed by `cwd`.
+fn relative_path(cwd: impl AsRef<Path>, path: impl AsRef<Path>) -> String {
+    match (cwd.as_ref().to_str(), path.as_ref().to_str()) {
+        (Some(cwd), Some(path)) => path.strip_prefix(cwd).unwrap_or_default().to_string(),
+        _ => path.as_ref().to_string_lossy().to_string(),
     }
 }

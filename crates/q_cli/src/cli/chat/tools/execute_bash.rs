@@ -1,8 +1,14 @@
 use std::fmt::Display;
+use std::io::Stdout;
 use std::process::Stdio;
 
 use async_trait::async_trait;
 use bstr::ByteSlice;
+use crossterm::queue;
+use crossterm::style::{
+    self,
+    Color,
+};
 use eyre::Result;
 use fig_os_shim::Context;
 use serde::Deserialize;
@@ -20,7 +26,15 @@ impl Tool for ExecuteBash {
         "Execute bash command".to_owned()
     }
 
-    async fn invoke(&self, _: &Context) -> Result<InvokeOutput, Error> {
+    async fn invoke(&self, _: &Context, mut updates: Stdout) -> Result<InvokeOutput, Error> {
+        queue!(
+            updates,
+            style::SetForegroundColor(Color::Green),
+            style::Print(format!("Executing `{}`", &self.command)),
+            style::ResetColor,
+            style::Print("\n"),
+        )?;
+
         let output = tokio::process::Command::new("bash")
             .arg("-c")
             .arg(&self.command)
@@ -81,6 +95,8 @@ impl Display for ExecuteBash {
 
 #[cfg(test)]
 mod tests {
+    use std::io::stdout;
+
     use super::*;
 
     #[tokio::test]
@@ -93,7 +109,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx)
+            .invoke(&ctx, stdout())
             .await
             .unwrap();
 
@@ -111,7 +127,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx)
+            .invoke(&ctx, stdout())
             .await
             .unwrap();
 
@@ -129,7 +145,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx)
+            .invoke(&ctx, stdout())
             .await
             .unwrap();
         if let OutputKind::Json(json) = out.output {

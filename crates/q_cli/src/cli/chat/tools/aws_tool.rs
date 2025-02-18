@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::io::Stdout;
 use std::process::Stdio;
 
 use async_trait::async_trait;
@@ -54,7 +55,7 @@ impl Tool for UseAws {
         "Use AWS".to_owned()
     }
 
-    async fn invoke(&self, _: &Context) -> Result<InvokeOutput, Error> {
+    async fn invoke(&self, _: &Context, updates: Stdout) -> Result<InvokeOutput, Error> {
         self.validate_operation()
             .map_err(|err| Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?;
 
@@ -168,6 +169,8 @@ impl Display for UseAws {
 
 #[cfg(test)]
 mod tests {
+    use std::io::stdout;
+
     use super::*;
 
     #[tokio::test]
@@ -185,7 +188,13 @@ mod tests {
             "label": ""
         });
 
-        assert!(serde_json::from_value::<UseAws>(v).unwrap().invoke(&ctx).await.is_err());
+        assert!(
+            serde_json::from_value::<UseAws>(v)
+                .unwrap()
+                .invoke(&ctx, stdout())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -200,7 +209,11 @@ mod tests {
             "profile_name": "default",
             "label": ""
         });
-        let out = serde_json::from_value::<UseAws>(v).unwrap().invoke(&ctx).await.unwrap();
+        let out = serde_json::from_value::<UseAws>(v)
+            .unwrap()
+            .invoke(&ctx, stdout())
+            .await
+            .unwrap();
 
         if let OutputKind::Json(json) = out.output {
             // depending on where the test is ran we might get different outcome here but it does
@@ -231,7 +244,11 @@ mod tests {
             "profile_name": "default",
             "label": ""
         });
-        let out = serde_json::from_value::<UseAws>(v).unwrap().invoke(&ctx).await.unwrap();
+        let out = serde_json::from_value::<UseAws>(v)
+            .unwrap()
+            .invoke(&ctx, stdout())
+            .await
+            .unwrap();
 
         if let OutputKind::Json(json) = out.output {
             // depending on where the test is ran we might get different outcome here but it does
