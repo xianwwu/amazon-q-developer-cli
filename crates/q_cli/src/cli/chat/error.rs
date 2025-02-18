@@ -1,14 +1,9 @@
 use std::borrow::Cow;
 
-use aws_sdk_bedrockruntime::error::SdkError;
-use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
-use aws_smithy_types::event_stream::RawMessage;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(transparent)]
-    Sdk(#[from] SdkError<ConverseStreamOutputError, RawMessage>),
     #[error(transparent)]
     Api(#[from] fig_api_client::Error),
     #[error(transparent)]

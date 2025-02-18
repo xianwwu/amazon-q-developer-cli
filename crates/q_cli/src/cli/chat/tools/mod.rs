@@ -7,12 +7,6 @@ use std::io::Stdout;
 use std::path::Path;
 
 use async_trait::async_trait;
-use aws_sdk_bedrockruntime::types::{
-    Tool as BedrockTool,
-    ToolInputSchema as BedrockToolInputSchema,
-    ToolResultContentBlock,
-    ToolSpecification as BedrockToolSpecification,
-};
 use aws_smithy_types::{
     Document,
     Number as SmithyNumber,
@@ -66,47 +60,14 @@ pub struct ToolSpec {
     pub input_schema: InputSchema,
 }
 
-impl From<ToolSpec> for BedrockTool {
-    fn from(value: ToolSpec) -> Self {
-        BedrockTool::ToolSpec(value.into())
-    }
-}
-
-#[allow(clippy::fallible_impl_from)]
-impl From<ToolSpec> for BedrockToolSpecification {
-    fn from(value: ToolSpec) -> Self {
-        BedrockToolSpecification::builder()
-            .name(value.name)
-            .description(value.description)
-            .input_schema(value.input_schema.into())
-            .build()
-            .unwrap()
-    }
-}
-
-/// The schema specification describing a tool's fields. Maps to [BedrockToolInputSchema].
+/// The schema specification describing a tool's fields.
 #[derive(Debug, Clone, Deserialize)]
 pub struct InputSchema(pub serde_json::Value);
-
-impl From<InputSchema> for BedrockToolInputSchema {
-    fn from(value: InputSchema) -> Self {
-        BedrockToolInputSchema::Json(serde_value_to_document(value.0))
-    }
-}
 
 /// The output received from invoking a [Tool].
 #[derive(Debug, Default)]
 pub struct InvokeOutput {
     pub output: OutputKind,
-}
-
-impl From<InvokeOutput> for ToolResultContentBlock {
-    fn from(value: InvokeOutput) -> Self {
-        match value.output {
-            OutputKind::Text(text) => ToolResultContentBlock::Text(text),
-            OutputKind::Json(value) => ToolResultContentBlock::Json(serde_value_to_document(value)),
-        }
-    }
 }
 
 #[non_exhaustive]
