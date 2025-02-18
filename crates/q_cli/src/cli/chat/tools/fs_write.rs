@@ -7,11 +7,7 @@ use fig_os_shim::Context;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
-use super::{
-    Error,
-    InvokeOutput,
-    Tool,
-};
+use super::{Error, InvokeOutput, Tool};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "command")]
@@ -83,10 +79,88 @@ impl Tool for FsWrite {
             },
         }
     }
+
+    async fn show_readable_intention(&self) -> Result<(), Error> {
+        match self {
+            FsWrite::Create { path, file_text } => {
+                crossterm::queue!(
+                    std::io::stdout(),
+                    crossterm::style::Print(format!(
+                        "fs write create with path {} with {} ...\n",
+                        path,
+                        file_text.chars().take(10).collect::<String>()
+                    ))
+                )?;
+            },
+            FsWrite::Insert {
+                path,
+                insert_line,
+                new_str,
+            } => {
+                crossterm::queue!(
+                    std::io::stdout(),
+                    crossterm::style::Print(format!(
+                        "fs write insert with path {} at line {} with {} ...\n",
+                        path,
+                        insert_line,
+                        new_str.chars().take(10).collect::<String>()
+                    ))
+                )?;
+            },
+            FsWrite::StrReplace { path, old_str, new_str } => {
+                crossterm::queue!(
+                    std::io::stdout(),
+                    crossterm::style::Print(format!(
+                        "fs write str replace with path {} replacing {} with {}\n",
+                        path, old_str, new_str
+                    ))
+                )?;
+            },
+        }
+
+        Ok(())
+    }
+
+    async fn validate(&mut self, _ctx: &Context) -> Result<(), Error> {
+        // TODO: check to see if paths are valid
+        Ok(())
+    }
 }
 
 impl Display for FsWrite {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FsWrite::Create { path, file_text: _ } => {
+                crossterm::queue!(
+                    std::io::stdout(),
+                    crossterm::style::Print(format!("fs write create with path {}\n", path))
+                )
+                .map_err(|_| std::fmt::Error)?;
+            },
+            FsWrite::Insert {
+                path,
+                insert_line: _,
+                new_str: _,
+            } => {
+                crossterm::queue!(
+                    std::io::stdout(),
+                    crossterm::style::Print(format!("fs write insert with path {}\n", path))
+                )
+                .map_err(|_| std::fmt::Error)?;
+            },
+            FsWrite::StrReplace {
+                path,
+                old_str: _,
+                new_str: _,
+            } => {
+                crossterm::queue!(
+                    std::io::stdout(),
+                    crossterm::style::Print(format!("fs write str replace with path {}\n", path))
+                )
+                .map_err(|_| std::fmt::Error)?;
+            },
+        }
+
         Ok(())
     }
 }

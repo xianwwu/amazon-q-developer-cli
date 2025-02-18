@@ -7,12 +7,7 @@ use eyre::Result;
 use fig_os_shim::Context;
 use serde::Deserialize;
 
-use super::{
-    Error,
-    InvokeOutput,
-    OutputKind,
-    Tool,
-};
+use super::{Error, InvokeOutput, OutputKind, Tool};
 
 #[derive(Debug, Deserialize)]
 pub struct ExecuteBash {
@@ -57,10 +52,29 @@ impl Tool for ExecuteBash {
             })),
         })
     }
+
+    async fn show_readable_intention(&self) -> Result<(), Error> {
+        crossterm::queue!(
+            std::io::stdout(),
+            crossterm::style::Print(format!("Executing bash command: {}\n", self.command))
+        )?;
+
+        Ok(())
+    }
+
+    async fn validate(&mut self, _ctx: &Context) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl Display for ExecuteBash {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        crossterm::queue!(
+            std::io::stdout(),
+            crossterm::style::Print(format!("Executing bash command: {}\n", self.command))
+        )
+        .map_err(|_| std::fmt::Error)?;
+
         Ok(())
     }
 }

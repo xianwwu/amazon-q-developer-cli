@@ -7,12 +7,7 @@ use bstr::ByteSlice;
 use fig_os_shim::Context;
 use serde::Deserialize;
 
-use super::{
-    Error,
-    InvokeOutput,
-    OutputKind,
-    Tool,
-};
+use super::{Error, InvokeOutput, OutputKind, Tool};
 
 const ALLOWED_OPS: [&str; 6] = ["get", "describe", "list", "ls", "search", "batch_get"];
 
@@ -104,25 +99,68 @@ impl Tool for UseAws {
             })),
         })
     }
+
+    async fn show_readable_intention(&self) -> Result<(), Error> {
+        crossterm::queue!(
+            std::io::stdout(),
+            crossterm::style::Print("Running aws cli command:\n"),
+            crossterm::style::Print(format!("Service name: {}\n", self.service_name)),
+            crossterm::style::Print(format!("Operation name: {}\n", self.operation_name)),
+            crossterm::style::Print("Parameters: \n".to_string()),
+        )?;
+        for (name, value) in &self.parameters {
+            crossterm::queue!(
+                std::io::stdout(),
+                crossterm::style::Print(format!("{}: {}\n", name, value))
+            )?;
+        }
+
+        if let Some(ref profile_name) = self.profile_name {
+            crossterm::queue!(
+                std::io::stdout(),
+                crossterm::style::Print(format!("Profile name: {}\n", profile_name))
+            )?;
+        } else {
+            crossterm::queue!(
+                std::io::stdout(),
+                crossterm::style::Print("Profile name: default\n".to_string())
+            )?;
+        }
+
+        crossterm::queue!(
+            std::io::stdout(),
+            crossterm::style::Print(format!("Region: {}\n", self.region))
+        )?;
+
+        if let Some(ref label) = self.label {
+            crossterm::queue!(
+                std::io::stdout(),
+                crossterm::style::Print(format!("Label: {}\n", label))
+            )?;
+        }
+
+        Ok(())
+    }
+
+    async fn validate(&mut self, _ctx: &Context) -> Result<(), Error> {
+        self.validate_operation()
+            .map_err(|err| Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?;
+
+        Ok(())
+    }
 }
 
 impl Display for UseAws {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Service name: {}", self.service_name)?;
-        writeln!(f, "Operation name: {}", self.operation_name)?;
-        writeln!(f, "Parameters: ")?;
-        for (name, value) in &self.parameters {
-            writeln!(f, "{}: {}", name, value)?;
-        }
-        writeln!(f, "Region: {}", self.region)?;
-        if let Some(ref profile_name) = self.profile_name {
-            writeln!(f, "Profile name: {}", profile_name)?;
-        } else {
-            writeln!(f, "Profile name: default")?;
-        }
-        if let Some(ref label) = self.label {
-            writeln!(f, "Label: {}", label)?;
-        }
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        crossterm::queue!(
+            std::io::stdout(),
+            crossterm::style::Print("Running aws cli command:\n"),
+            crossterm::style::Print(format!(
+                "{} with operation {}\n",
+                self.service_name, self.operation_name
+            ))
+        )
+        .map_err(|_| std::fmt::Error)?;
 
         Ok(())
     }
