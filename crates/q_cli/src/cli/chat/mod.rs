@@ -1,11 +1,11 @@
 mod client;
+mod conversation_state;
 mod error;
 mod input_source;
 mod parse;
 mod parser;
 mod prompt;
 mod tools;
-mod types;
 use std::collections::HashMap;
 use std::io::{
     IsTerminal,
@@ -17,6 +17,12 @@ use std::sync::Arc;
 
 use client::Client;
 use color_eyre::owo_colors::OwoColorize;
+use conversation_state::{
+    ConversationRole,
+    ConversationState,
+    StopReason,
+    ToolResult,
+};
 use crossterm::style::{
     Attribute,
     Color,
@@ -46,12 +52,6 @@ use spinners::{
 };
 use tools::ToolSpec;
 use tracing::debug;
-use types::{
-    ConversationRole,
-    ConversationState,
-    StopReason,
-    ToolResult,
-};
 use winnow::Partial;
 use winnow::stream::Offset;
 
