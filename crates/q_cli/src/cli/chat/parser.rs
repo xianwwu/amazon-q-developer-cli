@@ -27,7 +27,9 @@ use crate::cli::chat::tools::{
 pub struct ToolUse {
     /// Corresponds to the `"toolUseId"` returned by the model.
     pub tool_use_id: String,
-    pub tool: Box<dyn Tool>,
+    pub tool_name: String,
+    /// The tool arguments encoded as JSON.
+    pub tool: String,
 }
 
 /// State associated with parsing a [ConverseStreamResponse] into a [Message].
@@ -129,20 +131,23 @@ impl ResponseParser {
     ) -> Result<ToolUse, Error> {
         assert!(input.is_some());
         assert!(stop.is_none_or(|v| !v));
-        let mut tool_args = input.take().unwrap_or_default();
+        let mut tool_string = input.take().unwrap_or_default();
         while let Some(ChatResponseStream::ToolUseEvent { .. }) = self.peek().await? {
             if let Some(ChatResponseStream::ToolUseEvent { input, stop, .. }) = self.next().await? {
                 if let Some(i) = input {
-                    tool_args.push_str(&i);
+                    tool_string.push_str(&i);
                 }
                 if let Some(true) = stop {
                     break;
                 }
             }
         }
-        self.assistant_text.push_str(&tool_args);
-        let value: serde_json::Value = serde_json::from_str(&tool_args)?;
-        parse_tool(&tool_name, value).map(|tool| ToolUse { tool_use_id, tool })
+        self.assistant_text.push_str(&tool_string);
+        Ok(ToolUse {
+            tool_use_id,
+            tool_name,
+            tool: tool_string,
+        })
     }
 
     /// Returns the next event in the [SendMessageOutput] without consuming it.
