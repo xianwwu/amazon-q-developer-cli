@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use eyre::Result;
 use fig_api_client::clients::SendMessageOutput;
 use fig_api_client::model::{
@@ -7,7 +5,6 @@ use fig_api_client::model::{
     ChatMessage,
     ChatResponseStream,
 };
-use fig_os_shim::Context;
 use tracing::{
     error,
     trace,
@@ -33,7 +30,6 @@ pub struct ToolUse {
 /// [ResponseEvent::EndStream] value is returned.
 #[derive(Debug)]
 pub struct ResponseParser {
-    ctx: Arc<Context>,
     /// The response to consume and parse into a sequence of [Ev].
     response: SendMessageOutput,
     /// Buffer to hold the next event in [SendMessageOutput].
@@ -42,19 +38,15 @@ pub struct ResponseParser {
     message_id: Option<String>,
     /// Buffer for holding the accumulated assistant response.
     assistant_text: String,
-    /// Whether or not a tool use was received. Used to derive the [StopReason].
-    received_tool_use: bool,
 }
 
 impl ResponseParser {
-    pub fn new(ctx: Arc<Context>, response: SendMessageOutput) -> Self {
+    pub fn new(response: SendMessageOutput) -> Self {
         Self {
-            ctx,
             response,
             peek: None,
             message_id: None,
             assistant_text: String::new(),
-            received_tool_use: false,
         }
     }
 
@@ -220,7 +212,7 @@ mod tests {
         ];
         events.reverse();
         let mock = SendMessageOutput::Mock(events);
-        let mut parser = ResponseParser::new(Context::new_fake(), mock);
+        let mut parser = ResponseParser::new(mock);
 
         for _ in 0..5 {
             println!("{:?}", parser.recv().await.unwrap());

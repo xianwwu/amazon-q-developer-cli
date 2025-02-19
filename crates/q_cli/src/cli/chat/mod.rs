@@ -181,7 +181,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
             let mut buf = String::new();
             let mut offset = 0;
             let mut ended = false;
-            let mut parser = ResponseParser::new(Arc::clone(&self.ctx), response);
+            let mut parser = ResponseParser::new(response);
             let mut state = ParseState::new(Some(self.terminal_width()));
 
             loop {

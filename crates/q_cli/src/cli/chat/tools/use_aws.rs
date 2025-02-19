@@ -66,7 +66,7 @@ impl Tool for UseAws {
         "Use AWS".to_owned()
     }
 
-    async fn invoke(&self, _: &Context, updates: &mut Stdout) -> Result<InvokeOutput> {
+    async fn invoke(&self, _: &Context, _updates: &mut Stdout) -> Result<InvokeOutput> {
         let mut command = tokio::process::Command::new("aws");
         let profile_name = if let Some(ref profile_name) = self.profile_name {
             profile_name

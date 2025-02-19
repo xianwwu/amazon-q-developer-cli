@@ -169,12 +169,6 @@ impl From<InputSchema> for ToolInputSchema {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum ConversationRole {
-    User,
-    Assistant,
-}
-
 /// The context modifiers that are used in a specific chat message
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct ContextModifiers {
