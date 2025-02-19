@@ -1,5 +1,8 @@
 use std::borrow::Cow;
-use std::io::Stdout;
+use std::io::{
+    Stdout,
+    Write,
+};
 
 use async_trait::async_trait;
 use crossterm::queue;
@@ -38,6 +41,120 @@ pub enum FsWrite {
         insert_line: usize,
         new_str: String,
     },
+}
+
+impl FsWrite {
+    pub fn display_name_e(&self) -> String {
+        "Write to filesystem".to_owned()
+    }
+
+    pub async fn invoke_e(&self, ctx: &Context, updates: &mut impl Write) -> Result<InvokeOutput> {
+        let fs = ctx.fs();
+        let cwd = ctx.env().current_dir()?;
+        match self {
+            FsWrite::Create { path, file_text } => {
+                queue!(
+                    updates,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print(format!("Creating a new file at {}", relative_path(&cwd, path))),
+                    style::ResetColor,
+                    style::Print("\n"),
+                )?;
+                let mut file = fs.create_new(path).await?;
+                file.write_all(file_text.as_bytes()).await?;
+                Ok(Default::default())
+            },
+            FsWrite::StrReplace { path, old_str, new_str } => {
+                let file = fs.read_to_string(&path).await?;
+                let matches = file.match_indices(old_str).collect::<Vec<_>>();
+                queue!(
+                    updates,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print(format!("Updating {}", relative_path(&cwd, path))),
+                    style::ResetColor,
+                    style::Print("\n"),
+                )?;
+                match matches.len() {
+                    0 => Err(eyre!("no occurrences of old_str were found")),
+                    1 => {
+                        let file = file.replacen(old_str, new_str, 1);
+                        fs.write(path, file).await?;
+                        Ok(Default::default())
+                    },
+                    x => Err(eyre!("{x} occurrences of old_str were found when only 1 is expected")),
+                }
+            },
+            FsWrite::Insert {
+                path,
+                insert_line,
+                new_str,
+            } => {
+                queue!(
+                    updates,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print(format!(
+                        "Inserting at line {} in {}",
+                        insert_line,
+                        relative_path(&cwd, path)
+                    )),
+                    style::ResetColor,
+                    style::Print("\n"),
+                )?;
+                let path = fs.chroot_path_str(path);
+                let mut file = fs.read_to_string(&path).await?;
+
+                // Get the index of the start of the line to insert at.
+                let num_lines = file.lines().enumerate().map(|(i, _)| i + 1).last().unwrap_or(1);
+                let insert_line = insert_line.clamp(&0, &num_lines);
+                let mut i = 0;
+                for _ in 0..*insert_line {
+                    let line_len = &file[i..].find("\n").map_or(file[i..].len(), |i| i + 1);
+                    i += line_len;
+                }
+                file.insert_str(i, new_str);
+                fs.write(&path, &file).await?;
+                Ok(Default::default())
+            },
+        }
+    }
+
+    pub fn show_readable_intention_e(&self, updates: &mut impl Write) -> Result<()> {
+        match self {
+            FsWrite::Create { path, file_text } => Ok(queue!(
+                updates,
+                style::Print(format!(
+                    "fs write create with path {} with {} ...\n",
+                    path,
+                    file_text.chars().take(10).collect::<String>()
+                ))
+            )?),
+            FsWrite::Insert {
+                path,
+                insert_line,
+                new_str,
+            } => Ok(queue!(
+                updates,
+                style::Print(format!(
+                    "fs write insert with path {} at line {} with {} ...\n",
+                    path,
+                    insert_line,
+                    new_str.chars().take(10).collect::<String>()
+                ))
+            )?),
+            FsWrite::StrReplace { path, old_str, new_str } => Ok(queue!(
+                updates,
+                style::Print(format!(
+                    "fs write str replace with path {} replacing {} with {}\n",
+                    path, old_str, new_str
+                ))
+            )?),
+        }
+    }
+
+    pub async fn validate_e(&mut self, _ctx: &Context) -> Result<()> {
+        // TODO: check to see if paths are valid
+        Ok(())
+    }
 }
 
 #[async_trait]

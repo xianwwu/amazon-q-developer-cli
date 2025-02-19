@@ -3,7 +3,10 @@ pub mod fs_read;
 pub mod fs_write;
 pub mod use_aws;
 
-use std::io::Stdout;
+use std::io::{
+    Stdout,
+    Write,
+};
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -25,6 +28,87 @@ use serde::Deserialize;
 use use_aws::UseAws;
 
 use super::parser::ToolUse;
+
+#[derive(Debug)]
+pub enum ToolE {
+    FsRead(FsRead),
+    FsWrite(FsWrite),
+    ExecuteBash(ExecuteBash),
+    UseAws(UseAws),
+}
+
+impl ToolE {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::FsRead(_) => "fs_read",
+            Self::FsWrite(_) => "fs_write",
+            Self::ExecuteBash(_) => "execute_bash",
+            Self::UseAws(_) => "use_aws",
+        }
+    }
+
+    pub fn display_name(&self) -> String {
+        match self {
+            ToolE::FsRead(fs_read) => fs_read.display_name_e(),
+            ToolE::FsWrite(fs_write) => fs_write.display_name_e(),
+            ToolE::ExecuteBash(execute_bash) => execute_bash.display_name_e(),
+            ToolE::UseAws(use_aws) => use_aws.display_name_e(),
+        }
+    }
+
+    pub fn from_tool_use(tool_use: ToolUse) -> Result<Self, ToolResult> {
+        let map_err = |parse_error| ToolResult {
+            tool_use_id: tool_use.id.clone(),
+            content: vec![ToolResultContentBlock::Text(format!(
+                "failed to deserialize with the following error: {parse_error}"
+            ))],
+            status: ToolResultStatus::Error,
+        };
+
+        Ok(match tool_use.name.as_str() {
+            "fs_read" => Self::FsRead(serde_json::from_str::<FsRead>(&tool_use.args).map_err(map_err)?),
+            "fs_write" => Self::FsWrite(serde_json::from_str::<FsWrite>(&tool_use.args).map_err(map_err)?),
+            "execute_bash" => Self::ExecuteBash(serde_json::from_str::<ExecuteBash>(&tool_use.args).map_err(map_err)?),
+            "use_aws" => Self::UseAws(serde_json::from_str::<UseAws>(&tool_use.args).map_err(map_err)?),
+            unknown => {
+                return Err(ToolResult {
+                    tool_use_id: tool_use.id,
+                    content: vec![ToolResultContentBlock::Text(format!(
+                        "The tool, \"{unknown}\" is not supported by the client"
+                    ))],
+                    status: ToolResultStatus::Error,
+                });
+            },
+        })
+    }
+
+    pub async fn invoke(&self, context: &Context, updates: &mut impl Write) -> Result<InvokeOutput> {
+        match self {
+            ToolE::FsRead(fs_read) => fs_read.invoke_e(context, updates).await,
+            ToolE::FsWrite(fs_write) => fs_write.invoke_e(context, updates).await,
+            ToolE::ExecuteBash(execute_bash) => execute_bash.invoke_e(updates).await,
+            ToolE::UseAws(use_aws) => use_aws.invoke_e(context, updates).await,
+        }
+    }
+
+    pub fn show_readable_intention(&self, updates: &mut impl Write) -> Result<()> {
+        match self {
+            ToolE::FsRead(fs_read) => fs_read.show_readable_intention_e(updates),
+            ToolE::FsWrite(fs_write) => fs_write.show_readable_intention_e(updates),
+            ToolE::ExecuteBash(execute_bash) => execute_bash.show_readable_intention_e(updates),
+            ToolE::UseAws(use_aws) => use_aws.show_readable_intention_e(updates),
+        }
+    }
+
+    pub async fn validate(&mut self, ctx: &Context) -> Result<()> {
+        match self {
+            ToolE::FsRead(fs_read) => fs_read.validate_e(ctx).await,
+            ToolE::FsWrite(fs_write) => fs_write.validate_e(ctx).await,
+            ToolE::ExecuteBash(execute_bash) => execute_bash.validate_e(ctx).await,
+            ToolE::UseAws(use_aws) => use_aws.validate_e(ctx).await,
+        }
+    }
+}
 
 /// Represents an executable tool use.
 #[async_trait]

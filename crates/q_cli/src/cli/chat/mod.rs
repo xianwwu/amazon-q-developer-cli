@@ -51,6 +51,7 @@ use spinners::{
 };
 use tools::{
     Tool,
+    ToolE,
     ToolSpec,
     parse_tool,
 };
@@ -272,13 +273,13 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
     }
 
     async fn response(&mut self) -> Result<Option<SendMessageOutput>> {
-        let mut queued_tools: Vec<(String, Box<dyn Tool>)> = vec![];
+        let mut queued_tools = vec![];
         if !self.tool_uses.is_empty() {
             // Parse the requested tools then validate them initializing needed fields
             let mut tool_results = Vec::with_capacity(self.tool_uses.len());
             for tool_use in self.tool_uses.drain(..) {
                 let tool_use_id = tool_use.id.clone();
-                match parse_tool(tool_use) {
+                match ToolE::from_tool_use(tool_use) {
                     Ok(mut tool) => {
                         match tool.validate(&self.ctx).await {
                             Ok(()) => {
