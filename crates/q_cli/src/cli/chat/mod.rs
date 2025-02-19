@@ -440,21 +440,87 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
 
 #[cfg(test)]
 mod tests {
+    use fig_api_client::model::ChatResponseStream;
+
     use super::*;
 
-    #[tokio::test]
-    async fn test_flow() {
-        let ctx = Context::builder().with_test_home().await.unwrap().build_fake();
-        let mut output = String::new();
-        let c = ChatArgs {
-            output: &mut output,
-            ctx,
-            initial_input: None,
-            input_source: InputSource::new_mock(vec!["create a new file".to_string(), "c".to_string()]),
-            is_interactive: true,
-            tool_config: load_tools().unwrap(),
-            client: StreamingClient::mock(vec![vec![]]),
-            terminal_width_provider: || Some(0),
-        };
-    }
+    // fn create_stream(model_responses: serde_json::Value) -> StreamingClient {
+    //     let responses = model_responses.as_array().unwrap();
+    //     for response in responses {
+    //         for event in response.as_array().unwrap() {
+    //             match event {
+    //                 serde_json::Value::Null => todo!(),
+    //                 serde_json::Value::Bool(_) => todo!(),
+    //                 serde_json::Value::Number(number) => todo!(),
+    //                 serde_json::Value::String(_) => todo!(),
+    //                 serde_json::Value::Array(vec) => todo!(),
+    //                 serde_json::Value::Object(map) => todo!(),
+    //             }
+    //         }
+    //     }
+    //     todo!()
+    // }
+
+    // #[test]
+    // fn test_stream() {
+    //     let v = serde_json::json!([
+    //         [
+    //             "Sure, I'll create a file for you",
+    //             {
+    //                 "tool_use_id": "1",
+    //                 "name": "fs_write",
+    //                 "args": {
+    //                     "command": "create",
+    //                     "file_text": "Hello, world!",
+    //                     "path": "/file.txt",
+    //                 }
+    //             }
+    //         ],
+    //         [
+    //             "Hope that looks good to you!",
+    //         ],
+    //     ]);
+    //     create_stream(v);
+    // }
+
+    // #[tokio::test]
+    // async fn test_flow() {
+    //     let ctx = Context::builder().with_test_home().await.unwrap().build_fake();
+    //     let mut output = String::new();
+    //     let c = ChatArgs {
+    //         output: &mut output,
+    //         ctx,
+    //         initial_input: None,
+    //         input_source: InputSource::new_mock(vec!["create a new file".to_string(), "c".to_string()]),
+    //         is_interactive: true,
+    //         tool_config: load_tools().unwrap(),
+    //         client: StreamingClient::mock(vec![vec![
+    //             ChatResponseStream::AssistantResponseEvent {
+    //                 content: "hi".to_string(),
+    //             },
+    //             ChatResponseStream::AssistantResponseEvent {
+    //                 content: " there".to_string(),
+    //             },
+    //             ChatResponseStream::ToolUseEvent {
+    //                 tool_use_id: tool_use_id.clone(),
+    //                 name: tool_name.clone(),
+    //                 input: Some(tool_use.as_str().split_at(tool_use_split_at).0.to_string()),
+    //                 stop: None,
+    //             },
+    //             ChatResponseStream::ToolUseEvent {
+    //                 tool_use_id: tool_use_id.clone(),
+    //                 name: tool_name.clone(),
+    //                 input: Some(tool_use.as_str().split_at(tool_use_split_at).1.to_string()),
+    //                 stop: None,
+    //             },
+    //             ChatResponseStream::ToolUseEvent {
+    //                 tool_use_id: tool_use_id.clone(),
+    //                 name: tool_name.clone(),
+    //                 input: None,
+    //                 stop: Some(true),
+    //             },
+    //         ]]),
+    //         terminal_width_provider: || Some(0),
+    //     };
+    // }
 }

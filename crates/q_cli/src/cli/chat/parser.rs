@@ -175,11 +175,44 @@ pub enum ResponseEvent {
 mod tests {
     use super::*;
 
+    // fn mock_output(text: String, value: serde_json::Value) -> Vec<ChatResponseStream> {
+    //     serde_json::json!([
+    //         "I want a file",
+    //         {
+    //             "tool_use_id": "1",
+    //             "name": "fs_write",
+    //             "args": {
+    //                 "command": "create",
+    //                 "file_text": "Hello, world!",
+    //                 "path": "/file.txt",
+    //             }
+    //         }
+    //     ]);
+    //     let v = serde_json::json!([
+    //         [
+    //             "Sure, I'll create a file for you",
+    //             {
+    //                 "tool_use_id": "1",
+    //                 "name": "fs_write",
+    //                 "args": {
+    //                     "command": "create",
+    //                     "file_text": "Hello, world!",
+    //                     "path": "/file.txt",
+    //                 }
+    //             }
+    //         ],
+    //         [
+    //             "Hope that looks good to you!",
+    //         ],
+    //     ]);
+    //     todo!()
+    // }
+
     #[tokio::test]
     async fn test_parse() {
         let tool_use_id = "TEST_ID".to_string();
         let tool_name = "execute_bash".to_string();
-        let tool_use = serde_json::json!({
+        let tool_args = serde_json::json!({
             "command": "echo hello"
         })
         .to_string();
@@ -194,13 +227,13 @@ mod tests {
             ChatResponseStream::ToolUseEvent {
                 tool_use_id: tool_use_id.clone(),
                 name: tool_name.clone(),
-                input: Some(tool_use.as_str().split_at(tool_use_split_at).0.to_string()),
+                input: Some(tool_args.as_str().split_at(tool_use_split_at).0.to_string()),
                 stop: None,
             },
             ChatResponseStream::ToolUseEvent {
                 tool_use_id: tool_use_id.clone(),
                 name: tool_name.clone(),
-                input: Some(tool_use.as_str().split_at(tool_use_split_at).1.to_string()),
+                input: Some(tool_args.as_str().split_at(tool_use_split_at).1.to_string()),
                 stop: None,
             },
             ChatResponseStream::ToolUseEvent {
