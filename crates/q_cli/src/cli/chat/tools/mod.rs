@@ -1,7 +1,7 @@
-pub mod aws_tool;
 pub mod execute_bash;
 pub mod fs_read;
 pub mod fs_write;
+pub mod use_aws;
 
 use std::io::Stdout;
 use std::path::Path;
@@ -11,44 +11,61 @@ use aws_smithy_types::{
     Document,
     Number as SmithyNumber,
 };
-use aws_tool::UseAws;
 use execute_bash::ExecuteBash;
 use eyre::Result;
+use fig_api_client::model::{
+    ToolResult,
+    ToolResultContentBlock,
+    ToolResultStatus,
+};
 use fig_os_shim::Context;
 use fs_read::FsRead;
 use fs_write::FsWrite;
 use serde::Deserialize;
+use use_aws::UseAws;
 
-pub use super::Error;
+use super::parser::ToolUse;
 
 /// Represents an executable tool use.
 #[async_trait]
-pub trait Tool: std::fmt::Debug + std::fmt::Display {
+pub trait Tool: std::fmt::Debug {
     // shouldn't be a method but traits are broken in rust
     /// The display name of a tool
     fn display_name(&self) -> String;
     /// Invokes the tool asynchronously
-    async fn invoke(&self, context: &Context, updates: Stdout) -> Result<InvokeOutput, Error>;
+    async fn invoke(&self, context: &Context, updates: &mut Stdout) -> Result<InvokeOutput>;
     /// Queues up a tool's intention in a human readable format
-    async fn show_readable_intention(&self) -> Result<(), Error>;
+    fn show_readable_intention(&self, updates: &mut Stdout);
     /// Validates the tool with the arguments supplied
-    async fn validate(&mut self, ctx: &Context) -> Result<(), Error>;
+    async fn validate(&mut self, ctx: &Context) -> Result<()>;
 }
 
-pub fn parse_tool(name: &str, value: serde_json::Value) -> Result<Box<dyn Tool>, Error> {
-    let tool = match name {
-        "fs_read" => Box::new(serde_json::from_value::<FsRead>(value)?) as Box<dyn Tool>,
-        "fs_write" => Box::new(serde_json::from_value::<FsWrite>(value)?) as Box<dyn Tool>,
-        "execute_bash" => Box::new(serde_json::from_value::<ExecuteBash>(value)?) as Box<dyn Tool>,
-        "use_aws_read_only" => Box::new(serde_json::from_value::<UseAws>(value)?) as Box<dyn Tool>,
-        unknown => {
-            return Err(Error::UnknownToolUse {
-                tool_name: unknown.to_string(),
-            });
-        },
+pub fn parse_tool(tool_use: ToolUse) -> Result<Box<dyn Tool>, ToolResult> {
+    let map_err = |parse_error| ToolResult {
+        tool_use_id: tool_use.id.clone(),
+        content: vec![ToolResultContentBlock::Text(format!(
+            "Serde failed to deserialize with the following error: {parse_error}"
+        ))],
+        status: ToolResultStatus::Error,
     };
 
-    Ok(tool)
+    Ok(match tool_use.name.as_str() {
+        "fs_read" => Box::new(serde_json::from_str::<FsRead>(&tool_use.args).map_err(map_err)?) as Box<dyn Tool>,
+        "fs_write" => Box::new(serde_json::from_str::<FsWrite>(&tool_use.args).map_err(map_err)?) as Box<dyn Tool>,
+        "execute_bash" => {
+            Box::new(serde_json::from_str::<ExecuteBash>(&tool_use.args).map_err(map_err)?) as Box<dyn Tool>
+        },
+        "use_aws" => Box::new(serde_json::from_str::<UseAws>(&tool_use.args).map_err(map_err)?) as Box<dyn Tool>,
+        unknown => {
+            return Err(ToolResult {
+                tool_use_id: tool_use.id,
+                content: vec![ToolResultContentBlock::Text(format!(
+                    "The tool, \"{unknown}\" is not supported by the client"
+                ))],
+                status: ToolResultStatus::Error,
+            });
+        },
+    })
 }
 
 /// A tool specification to be sent to the model as part of a conversation. Maps to

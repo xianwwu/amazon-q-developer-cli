@@ -14,7 +14,6 @@ use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
 use super::{
-    Error,
     InvokeOutput,
     Tool,
     relative_path,
@@ -72,13 +71,13 @@ impl Tool for FsWrite {
                     style::Print("\n"),
                 )?;
                 match matches.len() {
-                    0 => Err(Error::InvalidToolUse("no occurrences of old_str were found".into())),
+                    0 => Err(Error::ToolExecution("no occurrences of old_str were found".into())),
                     1 => {
                         let file = file.replacen(old_str, new_str, 1);
                         fs.write(path, file).await?;
                         Ok(Default::default())
                     },
-                    x => Err(Error::InvalidToolUse(
+                    x => Err(Error::ToolExecution(
                         format!("{x} occurrences of old_str were found when only 1 is expected").into(),
                     )),
                 }
@@ -117,11 +116,11 @@ impl Tool for FsWrite {
         }
     }
 
-    async fn show_readable_intention(&self) -> Result<(), Error> {
+    fn show_readable_intention(&self, updates: &mut Stdout) {
         match self {
             FsWrite::Create { path, file_text } => {
                 crossterm::queue!(
-                    std::io::stdout(),
+                    updates,
                     crossterm::style::Print(format!(
                         "fs write create with path {} with {} ...\n",
                         path,
@@ -135,7 +134,7 @@ impl Tool for FsWrite {
                 new_str,
             } => {
                 crossterm::queue!(
-                    std::io::stdout(),
+                    updates,
                     crossterm::style::Print(format!(
                         "fs write insert with path {} at line {} with {} ...\n",
                         path,
@@ -146,7 +145,7 @@ impl Tool for FsWrite {
             },
             FsWrite::StrReplace { path, old_str, new_str } => {
                 crossterm::queue!(
-                    std::io::stdout(),
+                    updates,
                     crossterm::style::Print(format!(
                         "fs write str replace with path {} replacing {} with {}\n",
                         path, old_str, new_str
@@ -169,7 +168,7 @@ impl Display for FsWrite {
         match self {
             FsWrite::Create { path, file_text: _ } => {
                 crossterm::queue!(
-                    std::io::stdout(),
+                    updates,
                     crossterm::style::Print(format!("fs write create with path {}\n", path))
                 )
                 .map_err(|_| std::fmt::Error)?;
@@ -180,7 +179,7 @@ impl Display for FsWrite {
                 new_str: _,
             } => {
                 crossterm::queue!(
-                    std::io::stdout(),
+                    updates,
                     crossterm::style::Print(format!("fs write insert with path {}\n", path))
                 )
                 .map_err(|_| std::fmt::Error)?;
@@ -191,7 +190,7 @@ impl Display for FsWrite {
                 new_str: _,
             } => {
                 crossterm::queue!(
-                    std::io::stdout(),
+                    updates,
                     crossterm::style::Print(format!("fs write str replace with path {}\n", path))
                 )
                 .map_err(|_| std::fmt::Error)?;

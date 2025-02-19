@@ -1,14 +1,22 @@
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::io::Stdout;
 use std::process::Stdio;
 
 use async_trait::async_trait;
 use bstr::ByteSlice;
+use eyre::{
+    Error,
+    Result,
+    WrapErr,
+};
 use fig_os_shim::Context;
 use serde::Deserialize;
 
-use super::{Error, InvokeOutput, OutputKind, Tool};
+use super::{
+    InvokeOutput,
+    OutputKind,
+    Tool,
+};
 
 const ALLOWED_OPS: [&str; 6] = ["get", "describe", "list", "ls", "search", "batch_get"];
 
@@ -55,9 +63,9 @@ impl Tool for UseAws {
         "Use AWS".to_owned()
     }
 
-    async fn invoke(&self, _: &Context, updates: Stdout) -> Result<InvokeOutput, Error> {
+    async fn invoke(&self, _: &Context, updates: &mut Stdout) -> Result<InvokeOutput> {
         self.validate_operation()
-            .map_err(|err| Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?;
+            .wrap_err(|err| format!("Unable to spawn command '{} : {:?}'", self, err).into())?;
 
         let mut command = tokio::process::Command::new("aws");
         let profile_name = if let Some(ref profile_name) = self.profile_name {
@@ -84,10 +92,10 @@ impl Tool for UseAws {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|err| Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?
+            .map_err(|err| Error::ToolExecution(format!("Unable to spawn command '{:?} : {:?}'", self, err).into()))?
             .wait_with_output()
             .await
-            .map_err(|err| Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?;
+            .map_err(|err| Error::ToolExecution(format!("Unable to spawn command '{:?} : {:?}'", self, err).into()))?;
         let status = output.status.code();
         let stdout = output.stdout.to_str_lossy();
         let stderr = output.stderr.to_str_lossy();
@@ -101,67 +109,37 @@ impl Tool for UseAws {
         })
     }
 
-    async fn show_readable_intention(&self) -> Result<(), Error> {
+    fn show_readable_intention(&self, updates: &mut Stdout) {
         crossterm::queue!(
-            std::io::stdout(),
+            updates,
             crossterm::style::Print("Running aws cli command:\n"),
             crossterm::style::Print(format!("Service name: {}\n", self.service_name)),
             crossterm::style::Print(format!("Operation name: {}\n", self.operation_name)),
             crossterm::style::Print("Parameters: \n".to_string()),
-        )?;
+        );
         for (name, value) in &self.parameters {
-            crossterm::queue!(
-                std::io::stdout(),
-                crossterm::style::Print(format!("{}: {}\n", name, value))
-            )?;
+            crossterm::queue!(updates, crossterm::style::Print(format!("{}: {}\n", name, value)))?;
         }
 
         if let Some(ref profile_name) = self.profile_name {
             crossterm::queue!(
-                std::io::stdout(),
+                updates,
                 crossterm::style::Print(format!("Profile name: {}\n", profile_name))
-            )?;
+            );
         } else {
-            crossterm::queue!(
-                std::io::stdout(),
-                crossterm::style::Print("Profile name: default\n".to_string())
-            )?;
+            crossterm::queue!(updates, crossterm::style::Print("Profile name: default\n".to_string()));
         }
 
-        crossterm::queue!(
-            std::io::stdout(),
-            crossterm::style::Print(format!("Region: {}\n", self.region))
-        )?;
+        crossterm::queue!(updates, crossterm::style::Print(format!("Region: {}\n", self.region)));
 
         if let Some(ref label) = self.label {
-            crossterm::queue!(
-                std::io::stdout(),
-                crossterm::style::Print(format!("Label: {}\n", label))
-            )?;
+            crossterm::queue!(updates, crossterm::style::Print(format!("Label: {}\n", label)));
         }
-
-        Ok(())
     }
 
     async fn validate(&mut self, _ctx: &Context) -> Result<(), Error> {
         self.validate_operation()
-            .map_err(|err| Error::ToolInvocation(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?;
-
-        Ok(())
-    }
-}
-
-impl Display for UseAws {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        crossterm::queue!(
-            std::io::stdout(),
-            crossterm::style::Print("Running aws cli command:\n"),
-            crossterm::style::Print(format!(
-                "{} with operation {}\n",
-                self.service_name, self.operation_name
-            ))
-        )
-        .map_err(|_| std::fmt::Error)?;
+            .map_err(|err| Error::ToolExecution(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?;
 
         Ok(())
     }
@@ -169,8 +147,6 @@ impl Display for UseAws {
 
 #[cfg(test)]
 mod tests {
-    use std::io::stdout;
-
     use super::*;
 
     #[tokio::test]
@@ -191,7 +167,7 @@ mod tests {
         assert!(
             serde_json::from_value::<UseAws>(v)
                 .unwrap()
-                .invoke(&ctx, stdout())
+                .invoke(&ctx, &mut std::io::stdout())
                 .await
                 .is_err()
         );
@@ -211,7 +187,7 @@ mod tests {
         });
         let out = serde_json::from_value::<UseAws>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut std::io::stdout())
             .await
             .unwrap();
 
@@ -246,7 +222,7 @@ mod tests {
         });
         let out = serde_json::from_value::<UseAws>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut std::io::stdout())
             .await
             .unwrap();
 

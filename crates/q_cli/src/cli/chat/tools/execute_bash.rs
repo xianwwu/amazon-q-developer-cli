@@ -13,7 +13,11 @@ use eyre::Result;
 use fig_os_shim::Context;
 use serde::Deserialize;
 
-use super::{Error, InvokeOutput, OutputKind, Tool};
+use super::{
+    InvokeOutput,
+    OutputKind,
+    Tool,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct ExecuteBash {
@@ -26,7 +30,7 @@ impl Tool for ExecuteBash {
         "Execute bash command".to_owned()
     }
 
-    async fn invoke(&self, _: &Context, mut updates: Stdout) -> Result<InvokeOutput, Error> {
+    async fn invoke(&self, _: &Context, mut updates: &mut Stdout) -> Result<InvokeOutput> {
         queue!(
             updates,
             style::SetForegroundColor(Color::Green),
@@ -41,13 +45,14 @@ impl Tool for ExecuteBash {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
+            .ok_or_eyre()
             .map_err(|err| {
-                Error::ToolInvocation(format!("Unable to spawn command '{}': {:?}", &self.command, err).into())
+                Error::ToolExecution(format!("Unable to spawn command '{}': {:?}", &self.command, err).into())
             })?
             .wait_with_output()
             .await
             .map_err(|err| {
-                Error::ToolInvocation(
+                Error::ToolExecution(
                     format!(
                         "Unable to wait on subprocess for command '{}': {:?}",
                         &self.command, err
@@ -67,16 +72,14 @@ impl Tool for ExecuteBash {
         })
     }
 
-    async fn show_readable_intention(&self) -> Result<(), Error> {
+    fn show_readable_intention(&self, updates: &mut Stdout) {
         crossterm::queue!(
-            std::io::stdout(),
+            updates,
             crossterm::style::Print(format!("Executing bash command: {}\n", self.command))
-        )?;
-
-        Ok(())
+        );
     }
 
-    async fn validate(&mut self, _ctx: &Context) -> Result<(), Error> {
+    async fn validate(&mut self, _ctx: &Context) -> Result<()> {
         Ok(())
     }
 }

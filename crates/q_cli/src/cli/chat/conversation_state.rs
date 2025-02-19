@@ -16,6 +16,8 @@ use fig_api_client::model::{
     ShellState,
     Tool,
     ToolInputSchema,
+    ToolResult,
+    ToolResultContentBlock,
     ToolSpecification,
     UserInputMessage,
     UserInputMessageContext,
@@ -150,11 +152,6 @@ impl From<ConversationState> for FigConversationState {
 #[derive(Debug, Clone)]
 pub struct Message(pub ChatMessage);
 
-pub type ToolResult = fig_api_client::model::ToolResult;
-pub type ToolResultContentBlock = fig_api_client::model::ToolResultContentBlock;
-#[allow(dead_code)]
-pub type ToolResultStatus = fig_api_client::model::ToolResultStatus;
-
 impl From<InvokeOutput> for ToolResultContentBlock {
     fn from(value: InvokeOutput) -> Self {
         match value.output {
@@ -176,12 +173,6 @@ impl From<InputSchema> for ToolInputSchema {
 pub enum ConversationRole {
     User,
     Assistant,
-}
-
-#[derive(Debug, Clone)]
-pub enum StopReason {
-    EndTurn,
-    ToolUse,
 }
 
 /// The context modifiers that are used in a specific chat message

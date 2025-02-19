@@ -12,24 +12,16 @@ use tracing::{
     trace,
 };
 
-use crate::cli::chat::conversation_state::{
-    Message,
-    StopReason,
-};
-use crate::cli::chat::error::Error;
-use crate::cli::chat::tools::{
-    Tool,
-    parse_tool,
-};
+use crate::cli::chat::conversation_state::Message;
 
 /// Represents a tool use requested by the assistant.
 #[derive(Debug)]
 pub struct ToolUse {
     /// Corresponds to the `"toolUseId"` returned by the model.
-    pub tool_use_id: String,
-    pub tool_name: String,
+    pub id: String,
+    pub name: String,
     /// The tool arguments encoded as JSON.
-    pub tool: String,
+    pub args: String,
 }
 
 /// State associated with parsing a [ConverseStreamResponse] into a [Message].
@@ -66,7 +58,7 @@ impl ResponseParser {
     }
 
     /// Consumes the associated [ConverseStreamResponse] until a valid [ResponseEvent] is parsed.
-    pub async fn recv(&mut self) -> Result<ResponseEvent, Error> {
+    pub async fn recv(&mut self) -> Result<ResponseEvent> {
         loop {
             match self.next().await {
                 Ok(Some(output)) => {
@@ -103,16 +95,11 @@ impl ResponseParser {
                     }
                 },
                 Ok(None) => {
-                    let stop_reason = if self.received_tool_use {
-                        StopReason::ToolUse
-                    } else {
-                        StopReason::EndTurn
-                    };
                     let message = Message(ChatMessage::AssistantResponseMessage(AssistantResponseMessage {
                         message_id: self.message_id.take(),
                         content: std::mem::take(&mut self.assistant_text),
                     }));
-                    return Ok(ResponseEvent::EndStream { stop_reason, message });
+                    return Ok(ResponseEvent::EndStream { message });
                 },
                 Err(err) => return Err(err.into()),
             }
@@ -128,7 +115,7 @@ impl ResponseParser {
         tool_name: String,
         mut input: Option<String>,
         stop: Option<bool>,
-    ) -> Result<ToolUse, Error> {
+    ) -> Result<ToolUse> {
         assert!(input.is_some());
         assert!(stop.is_none_or(|v| !v));
         let mut tool_string = input.take().unwrap_or_default();
@@ -144,9 +131,9 @@ impl ResponseParser {
         }
         self.assistant_text.push_str(&tool_string);
         Ok(ToolUse {
-            tool_use_id,
-            tool_name,
-            tool: tool_string,
+            id: tool_use_id,
+            name: tool_name,
+            args: tool_string,
         })
     }
 
@@ -184,8 +171,6 @@ pub enum ResponseEvent {
     ToolUse(ToolUse),
     /// Represents the end of the response. No more events will be returned.
     EndStream {
-        /// Indicates the response ended.
-        stop_reason: StopReason,
         /// The completed message containing all of the assistant text and tool use events
         /// previously emitted. This should be stored in the conversation history and sent in
         /// subsequent requests.

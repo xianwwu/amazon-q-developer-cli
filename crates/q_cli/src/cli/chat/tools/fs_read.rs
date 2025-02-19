@@ -29,7 +29,6 @@ use tokio::io::{
 use tracing::warn;
 
 use super::{
-    Error,
     InvokeOutput,
     OutputKind,
     Tool,
@@ -183,14 +182,14 @@ impl Tool for FsRead {
         }
     }
 
-    async fn show_readable_intention(&self) -> Result<(), Error> {
+    fn show_readable_intention(&self, updates: &mut Stdout) {
         let is_file = self.ty.expect("Tool needs to have been validated");
 
         if is_file {
             crossterm::queue!(
-                std::io::stdout(),
+                updates,
                 crossterm::style::Print(format!("Reading file: {}, ", self.path))
-            )?;
+            );
 
             if let Some(ref read_range) = self.read_range {
                 let start = read_range.first();
@@ -198,16 +197,16 @@ impl Tool for FsRead {
 
                 match (start, end) {
                     (Some(start), Some(end)) => crossterm::queue!(
-                        std::io::stdout(),
+                        updates,
                         crossterm::style::Print(format!("from line {} to {}\n", start, end))
-                    )?,
+                    ),
                     (Some(start), None) => {
                         let input = if *start > 0 {
                             format!("from line {} to end of file\n", start)
                         } else {
                             format!("{} line from the end of file to end of file", start)
                         };
-                        crossterm::queue!(std::io::stdout(), crossterm::style::Print(input))?
+                        crossterm::queue!(updates, crossterm::style::Print(input))?
                     },
                     _ => {
                         return Err(Error::Custom(std::borrow::Cow::Borrowed("Incorrect arguments passed")));
@@ -218,7 +217,7 @@ impl Tool for FsRead {
             }
         } else {
             crossterm::queue!(
-                std::io::stdout(),
+                updates,
                 crossterm::style::Print(format!("Reading directory: {}, ", self.path))
             )?;
 
@@ -228,7 +227,7 @@ impl Tool for FsRead {
                 0
             };
             crossterm::queue!(
-                std::io::stdout(),
+                updates,
                 crossterm::style::Print(format!("with maximum depth of {}", depth))
             )?;
         }
@@ -283,7 +282,7 @@ fn format_mode(mode: u32) -> [char; 9] {
 impl Display for FsRead {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         crossterm::queue!(
-            std::io::stdout(),
+            updates,
             crossterm::style::Print(format!("fs read with path {}, ", self.path))
         )
         .map_err(|_| std::fmt::Error)?;
