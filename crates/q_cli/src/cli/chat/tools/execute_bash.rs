@@ -26,7 +26,7 @@ pub struct ExecuteBash {
 }
 
 impl ExecuteBash {
-    pub fn display_name(&self) -> String {
+    pub fn display_name() -> String {
         "Execute bash command".to_owned()
     }
 
@@ -91,7 +91,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_bash_tool() {
-        let ctx = Context::new_fake();
         let mut stdout = std::io::stdout();
 
         // Verifying stdout

@@ -1,3 +1,8 @@
+use std::sync::{
+    Arc,
+    Mutex,
+};
+
 use amzn_codewhisperer_streaming_client::Client as CodewhispererStreamingClient;
 use amzn_qdeveloper_streaming_client::Client as QDeveloperStreamingClient;
 use aws_types::request_id::RequestId;
@@ -23,6 +28,11 @@ use crate::{
 };
 
 mod inner {
+    use std::sync::{
+        Arc,
+        Mutex,
+    };
+
     use amzn_codewhisperer_streaming_client::Client as CodewhispererStreamingClient;
     use amzn_qdeveloper_streaming_client::Client as QDeveloperStreamingClient;
 
@@ -32,7 +42,7 @@ mod inner {
     pub enum Inner {
         Codewhisperer(CodewhispererStreamingClient),
         QDeveloper(QDeveloperStreamingClient),
-        Mock(Vec<ChatResponseStream>),
+        Mock(Arc<Mutex<std::vec::IntoIter<Vec<ChatResponseStream>>>>),
     }
 }
 
@@ -49,8 +59,8 @@ impl StreamingClient {
         Ok(client)
     }
 
-    pub fn mock(events: Vec<ChatResponseStream>) -> Self {
-        Self(inner::Inner::Mock(events))
+    pub fn mock(events: Vec<Vec<ChatResponseStream>>) -> Self {
+        Self(inner::Inner::Mock(Arc::new(Mutex::new(events.into_iter()))))
     }
 
     pub async fn new_codewhisperer_client(endpoint: &Endpoint) -> Self {
@@ -136,7 +146,7 @@ impl StreamingClient {
                 ))
             },
             inner::Inner::Mock(events) => {
-                let mut new_events = events.clone();
+                let mut new_events = events.lock().unwrap().next().unwrap().clone();
                 new_events.reverse();
                 Ok(SendMessageOutput::Mock(new_events))
             },
@@ -197,11 +207,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock() {
-        let client = StreamingClient::mock(vec![
+        let client = StreamingClient::mock(vec![vec![
             ChatResponseStream::assistant_response("Hello!"),
             ChatResponseStream::assistant_response(" How can I"),
             ChatResponseStream::assistant_response(" assist you today?"),
-        ]);
+        ]]);
         let mut output = client
             .send_message(ConversationState {
                 conversation_id: None,

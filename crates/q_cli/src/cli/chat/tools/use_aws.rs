@@ -1,8 +1,5 @@
 use std::collections::HashMap;
-use std::io::{
-    Stdout,
-    Write,
-};
+use std::io::Write;
 use std::process::Stdio;
 
 use bstr::ByteSlice;
@@ -60,7 +57,7 @@ impl UseAws {
         Err(AwsToolError::ForbiddenOperation(operation_name.clone()))
     }
 
-    pub fn display_name(&self) -> String {
+    pub fn display_name() -> String {
         "Use AWS".to_owned()
     }
 

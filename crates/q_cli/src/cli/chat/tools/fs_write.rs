@@ -39,7 +39,7 @@ pub enum FsWrite {
 }
 
 impl FsWrite {
-    pub fn display_name(&self) -> String {
+    pub fn display_name() -> String {
         "Write to filesystem".to_owned()
     }
 

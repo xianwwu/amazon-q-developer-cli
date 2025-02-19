@@ -3,13 +3,9 @@ pub mod fs_read;
 pub mod fs_write;
 pub mod use_aws;
 
-use std::io::{
-    Stdout,
-    Write,
-};
+use std::io::Write;
 use std::path::Path;
 
-use async_trait::async_trait;
 use aws_smithy_types::{
     Document,
     Number as SmithyNumber,
@@ -39,15 +35,6 @@ pub enum ToolE {
 }
 
 impl ToolE {
-    fn name(&self) -> &'static str {
-        match self {
-            Self::FsRead(_) => "fs_read",
-            Self::FsWrite(_) => "fs_write",
-            Self::ExecuteBash(_) => "execute_bash",
-            Self::UseAws(_) => "use_aws",
-        }
-    }
-
     pub fn from_tool_use(tool_use: ToolUse) -> Result<Self, ToolResult> {
         let map_err = |parse_error| ToolResult {
             tool_use_id: tool_use.id.clone(),
@@ -77,10 +64,10 @@ impl ToolE {
     /// The display name of a tool
     pub fn display_name(&self) -> String {
         match self {
-            ToolE::FsRead(fs_read) => fs_read.display_name(),
-            ToolE::FsWrite(fs_write) => fs_write.display_name(),
-            ToolE::ExecuteBash(execute_bash) => execute_bash.display_name(),
-            ToolE::UseAws(use_aws) => use_aws.display_name(),
+            ToolE::FsRead(_) => FsRead::display_name(),
+            ToolE::FsWrite(_) => FsWrite::display_name(),
+            ToolE::ExecuteBash(_) => ExecuteBash::display_name(),
+            ToolE::UseAws(_) => UseAws::display_name(),
         }
     }
 
@@ -179,4 +166,9 @@ fn relative_path(cwd: impl AsRef<Path>, path: impl AsRef<Path>) -> String {
         (Some(cwd), Some(path)) => path.strip_prefix(cwd).unwrap_or_default().to_string(),
         _ => path.as_ref().to_string_lossy().to_string(),
     }
+}
+
+#[cfg(test)]
+mod tests {
+    pub struct Asdf;
 }

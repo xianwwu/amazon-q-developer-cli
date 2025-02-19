@@ -94,9 +94,7 @@ pub async fn chat(initial_input: Option<String>) -> Result<ExitCode> {
 
     let client = StreamingClient::new().await?;
     let mut output = std::io::stdout();
-    let conversation_state = ConversationState::new(tool_config.clone());
-
-    let result = ChatContext {
+    let result = ChatContext::new(ChatArgs {
         output: &mut output,
         ctx: Context::new(),
         initial_input,
@@ -105,11 +103,7 @@ pub async fn chat(initial_input: Option<String>) -> Result<ExitCode> {
         tool_config,
         client,
         terminal_width_provider: || terminal::window_size().map(|s| s.columns.into()).ok(),
-        spinner: None,
-        tool_uses: vec![],
-        conversation_state,
-        tool_use_recursions: 0,
-    }
+    })
     .try_chat()
     .await;
 
@@ -134,9 +128,23 @@ fn load_tools() -> Result<ToolConfiguration> {
     })
 }
 
-struct ChatContext<'o> {
+/// Required fields for initializing a new chat session.
+struct ChatArgs<'o, W> {
     /// The [Write] destination for printing conversation text.
-    output: &'o mut Stdout,
+    output: &'o mut W,
+    ctx: Arc<Context>,
+    initial_input: Option<String>,
+    input_source: InputSource,
+    is_interactive: bool,
+    tool_config: ToolConfiguration,
+    client: StreamingClient,
+    terminal_width_provider: fn() -> Option<usize>,
+}
+
+/// State required for a chat session.
+struct ChatContext<'o, W> {
+    /// The [Write] destination for printing conversation text.
+    output: &'o mut W,
     ctx: Arc<Context>,
     initial_input: Option<String>,
     input_source: InputSource,
@@ -152,7 +160,27 @@ struct ChatContext<'o> {
     tool_use_recursions: u32,
 }
 
-impl ChatContext<'_> {
+impl<'o, W> ChatContext<'o, W>
+where
+    W: Write,
+{
+    fn new(args: ChatArgs<'o, W>) -> Self {
+        Self {
+            output: args.output,
+            ctx: args.ctx,
+            initial_input: args.initial_input,
+            input_source: args.input_source,
+            is_interactive: args.is_interactive,
+            tool_config: args.tool_config.clone(),
+            client: args.client,
+            terminal_width_provider: args.terminal_width_provider,
+            spinner: None,
+            tool_uses: vec![],
+            conversation_state: ConversationState::new(args.tool_config),
+            tool_use_recursions: 0,
+        }
+    }
+
     async fn try_chat(&mut self) -> Result<()> {
         // todo: what should we set this to?
         if self.is_interactive {
@@ -167,7 +195,6 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
         }
 
         let mut conversation_state = ConversationState::new(self.tool_config.clone());
-        let mut tool_uses = vec![];
 
         loop {
             let mut response = self.response().await?;
@@ -194,7 +221,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
                         },
                         parser::ResponseEvent::ToolUse(tool_use) => {
                             buf.push_str(&format!("\n\n# Tool Use: {}", tool_use.args));
-                            tool_uses.push(tool_use);
+                            self.tool_uses.push(tool_use);
                         },
                         parser::ResponseEvent::EndStream { message } => {
                             conversation_state.push_assistant_message(message);
@@ -408,5 +435,26 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
 
     fn terminal_width(&self) -> usize {
         (self.terminal_width_provider)().unwrap_or(80)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_flow() {
+        let ctx = Context::builder().with_test_home().await.unwrap().build_fake();
+        let mut output = String::new();
+        let c = ChatArgs {
+            output: &mut output,
+            ctx,
+            initial_input: None,
+            input_source: InputSource::new_mock(vec!["create a new file".to_string(), "c".to_string()]),
+            is_interactive: true,
+            tool_config: load_tools().unwrap(),
+            client: StreamingClient::mock(vec![vec![]]),
+            terminal_width_provider: || Some(0),
+        };
     }
 }

@@ -44,7 +44,7 @@ impl FsRead {
         }
     }
 
-    pub fn display_name(&self) -> String {
+    pub fn display_name() -> String {
         "Read from filesystem".to_owned()
     }
 
@@ -157,9 +157,9 @@ impl FsRead {
                     }
                 }
             }
-            return Ok(InvokeOutput {
+            Ok(InvokeOutput {
                 output: OutputKind::Text(result.join("\n")),
-            });
+            })
         }
     }
 
