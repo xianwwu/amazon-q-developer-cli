@@ -5,7 +5,6 @@ use std::io::{
 };
 use std::process::Stdio;
 
-use async_trait::async_trait;
 use bstr::ByteSlice;
 use crossterm::{
     queue,
@@ -21,7 +20,6 @@ use serde::Deserialize;
 use super::{
     InvokeOutput,
     OutputKind,
-    Tool,
 };
 
 const ALLOWED_OPS: [&str; 6] = ["get", "describe", "list", "ls", "search", "batch_get"];
@@ -62,11 +60,11 @@ impl UseAws {
         Err(AwsToolError::ForbiddenOperation(operation_name.clone()))
     }
 
-    pub fn display_name_e(&self) -> String {
+    pub fn display_name(&self) -> String {
         "Use AWS".to_owned()
     }
 
-    pub async fn invoke_e(&self, ctx: &Context, mut updates: impl Write) -> Result<InvokeOutput> {
+    pub async fn invoke(&self, ctx: &Context, mut updates: impl Write) -> Result<InvokeOutput> {
         let mut command = tokio::process::Command::new("aws");
         let profile_name = if let Some(ref profile_name) = self.profile_name {
             profile_name
@@ -109,7 +107,7 @@ impl UseAws {
         })
     }
 
-    pub fn show_readable_intention_e(&self, updates: &mut impl Write) -> Result<()> {
+    pub fn show_readable_intention(&self, updates: &mut impl Write) -> Result<()> {
         queue!(
             updates,
             style::Print("Running aws cli command:\n"),
@@ -135,91 +133,9 @@ impl UseAws {
         Ok(())
     }
 
-    pub async fn validate_e(&mut self, _ctx: &Context) -> Result<()> {
+    pub async fn validate(&mut self, _ctx: &Context) -> Result<()> {
         self.validate_operation()
             .wrap_err_with(|| format!("Unable to spawn command '{:?}'", &self))
-    }
-}
-
-#[async_trait]
-impl Tool for UseAws {
-    fn display_name(&self) -> String {
-        "Use AWS".to_owned()
-    }
-
-    async fn invoke(&self, _: &Context, _updates: &mut Stdout) -> Result<InvokeOutput> {
-        let mut command = tokio::process::Command::new("aws");
-        let profile_name = if let Some(ref profile_name) = self.profile_name {
-            profile_name
-        } else {
-            "default"
-        };
-        command
-            .envs(std::env::vars())
-            .arg("--region")
-            .arg(&self.region)
-            .arg("--profile")
-            .arg(profile_name)
-            .arg(&self.service_name)
-            .arg(&self.operation_name);
-        for (param_name, val) in &self.parameters {
-            if param_name.starts_with("--") {
-                command.arg(param_name).arg(val);
-            } else {
-                command.arg(format!("--{}", param_name)).arg(val);
-            }
-        }
-        let output = command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .wrap_err_with(|| format!("Unable to spawn command '{:?}'", self))?
-            .wait_with_output()
-            .await
-            .wrap_err_with(|| format!("Unable to spawn command '{:?}'", self))?;
-        let status = output.status.code();
-        let stdout = output.stdout.to_str_lossy();
-        let stderr = output.stderr.to_str_lossy();
-
-        Ok(InvokeOutput {
-            output: OutputKind::Json(serde_json::json!({
-                "exit_status": status,
-                "stdout": stdout,
-                "stderr": stderr
-            })),
-        })
-    }
-
-    fn show_readable_intention(&self, updates: &mut Stdout) -> Result<()> {
-        queue!(
-            updates,
-            style::Print("Running aws cli command:\n"),
-            style::Print(format!("Service name: {}\n", self.service_name)),
-            style::Print(format!("Operation name: {}\n", self.operation_name)),
-            style::Print("Parameters: \n".to_string()),
-        )?;
-        for (name, value) in &self.parameters {
-            queue!(updates, style::Print(format!("{}: {}\n", name, value)))?;
-        }
-
-        if let Some(ref profile_name) = self.profile_name {
-            queue!(updates, style::Print(format!("Profile name: {}\n", profile_name)))?;
-        } else {
-            queue!(updates, style::Print("Profile name: default\n".to_string()))?;
-        }
-
-        queue!(updates, style::Print(format!("Region: {}\n", self.region)))?;
-
-        if let Some(ref label) = self.label {
-            queue!(updates, style::Print(format!("Label: {}\n", label)))?;
-        }
-        Ok(())
-    }
-
-    async fn validate(&mut self, _ctx: &Context) -> Result<()> {
-        Ok(self
-            .validate_operation()
-            .wrap_err_with(|| format!("Unable to spawn command '{:?}'", &self))?)
     }
 }
 

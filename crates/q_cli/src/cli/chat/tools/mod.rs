@@ -29,6 +29,7 @@ use use_aws::UseAws;
 
 use super::parser::ToolUse;
 
+/// Represents an executable tool use.
 #[derive(Debug)]
 pub enum ToolE {
     FsRead(FsRead),
@@ -44,15 +45,6 @@ impl ToolE {
             Self::FsWrite(_) => "fs_write",
             Self::ExecuteBash(_) => "execute_bash",
             Self::UseAws(_) => "use_aws",
-        }
-    }
-
-    pub fn display_name(&self) -> String {
-        match self {
-            ToolE::FsRead(fs_read) => fs_read.display_name_e(),
-            ToolE::FsWrite(fs_write) => fs_write.display_name_e(),
-            ToolE::ExecuteBash(execute_bash) => execute_bash.display_name_e(),
-            ToolE::UseAws(use_aws) => use_aws.display_name_e(),
         }
     }
 
@@ -82,74 +74,45 @@ impl ToolE {
         })
     }
 
+    /// The display name of a tool
+    pub fn display_name(&self) -> String {
+        match self {
+            ToolE::FsRead(fs_read) => fs_read.display_name(),
+            ToolE::FsWrite(fs_write) => fs_write.display_name(),
+            ToolE::ExecuteBash(execute_bash) => execute_bash.display_name(),
+            ToolE::UseAws(use_aws) => use_aws.display_name(),
+        }
+    }
+
+    /// Invokes the tool asynchronously
     pub async fn invoke(&self, context: &Context, updates: &mut impl Write) -> Result<InvokeOutput> {
         match self {
-            ToolE::FsRead(fs_read) => fs_read.invoke_e(context, updates).await,
-            ToolE::FsWrite(fs_write) => fs_write.invoke_e(context, updates).await,
-            ToolE::ExecuteBash(execute_bash) => execute_bash.invoke_e(updates).await,
-            ToolE::UseAws(use_aws) => use_aws.invoke_e(context, updates).await,
+            ToolE::FsRead(fs_read) => fs_read.invoke(context, updates).await,
+            ToolE::FsWrite(fs_write) => fs_write.invoke(context, updates).await,
+            ToolE::ExecuteBash(execute_bash) => execute_bash.invoke(updates).await,
+            ToolE::UseAws(use_aws) => use_aws.invoke(context, updates).await,
         }
     }
 
+    /// Queues up a tool's intention in a human readable format
     pub fn show_readable_intention(&self, updates: &mut impl Write) -> Result<()> {
         match self {
-            ToolE::FsRead(fs_read) => fs_read.show_readable_intention_e(updates),
-            ToolE::FsWrite(fs_write) => fs_write.show_readable_intention_e(updates),
-            ToolE::ExecuteBash(execute_bash) => execute_bash.show_readable_intention_e(updates),
-            ToolE::UseAws(use_aws) => use_aws.show_readable_intention_e(updates),
+            ToolE::FsRead(fs_read) => fs_read.show_readable_intention(updates),
+            ToolE::FsWrite(fs_write) => fs_write.show_readable_intention(updates),
+            ToolE::ExecuteBash(execute_bash) => execute_bash.show_readable_intention(updates),
+            ToolE::UseAws(use_aws) => use_aws.show_readable_intention(updates),
         }
     }
 
+    /// Validates the tool with the arguments supplied
     pub async fn validate(&mut self, ctx: &Context) -> Result<()> {
         match self {
-            ToolE::FsRead(fs_read) => fs_read.validate_e(ctx).await,
-            ToolE::FsWrite(fs_write) => fs_write.validate_e(ctx).await,
-            ToolE::ExecuteBash(execute_bash) => execute_bash.validate_e(ctx).await,
-            ToolE::UseAws(use_aws) => use_aws.validate_e(ctx).await,
+            ToolE::FsRead(fs_read) => fs_read.validate(ctx).await,
+            ToolE::FsWrite(fs_write) => fs_write.validate(ctx).await,
+            ToolE::ExecuteBash(execute_bash) => execute_bash.validate(ctx).await,
+            ToolE::UseAws(use_aws) => use_aws.validate(ctx).await,
         }
     }
-}
-
-/// Represents an executable tool use.
-#[async_trait]
-pub trait Tool: std::fmt::Debug {
-    // shouldn't be a method but traits are broken in rust
-    /// The display name of a tool
-    fn display_name(&self) -> String;
-    /// Invokes the tool asynchronously
-    async fn invoke(&self, context: &Context, updates: &mut Stdout) -> Result<InvokeOutput>;
-    /// Queues up a tool's intention in a human readable format
-    fn show_readable_intention(&self, updates: &mut Stdout) -> Result<()>;
-    /// Validates the tool with the arguments supplied
-    async fn validate(&mut self, ctx: &Context) -> Result<()>;
-}
-
-pub fn parse_tool(tool_use: ToolUse) -> Result<Box<dyn Tool>, ToolResult> {
-    let map_err = |parse_error| ToolResult {
-        tool_use_id: tool_use.id.clone(),
-        content: vec![ToolResultContentBlock::Text(format!(
-            "Serde failed to deserialize with the following error: {parse_error}"
-        ))],
-        status: ToolResultStatus::Error,
-    };
-
-    Ok(match tool_use.name.as_str() {
-        "fs_read" => Box::new(serde_json::from_str::<FsRead>(&tool_use.args).map_err(map_err)?) as Box<dyn Tool>,
-        "fs_write" => Box::new(serde_json::from_str::<FsWrite>(&tool_use.args).map_err(map_err)?) as Box<dyn Tool>,
-        "execute_bash" => {
-            Box::new(serde_json::from_str::<ExecuteBash>(&tool_use.args).map_err(map_err)?) as Box<dyn Tool>
-        },
-        "use_aws" => Box::new(serde_json::from_str::<UseAws>(&tool_use.args).map_err(map_err)?) as Box<dyn Tool>,
-        unknown => {
-            return Err(ToolResult {
-                tool_use_id: tool_use.id,
-                content: vec![ToolResultContentBlock::Text(format!(
-                    "The tool, \"{unknown}\" is not supported by the client"
-                ))],
-                status: ToolResultStatus::Error,
-            });
-        },
-    })
 }
 
 /// A tool specification to be sent to the model as part of a conversation. Maps to

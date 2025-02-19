@@ -1,11 +1,7 @@
 use std::fmt::Display;
-use std::io::{
-    Stdout,
-    Write,
-};
+use std::io::Write;
 use std::process::Stdio;
 
-use async_trait::async_trait;
 use bstr::ByteSlice;
 use crossterm::queue;
 use crossterm::style::{
@@ -22,7 +18,6 @@ use serde::Deserialize;
 use super::{
     InvokeOutput,
     OutputKind,
-    Tool,
 };
 
 #[derive(Debug, Deserialize)]
@@ -31,11 +26,11 @@ pub struct ExecuteBash {
 }
 
 impl ExecuteBash {
-    pub fn display_name_e(&self) -> String {
+    pub fn display_name(&self) -> String {
         "Execute bash command".to_owned()
     }
 
-    pub async fn invoke_e(&self, mut updates: impl Write) -> Result<InvokeOutput> {
+    pub async fn invoke(&self, mut updates: impl Write) -> Result<InvokeOutput> {
         queue!(
             updates,
             style::SetForegroundColor(Color::Green),
@@ -66,63 +61,14 @@ impl ExecuteBash {
         })
     }
 
-    pub fn show_readable_intention_e(&self, updates: &mut impl Write) -> Result<()> {
+    pub fn show_readable_intention(&self, updates: &mut impl Write) -> Result<()> {
         Ok(queue!(
             updates,
             style::Print(format!("Executing bash command: {}\n", self.command))
         )?)
     }
 
-    pub async fn validate_e(&mut self, _ctx: &Context) -> Result<()> {
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl Tool for ExecuteBash {
-    fn display_name(&self) -> String {
-        "Execute bash command".to_owned()
-    }
-
-    async fn invoke(&self, _: &Context, updates: &mut Stdout) -> Result<InvokeOutput> {
-        queue!(
-            updates,
-            style::SetForegroundColor(Color::Green),
-            style::Print(format!("Executing `{}`", &self.command)),
-            style::ResetColor,
-            style::Print("\n"),
-        )?;
-
-        let output = tokio::process::Command::new("bash")
-            .arg("-c")
-            .arg(&self.command)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .wrap_err_with(|| format!("Unable to spawn command '{}'", &self.command))?
-            .wait_with_output()
-            .await
-            .wrap_err_with(|| format!("Unable to wait on subprocess for command '{}'", &self.command))?;
-        let status = output.status.code();
-        let stdout = output.stdout.to_str_lossy();
-        let stderr = output.stderr.to_str_lossy();
-        Ok(InvokeOutput {
-            output: OutputKind::Json(serde_json::json!({
-                "exit_status": status,
-                "stdout": stdout,
-                "stderr": stderr,
-            })),
-        })
-    }
-
-    fn show_readable_intention(&self, updates: &mut Stdout) -> Result<()> {
-        Ok(queue!(
-            updates,
-            style::Print(format!("Executing bash command: {}\n", self.command))
-        )?)
-    }
-
-    async fn validate(&mut self, _ctx: &Context) -> Result<()> {
+    pub async fn validate(&mut self, _ctx: &Context) -> Result<()> {
         Ok(())
     }
 }
@@ -154,7 +100,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout)
+            .invoke(&mut stdout)
             .await
             .unwrap();
 
@@ -172,7 +118,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout)
+            .invoke(&mut stdout)
             .await
             .unwrap();
 
@@ -190,7 +136,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout)
+            .invoke(&mut stdout)
             .await
             .unwrap();
         if let OutputKind::Json(json) = out.output {

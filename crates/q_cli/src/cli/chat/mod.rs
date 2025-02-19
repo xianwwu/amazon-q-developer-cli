@@ -50,10 +50,8 @@ use spinners::{
     Spinners,
 };
 use tools::{
-    Tool,
     ToolE,
     ToolSpec,
-    parse_tool,
 };
 use tracing::{
     debug,
