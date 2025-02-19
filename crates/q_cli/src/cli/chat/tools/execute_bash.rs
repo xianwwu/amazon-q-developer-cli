@@ -10,10 +10,10 @@ use crossterm::style::{
     Color,
 };
 use eyre::{
-    Context,
+    Context as EyreContext,
     Result,
 };
-use fig_os_shim::Context as FigContext;
+use fig_os_shim::Context;
 use serde::Deserialize;
 
 use super::{
@@ -33,7 +33,7 @@ impl Tool for ExecuteBash {
         "Execute bash command".to_owned()
     }
 
-    async fn invoke(&self, _: &FigContext, mut updates: &mut Stdout) -> Result<InvokeOutput> {
+    async fn invoke(&self, _: &Context, updates: &mut Stdout) -> Result<InvokeOutput> {
         queue!(
             updates,
             style::SetForegroundColor(Color::Green),
@@ -90,13 +90,12 @@ impl Display for ExecuteBash {
 
 #[cfg(test)]
 mod tests {
-    use std::io::stdout;
-
     use super::*;
 
     #[tokio::test]
     async fn test_execute_bash_tool() {
-        let ctx = FigContext::new_fake();
+        let ctx = Context::new_fake();
+        let mut stdout = std::io::stdout();
 
         // Verifying stdout
         let v = serde_json::json!({
@@ -104,7 +103,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
 
@@ -122,7 +121,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
 
@@ -140,7 +139,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
         if let OutputKind::Json(json) = out.output {

@@ -1,35 +1,21 @@
 use std::collections::VecDeque;
-use std::fmt::Display;
 use std::fs::Metadata;
 use std::io::Stdout;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::PathBuf;
 
 use async_trait::async_trait;
+use crossterm::queue;
 use crossterm::style::{
     self,
     Color,
 };
-use crossterm::{
-    execute,
-    queue,
-};
 use eyre::{
     Result,
-    bail,
-    Context,
+    eyre,
 };
-use fig_os_shim::Context as FigContext;
+use fig_os_shim::Context;
 use serde::Deserialize;
-use tokio::fs::File;
-use tokio::io::{
-    AsyncBufRead,
-    AsyncBufReadExt,
-    BufReader,
-};
 use tracing::warn;
 
 use super::{
@@ -58,7 +44,7 @@ impl FsRead {
             Some(range) => match (range.first(), range.get(1)) {
                 (Some(depth), None) => Ok(Some((*depth, None))),
                 (Some(start), Some(end)) => Ok(Some((*start, Some(*end)))),
-                other => bail!("Invalid read range: {:?}", other),
+                other => Err(eyre!("Invalid read range: {:?}", other)),
             },
             None => Ok(None),
         }
@@ -71,7 +57,7 @@ impl Tool for FsRead {
         "Read from filesystem".to_owned()
     }
 
-    async fn invoke(&self, ctx: &FigContext, mut updates: &mut Stdout) -> Result<InvokeOutput> {
+    async fn invoke(&self, ctx: &Context, updates: &mut Stdout) -> Result<InvokeOutput> {
         // Required for testing scenarios: since the path is passed directly as a command argument,
         // we need to pass it through the Context first.
         let path = ctx.fs().chroot_path_str(&self.path);
@@ -215,7 +201,7 @@ impl Tool for FsRead {
                     crossterm::queue!(updates, crossterm::style::Print(input));
                 },
                 _ => {
-                    panic!("Incorrect arguments passed");
+                    unexpected!("Incorrect arguments passed");
                 },
             };
         } else {
@@ -236,7 +222,7 @@ impl Tool for FsRead {
         }
     }
 
-    async fn validate(&mut self, ctx: &FigContext) -> Result<()> {
+    async fn validate(&mut self, ctx: &Context) -> Result<()> {
         let is_file = ctx.fs().symlink_metadata(&self.path).await?.is_file();
         self.ty = Some(is_file);
 
@@ -282,7 +268,6 @@ fn format_mode(mode: u32) -> [char; 9] {
 
 #[cfg(test)]
 mod tests {
-    use std::io::stdout;
     use std::sync::Arc;
 
     use super::*;
@@ -336,6 +321,7 @@ mod tests {
     async fn test_fs_read_tool_for_files() {
         let ctx = setup_test_directory().await;
         let lines = TEST_FILE_CONTENTS.lines().collect::<Vec<_>>();
+        let mut stdout = std::io::stdout();
 
         macro_rules! assert_lines {
             ($range:expr, $expected:expr) => {
@@ -343,7 +329,7 @@ mod tests {
                     "path": TEST_FILE_PATH,
                     "read_range": $range,
                 });
-                let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx, &mut stdout()).await.unwrap();
+                let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx, &mut stdout).await.unwrap();
 
                 if let OutputKind::Text(text) = output.output {
                     assert_eq!(text, $expected.join("\n"), "actual(left) does not equal expected(right) for range: {:?}", $range);
@@ -374,6 +360,7 @@ mod tests {
     #[tokio::test]
     async fn test_fs_read_tool_for_directories() {
         let ctx = setup_test_directory().await;
+        let mut stdout = std::io::stdout();
 
         // Testing without depth
         let v = serde_json::json!({
@@ -382,7 +369,7 @@ mod tests {
         });
         let output = serde_json::from_value::<FsRead>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
 
@@ -399,7 +386,7 @@ mod tests {
         });
         let output = serde_json::from_value::<FsRead>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
 

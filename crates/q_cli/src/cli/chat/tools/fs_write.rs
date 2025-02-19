@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::fmt::Display;
 use std::io::Stdout;
 
 use async_trait::async_trait;
@@ -10,7 +9,7 @@ use crossterm::style::{
 };
 use eyre::{
     Result,
-    bail,
+    eyre,
 };
 use fig_os_shim::Context;
 use serde::Deserialize;
@@ -47,7 +46,7 @@ impl Tool for FsWrite {
         "Write to filesystem".to_owned()
     }
 
-    async fn invoke(&self, ctx: &Context, mut updates: &mut Stdout) -> Result<InvokeOutput> {
+    async fn invoke(&self, ctx: &Context, updates: &mut Stdout) -> Result<InvokeOutput> {
         let fs = ctx.fs();
         let cwd = ctx.env().current_dir()?;
         match self {
@@ -74,13 +73,13 @@ impl Tool for FsWrite {
                     style::Print("\n"),
                 )?;
                 match matches.len() {
-                    0 => bail!("no occurrences of old_str were found"),
+                    0 => Err(eyre!("no occurrences of old_str were found")),
                     1 => {
                         let file = file.replacen(old_str, new_str, 1);
                         fs.write(path, file).await?;
                         Ok(Default::default())
                     },
-                    x => bail!("{x} occurrences of old_str were found when only 1 is expected"),
+                    x => Err(eyre!("{x} occurrences of old_str were found when only 1 is expected")),
                 }
             },
             FsWrite::Insert {
@@ -162,44 +161,6 @@ impl Tool for FsWrite {
     }
 }
 
-// impl Display for FsWrite {
-//     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             FsWrite::Create { path, file_text: _ } => {
-//                 crossterm::queue!(
-//                     updates,
-//                     crossterm::style::Print(format!("fs write create with path {}\n", path))
-//                 )
-//                 .map_err(|_| std::fmt::Error)?;
-//             },
-//             FsWrite::Insert {
-//                 path,
-//                 insert_line: _,
-//                 new_str: _,
-//             } => {
-//                 crossterm::queue!(
-//                     updates,
-//                     crossterm::style::Print(format!("fs write insert with path {}\n", path))
-//                 )
-//                 .map_err(|_| std::fmt::Error)?;
-//             },
-//             FsWrite::StrReplace {
-//                 path,
-//                 old_str: _,
-//                 new_str: _,
-//             } => {
-//                 crossterm::queue!(
-//                     updates,
-//                     crossterm::style::Print(format!("fs write str replace with path {}\n", path))
-//                 )
-//                 .map_err(|_| std::fmt::Error)?;
-//             },
-//         }
-//
-//         Ok(())
-//     }
-// }
-
 /// Limits the passed str to `max_len`.
 ///
 /// If the str exceeds `max_len`, then the first `max_len` characters are returned with a suffix of
@@ -219,7 +180,6 @@ fn truncate_str(text: &str, max_len: usize) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::stdout;
     use std::sync::Arc;
 
     use super::*;
@@ -292,6 +252,7 @@ mod tests {
     #[tokio::test]
     async fn test_fs_write_tool_create() {
         let ctx = setup_test_directory().await;
+        let mut stdout = std::io::stdout();
 
         let file_text = "Hello, world!";
         let v = serde_json::json!({
@@ -301,7 +262,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
 
@@ -311,6 +272,7 @@ mod tests {
     #[tokio::test]
     async fn test_fs_write_tool_str_replace() {
         let ctx = setup_test_directory().await;
+        let mut stdout = std::io::stdout();
 
         // No instances found
         let v = serde_json::json!({
@@ -322,7 +284,7 @@ mod tests {
         assert!(
             serde_json::from_value::<FsWrite>(v)
                 .unwrap()
-                .invoke(&ctx, &mut stdout())
+                .invoke(&ctx, &mut stdout)
                 .await
                 .is_err()
         );
@@ -337,7 +299,7 @@ mod tests {
         assert!(
             serde_json::from_value::<FsWrite>(v)
                 .unwrap()
-                .invoke(&ctx, &mut stdout())
+                .invoke(&ctx, &mut stdout)
                 .await
                 .is_err()
         );
@@ -351,7 +313,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
         assert_eq!(
@@ -370,6 +332,8 @@ mod tests {
     #[tokio::test]
     async fn test_fs_write_tool_insert_at_beginning() {
         let ctx = setup_test_directory().await;
+        let mut stdout = std::io::stdout();
+
         let new_str = "1: New first line!\n";
         let v = serde_json::json!({
             "path": TEST_FILE_PATH,
@@ -379,7 +343,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(TEST_FILE_PATH).await.unwrap();
@@ -399,6 +363,8 @@ mod tests {
     #[tokio::test]
     async fn test_fs_write_tool_insert_after_first_line() {
         let ctx = setup_test_directory().await;
+        let mut stdout = std::io::stdout();
+
         let new_str = "2: New second line!\n";
         let v = serde_json::json!({
             "path": TEST_FILE_PATH,
@@ -409,7 +375,7 @@ mod tests {
 
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(TEST_FILE_PATH).await.unwrap();
@@ -429,6 +395,8 @@ mod tests {
     #[tokio::test]
     async fn test_fs_write_tool_insert_when_no_newlines_in_file() {
         let ctx = Context::builder().with_test_home().await.unwrap().build_fake();
+        let mut stdout = std::io::stdout();
+
         let test_file_path = "/file.txt";
         let test_file_contents = "hello there";
         ctx.fs().write(test_file_path, test_file_contents).await.unwrap();
@@ -444,7 +412,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(test_file_path).await.unwrap();
@@ -459,7 +427,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, &mut stdout())
+            .invoke(&ctx, &mut stdout)
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(test_file_path).await.unwrap();
