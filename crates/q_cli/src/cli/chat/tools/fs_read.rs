@@ -12,6 +12,7 @@ use crossterm::style::{
 };
 use eyre::{
     Result,
+    bail,
     eyre,
 };
 use fig_os_shim::Context;
@@ -167,53 +168,45 @@ impl Tool for FsRead {
         }
     }
 
-    fn show_readable_intention(&self, updates: &mut Stdout) {
+    fn show_readable_intention(&self, updates: &mut Stdout) -> Result<()> {
         let is_file = self.ty.expect("Tool needs to have been validated");
 
         if is_file {
-            crossterm::queue!(
-                updates,
-                crossterm::style::Print(format!("Reading file: {}, ", self.path))
-            );
+            queue!(updates, style::Print(format!("Reading file: {}, ", self.path)))?;
 
             let read_range = self.read_range.as_ref().expect("Incorrect arguments passed");
             let start = read_range.first();
             let end = read_range.get(1);
 
             match (start, end) {
-                (Some(start), Some(end)) => {
-                    crossterm::queue!(
-                        updates,
-                        crossterm::style::Print(format!("from line {} to {}\n", start, end))
-                    );
-                },
+                (Some(start), Some(end)) => Ok(queue!(
+                    updates,
+                    style::Print(format!("from line {} to {}\n", start, end))
+                )?),
                 (Some(start), None) => {
                     let input = if *start > 0 {
                         format!("from line {} to end of file\n", start)
                     } else {
                         format!("{} line from the end of file to end of file", start)
                     };
-                    crossterm::queue!(updates, crossterm::style::Print(input));
+                    Ok(queue!(updates, style::Print(input))?)
                 },
                 _ => {
-                    unreachable!("Incorrect arguments passed");
+                    bail!("Incorrect arguments passed")
                 },
-            };
+            }
         } else {
-            crossterm::queue!(
-                updates,
-                crossterm::style::Print(format!("Reading directory: {}, ", self.path))
-            );
+            queue!(updates, style::Print(format!("Reading directory: {}, ", self.path)))?;
 
             let depth = if let Some(ref depth) = self.read_range {
                 *depth.first().unwrap_or(&0)
             } else {
                 0
             };
-            crossterm::queue!(
+            Ok(queue!(
                 updates,
-                crossterm::style::Print(format!("with maximum depth of {}", depth))
-            );
+                style::Print(format!("with maximum depth of {}", depth))
+            )?)
         }
     }
 

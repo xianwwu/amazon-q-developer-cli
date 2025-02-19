@@ -4,6 +4,10 @@ use std::process::Stdio;
 
 use async_trait::async_trait;
 use bstr::ByteSlice;
+use crossterm::{
+    queue,
+    style,
+};
 use eyre::{
     Result,
     WrapErr,
@@ -105,32 +109,30 @@ impl Tool for UseAws {
         })
     }
 
-    fn show_readable_intention(&self, updates: &mut Stdout) {
-        crossterm::queue!(
+    fn show_readable_intention(&self, updates: &mut Stdout) -> Result<()> {
+        queue!(
             updates,
-            crossterm::style::Print("Running aws cli command:\n"),
-            crossterm::style::Print(format!("Service name: {}\n", self.service_name)),
-            crossterm::style::Print(format!("Operation name: {}\n", self.operation_name)),
-            crossterm::style::Print("Parameters: \n".to_string()),
-        );
+            style::Print("Running aws cli command:\n"),
+            style::Print(format!("Service name: {}\n", self.service_name)),
+            style::Print(format!("Operation name: {}\n", self.operation_name)),
+            style::Print("Parameters: \n".to_string()),
+        )?;
         for (name, value) in &self.parameters {
-            crossterm::queue!(updates, crossterm::style::Print(format!("{}: {}\n", name, value)));
+            queue!(updates, style::Print(format!("{}: {}\n", name, value)))?;
         }
 
         if let Some(ref profile_name) = self.profile_name {
-            crossterm::queue!(
-                updates,
-                crossterm::style::Print(format!("Profile name: {}\n", profile_name))
-            );
+            queue!(updates, style::Print(format!("Profile name: {}\n", profile_name)))?;
         } else {
-            crossterm::queue!(updates, crossterm::style::Print("Profile name: default\n".to_string()));
+            queue!(updates, style::Print("Profile name: default\n".to_string()))?;
         }
 
-        crossterm::queue!(updates, crossterm::style::Print(format!("Region: {}\n", self.region)));
+        queue!(updates, style::Print(format!("Region: {}\n", self.region)))?;
 
         if let Some(ref label) = self.label {
-            crossterm::queue!(updates, crossterm::style::Print(format!("Label: {}\n", label)));
+            queue!(updates, style::Print(format!("Label: {}\n", label)))?;
         }
+        Ok(())
     }
 
     async fn validate(&mut self, _ctx: &Context) -> Result<()> {

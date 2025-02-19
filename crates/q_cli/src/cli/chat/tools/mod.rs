@@ -35,7 +35,7 @@ pub trait Tool: std::fmt::Debug {
     /// Invokes the tool asynchronously
     async fn invoke(&self, context: &Context, updates: &mut Stdout) -> Result<InvokeOutput>;
     /// Queues up a tool's intention in a human readable format
-    fn show_readable_intention(&self, updates: &mut Stdout);
+    fn show_readable_intention(&self, updates: &mut Stdout) -> Result<()>;
     /// Validates the tool with the arguments supplied
     async fn validate(&mut self, ctx: &Context) -> Result<()>;
 }

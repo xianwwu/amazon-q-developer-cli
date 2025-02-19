@@ -64,11 +64,11 @@ impl Tool for ExecuteBash {
         })
     }
 
-    fn show_readable_intention(&self, updates: &mut Stdout) {
-        crossterm::queue!(
+    fn show_readable_intention(&self, updates: &mut Stdout) -> Result<()> {
+        Ok(queue!(
             updates,
-            crossterm::style::Print(format!("Executing bash command: {}\n", self.command))
-        );
+            style::Print(format!("Executing bash command: {}\n", self.command))
+        )?)
     }
 
     async fn validate(&mut self, _ctx: &Context) -> Result<()> {
@@ -78,9 +78,9 @@ impl Tool for ExecuteBash {
 
 impl Display for ExecuteBash {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        crossterm::queue!(
+        queue!(
             std::io::stdout(),
-            crossterm::style::Print(format!("Executing bash command: {}\n", self.command))
+            style::Print(format!("Executing bash command: {}\n", self.command))
         )
         .map_err(|_| std::fmt::Error)?;
 

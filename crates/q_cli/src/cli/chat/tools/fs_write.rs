@@ -116,42 +116,36 @@ impl Tool for FsWrite {
         }
     }
 
-    fn show_readable_intention(&self, updates: &mut Stdout) {
+    fn show_readable_intention(&self, updates: &mut Stdout) -> Result<()> {
         match self {
-            FsWrite::Create { path, file_text } => {
-                crossterm::queue!(
-                    updates,
-                    crossterm::style::Print(format!(
-                        "fs write create with path {} with {} ...\n",
-                        path,
-                        file_text.chars().take(10).collect::<String>()
-                    ))
-                );
-            },
+            FsWrite::Create { path, file_text } => Ok(queue!(
+                updates,
+                style::Print(format!(
+                    "fs write create with path {} with {} ...\n",
+                    path,
+                    file_text.chars().take(10).collect::<String>()
+                ))
+            )?),
             FsWrite::Insert {
                 path,
                 insert_line,
                 new_str,
-            } => {
-                crossterm::queue!(
-                    updates,
-                    crossterm::style::Print(format!(
-                        "fs write insert with path {} at line {} with {} ...\n",
-                        path,
-                        insert_line,
-                        new_str.chars().take(10).collect::<String>()
-                    ))
-                );
-            },
-            FsWrite::StrReplace { path, old_str, new_str } => {
-                crossterm::queue!(
-                    updates,
-                    crossterm::style::Print(format!(
-                        "fs write str replace with path {} replacing {} with {}\n",
-                        path, old_str, new_str
-                    ))
-                );
-            },
+            } => Ok(queue!(
+                updates,
+                style::Print(format!(
+                    "fs write insert with path {} at line {} with {} ...\n",
+                    path,
+                    insert_line,
+                    new_str.chars().take(10).collect::<String>()
+                ))
+            )?),
+            FsWrite::StrReplace { path, old_str, new_str } => Ok(queue!(
+                updates,
+                style::Print(format!(
+                    "fs write str replace with path {} replacing {} with {}\n",
+                    path, old_str, new_str
+                ))
+            )?),
         }
     }
 
