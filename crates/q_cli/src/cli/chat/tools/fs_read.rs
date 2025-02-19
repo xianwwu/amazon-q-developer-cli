@@ -17,8 +17,12 @@ use crossterm::{
     execute,
     queue,
 };
-use eyre::Result;
-use fig_os_shim::Context;
+use eyre::{
+    Result,
+    bail,
+    Context,
+};
+use fig_os_shim::Context as FigContext;
 use serde::Deserialize;
 use tokio::fs::File;
 use tokio::io::{
@@ -49,12 +53,12 @@ enum FsReadType {
 }
 
 impl FsRead {
-    pub fn read_range(&self) -> Result<Option<(i32, Option<i32>)>, Error> {
+    pub fn read_range(&self) -> Result<Option<(i32, Option<i32>)>> {
         match &self.read_range {
             Some(range) => match (range.first(), range.get(1)) {
                 (Some(depth), None) => Ok(Some((*depth, None))),
                 (Some(start), Some(end)) => Ok(Some((*start, Some(*end)))),
-                other => Err(Error::Custom(format!("Invalid read range: {:?}", other).into())),
+                other => bail!("Invalid read range: {:?}", other),
             },
             None => Ok(None),
         }
@@ -67,7 +71,7 @@ impl Tool for FsRead {
         "Read from filesystem".to_owned()
     }
 
-    async fn invoke(&self, ctx: &Context, mut updates: Stdout) -> Result<InvokeOutput, Error> {
+    async fn invoke(&self, ctx: &FigContext, mut updates: &mut Stdout) -> Result<InvokeOutput> {
         // Required for testing scenarios: since the path is passed directly as a command argument,
         // we need to pass it through the Context first.
         let path = ctx.fs().chroot_path_str(&self.path);
@@ -191,35 +195,34 @@ impl Tool for FsRead {
                 crossterm::style::Print(format!("Reading file: {}, ", self.path))
             );
 
-            if let Some(ref read_range) = self.read_range {
-                let start = read_range.first();
-                let end = read_range.get(1);
+            let read_range = self.read_range.as_ref().expect("Incorrect arguments passed");
+            let start = read_range.first();
+            let end = read_range.get(1);
 
-                match (start, end) {
-                    (Some(start), Some(end)) => crossterm::queue!(
+            match (start, end) {
+                (Some(start), Some(end)) => {
+                    crossterm::queue!(
                         updates,
                         crossterm::style::Print(format!("from line {} to {}\n", start, end))
-                    ),
-                    (Some(start), None) => {
-                        let input = if *start > 0 {
-                            format!("from line {} to end of file\n", start)
-                        } else {
-                            format!("{} line from the end of file to end of file", start)
-                        };
-                        crossterm::queue!(updates, crossterm::style::Print(input))?
-                    },
-                    _ => {
-                        return Err(Error::Custom(std::borrow::Cow::Borrowed("Incorrect arguments passed")));
-                    },
-                }
-            } else {
-                return Err(Error::Custom(std::borrow::Cow::Borrowed("Incorrect arguments passed")));
-            }
+                    );
+                },
+                (Some(start), None) => {
+                    let input = if *start > 0 {
+                        format!("from line {} to end of file\n", start)
+                    } else {
+                        format!("{} line from the end of file to end of file", start)
+                    };
+                    crossterm::queue!(updates, crossterm::style::Print(input));
+                },
+                _ => {
+                    panic!("Incorrect arguments passed");
+                },
+            };
         } else {
             crossterm::queue!(
                 updates,
                 crossterm::style::Print(format!("Reading directory: {}, ", self.path))
-            )?;
+            );
 
             let depth = if let Some(ref depth) = self.read_range {
                 *depth.first().unwrap_or(&0)
@@ -229,13 +232,11 @@ impl Tool for FsRead {
             crossterm::queue!(
                 updates,
                 crossterm::style::Print(format!("with maximum depth of {}", depth))
-            )?;
+            );
         }
-
-        Ok(())
     }
 
-    async fn validate(&mut self, ctx: &Context) -> Result<(), Error> {
+    async fn validate(&mut self, ctx: &FigContext) -> Result<()> {
         let is_file = ctx.fs().symlink_metadata(&self.path).await?.is_file();
         self.ty = Some(is_file);
 
@@ -279,18 +280,6 @@ fn format_mode(mode: u32) -> [char; 9] {
     res
 }
 
-impl Display for FsRead {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        crossterm::queue!(
-            updates,
-            crossterm::style::Print(format!("fs read with path {}, ", self.path))
-        )
-        .map_err(|_| std::fmt::Error)?;
-
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::io::stdout;
@@ -318,8 +307,8 @@ mod tests {
     /// /aaaa2/
     ///     .hidden
     /// ```
-    async fn setup_test_directory() -> Arc<Context> {
-        let ctx = Context::builder().with_test_home().await.unwrap().build_fake();
+    async fn setup_test_directory() -> Arc<FigContext> {
+        let ctx = FigContext::builder().with_test_home().await.unwrap().build_fake();
         let fs = ctx.fs();
         fs.write(TEST_FILE_PATH, TEST_FILE_CONTENTS).await.unwrap();
         fs.create_dir_all("/aaaa1/bbbb1/cccc1").await.unwrap();
@@ -354,7 +343,7 @@ mod tests {
                     "path": TEST_FILE_PATH,
                     "read_range": $range,
                 });
-                let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx, stdout()).await.unwrap();
+                let output = serde_json::from_value::<FsRead>(v).unwrap().invoke(&ctx, &mut stdout()).await.unwrap();
 
                 if let OutputKind::Text(text) = output.output {
                     assert_eq!(text, $expected.join("\n"), "actual(left) does not equal expected(right) for range: {:?}", $range);
@@ -393,7 +382,7 @@ mod tests {
         });
         let output = serde_json::from_value::<FsRead>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
 
@@ -410,7 +399,7 @@ mod tests {
         });
         let output = serde_json::from_value::<FsRead>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
 

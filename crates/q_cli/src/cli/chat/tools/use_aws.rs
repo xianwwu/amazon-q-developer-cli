@@ -64,9 +64,6 @@ impl Tool for UseAws {
     }
 
     async fn invoke(&self, _: &Context, updates: &mut Stdout) -> Result<InvokeOutput> {
-        self.validate_operation()
-            .wrap_err(|err| format!("Unable to spawn command '{} : {:?}'", self, err).into())?;
-
         let mut command = tokio::process::Command::new("aws");
         let profile_name = if let Some(ref profile_name) = self.profile_name {
             profile_name
@@ -92,10 +89,10 @@ impl Tool for UseAws {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|err| Error::ToolExecution(format!("Unable to spawn command '{:?} : {:?}'", self, err).into()))?
+            .wrap_err_with(|| format!("Unable to spawn command '{:?}'", self))?
             .wait_with_output()
             .await
-            .map_err(|err| Error::ToolExecution(format!("Unable to spawn command '{:?} : {:?}'", self, err).into()))?;
+            .wrap_err_with(|| format!("Unable to spawn command '{:?}'", self))?;
         let status = output.status.code();
         let stdout = output.stdout.to_str_lossy();
         let stderr = output.stderr.to_str_lossy();
@@ -118,7 +115,7 @@ impl Tool for UseAws {
             crossterm::style::Print("Parameters: \n".to_string()),
         );
         for (name, value) in &self.parameters {
-            crossterm::queue!(updates, crossterm::style::Print(format!("{}: {}\n", name, value)))?;
+            crossterm::queue!(updates, crossterm::style::Print(format!("{}: {}\n", name, value)));
         }
 
         if let Some(ref profile_name) = self.profile_name {
@@ -137,11 +134,10 @@ impl Tool for UseAws {
         }
     }
 
-    async fn validate(&mut self, _ctx: &Context) -> Result<(), Error> {
-        self.validate_operation()
-            .map_err(|err| Error::ToolExecution(format!("Unable to spawn command '{} : {:?}'", self, err).into()))?;
-
-        Ok(())
+    async fn validate(&mut self, _ctx: &Context) -> Result<()> {
+        Ok(self
+            .validate_operation()
+            .wrap_err_with(|| format!("Unable to spawn command '{:?}'", &self))?)
     }
 }
 

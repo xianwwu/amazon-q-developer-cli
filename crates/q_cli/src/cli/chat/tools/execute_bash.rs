@@ -9,8 +9,11 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::Result;
-use fig_os_shim::Context;
+use eyre::{
+    Context,
+    Result,
+};
+use fig_os_shim::Context as FigContext;
 use serde::Deserialize;
 
 use super::{
@@ -30,7 +33,7 @@ impl Tool for ExecuteBash {
         "Execute bash command".to_owned()
     }
 
-    async fn invoke(&self, _: &Context, mut updates: &mut Stdout) -> Result<InvokeOutput> {
+    async fn invoke(&self, _: &FigContext, mut updates: &mut Stdout) -> Result<InvokeOutput> {
         queue!(
             updates,
             style::SetForegroundColor(Color::Green),
@@ -45,21 +48,10 @@ impl Tool for ExecuteBash {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .ok_or_eyre()
-            .map_err(|err| {
-                Error::ToolExecution(format!("Unable to spawn command '{}': {:?}", &self.command, err).into())
-            })?
+            .wrap_err_with(|| format!("Unable to spawn command '{}'", &self.command))?
             .wait_with_output()
             .await
-            .map_err(|err| {
-                Error::ToolExecution(
-                    format!(
-                        "Unable to wait on subprocess for command '{}': {:?}",
-                        &self.command, err
-                    )
-                    .into(),
-                )
-            })?;
+            .wrap_err_with(|| format!("Unable to wait on subprocess for command '{}'", &self.command))?;
         let status = output.status.code();
         let stdout = output.stdout.to_str_lossy();
         let stderr = output.stderr.to_str_lossy();
@@ -79,7 +71,7 @@ impl Tool for ExecuteBash {
         );
     }
 
-    async fn validate(&mut self, _ctx: &Context) -> Result<()> {
+    async fn validate(&mut self, _ctx: &FigContext) -> Result<()> {
         Ok(())
     }
 }
@@ -104,7 +96,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_bash_tool() {
-        let ctx = Context::new_fake();
+        let ctx = FigContext::new_fake();
 
         // Verifying stdout
         let v = serde_json::json!({
@@ -112,7 +104,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
 
@@ -130,7 +122,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
 
@@ -148,7 +140,7 @@ mod tests {
         });
         let out = serde_json::from_value::<ExecuteBash>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
         if let OutputKind::Json(json) = out.output {

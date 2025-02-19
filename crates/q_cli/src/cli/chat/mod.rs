@@ -32,6 +32,7 @@ use eyre::{
     bail,
 };
 use fig_api_client::StreamingClient;
+use fig_api_client::clients::SendMessageOutput;
 use fig_api_client::model::{
     ToolResult,
     ToolResultContentBlock,
@@ -40,7 +41,10 @@ use fig_api_client::model::{
 use fig_os_shim::Context;
 use fig_util::CLI_BINARY_NAME;
 use input_source::InputSource;
-use parser::ResponseParser;
+use parser::{
+    ResponseParser,
+    ToolUse,
+};
 use spinners::{
     Spinner,
     Spinners,
@@ -172,127 +176,23 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
     loop {
         let terminal_width = terminal_width_provider().unwrap_or(80);
 
-        let mut queued_tools: Vec<(String, Box<dyn Tool>)> = vec![];
-        if !tool_uses.is_empty() {
-            // Parse the requested tools then validate them initializing needed fields
-            let tools = Vec::with_capacity(tool_uses.len());
-            let tool_results = Vec::with_capacity(tool_uses.len());
-            for tool_use in tool_uses {
-                match parse_tool(tool_use) {
-                    Ok(tool) => {
-                        if let Err(err) = tool.validate(&ctx).await {
-                            tool_results.push(ToolResult {
-                                tool_use_id: tool_use.id,
-                                content: vec![ToolResultContentBlock::Text(format!(
-                                    "Failed to validate tool parameters: {err}"
-                                ))],
-                                status: ToolResultStatus::Error,
-                            });
-                        }
-                    },
-                    Err(err) => tool_results.push(err),
-                }
-            }
-
-            if !tool_results.is_empty() {
-                conversation_state.add_tool_results(tool_results);
-                let response = client.send_message(conversation_state.into()).await?;
-                todo!();
-            }
-        }
-
-        let user_input = match initial_input.take() {
-            Some(input) => input,
-            None => match input_source.read_line(Some("> "))? {
-                Some(line) => line,
-                None => break,
-            },
-        };
-
-        let response = match user_input.trim() {
-            "exit" | "quit" => {
-                if let Some(_id) = conversation_state.conversation_id {
-                    // TODO: telemetry
-                    // fig_telemetry::send_end_chat(id.clone()).await;
-                }
-
-                return Ok(());
-            },
-            c if c == "c" && !queued_tools.is_empty() => {
-                tool_use_recursions += 1;
-                if tool_use_recursions > MAX_TOOL_USE_RECURSIONS {
-                    bail!("Exceeded max tool use recursion limit: {}", MAX_TOOL_USE_RECURSIONS);
-                }
-
-                // Prompt for consent of the requested tools.
-                for tool_use in queued_tools {
-                    queue!(output, style::Print("-".repeat(terminal_width)));
-                    queue!(output, cursor::MoveToColumn(2))?;
-                    queue!(output, style::SetAttribute(Attribute::Bold))?;
-                    queue!(output, style::Print(format!(" {} ", tool_use.1.display_name())));
-                    queue!(output, cursor::MoveDown(1));
-                    queue!(output, style::SetAttribute(Attribute::NormalIntensity));
-                    tool_use.1.show_readable_intention(&mut output);
-                    output.flush()?;
-                }
-
-                // Execute the requested tools.
-                let tool_results = vec![];
-                for tool in queued_tools {
-                    match tool.1.invoke(&ctx, output).await {
-                        Ok(result) => {
-                            tool_results.push(ToolResult {
-                                tool_use_id: tool.0,
-                                content: vec![result.into()],
-                                status: ToolResultStatus::Success,
-                            });
-                        },
-                        Err(err) => {
-                            error!(?err, "An error occurred processing the tool");
-                            tool_results.push(ToolResult {
-                                tool_use_id: tool.0,
-                                content: vec![ToolResultContentBlock::Text(format!(
-                                    "An error occurred processing the tool: {}",
-                                    err
-                                ))],
-                                status: ToolResultStatus::Error,
-                            });
-                        },
-                    }
-                }
-
-                conversation_state.add_tool_results(tool_results);
-                client.send_message(conversation_state.into()).await?
-            },
-            _ => {
-                tool_use_recursions = 0;
-
-                if is_interactive {
-                    queue!(output, style::SetForegroundColor(Color::Magenta))?;
-                    if user_input.contains("@history") {
-                        queue!(output, style::Print("Using shell history\n"))?;
-                    }
-                    if user_input.contains("@git") {
-                        queue!(output, style::Print("Using git context\n"))?;
-                    }
-                    if user_input.contains("@env") {
-                        queue!(output, style::Print("Using environment\n"))?;
-                    }
-                    queue!(output, style::SetForegroundColor(Color::Reset))?;
-                    queue!(output, cursor::Hide)?;
-                    spinner = Some(Spinner::new(Spinners::Dots, "Generating your answer...".to_owned()));
-                    tokio::spawn(async {
-                        tokio::signal::ctrl_c().await.unwrap();
-                        execute!(std::io::stdout(), cursor::Show).unwrap();
-                        #[allow(clippy::exit)]
-                        std::process::exit(0);
-                    });
-                    execute!(output, style::Print("\n"))?;
-                }
-
-                conversation_state.append_new_user_message(user_input);
-                client.send_message(conversation_state.into()).await?
-            },
+        let mut response = response(
+            &ctx,
+            &client,
+            output,
+            &mut conversation_state,
+            &mut tool_uses,
+            &mut tool_use_recursions,
+            &mut input_source,
+            initial_input.take(),
+            is_interactive,
+            terminal_width,
+            &mut spinner,
+        )
+        .await?;
+        let response = match response.take() {
+            Some(response) => response,
+            None => break,
         };
 
         // Handle the response
@@ -387,4 +287,140 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
     }
 
     Ok(())
+}
+
+async fn response(
+    ctx: &Context,
+    client: &StreamingClient,
+    output: &mut Stdout,
+    mut conversation_state: &mut ConversationState,
+    mut tool_uses: &mut Vec<ToolUse>,
+    mut tool_use_recursions: &mut u32,
+    mut input_source: &mut InputSource,
+    mut initial_input: Option<String>,
+    is_interactive: bool,
+    terminal_width: usize,
+    mut spinner: &mut Option<Spinner>,
+) -> Result<Option<SendMessageOutput>> {
+    let mut queued_tools: Vec<(String, Box<dyn Tool>)> = vec![];
+    if !tool_uses.is_empty() {
+        // Parse the requested tools then validate them initializing needed fields
+        let mut tool_results = Vec::with_capacity(tool_uses.len());
+        for tool_use in tool_uses.drain(..) {
+            let tool_use_id = tool_use.id.clone();
+            match parse_tool(tool_use) {
+                Ok(mut tool) => {
+                    if let Err(err) = tool.validate(&ctx).await {
+                        tool_results.push(ToolResult {
+                            tool_use_id,
+                            content: vec![ToolResultContentBlock::Text(format!(
+                                "Failed to validate tool parameters: {err}"
+                            ))],
+                            status: ToolResultStatus::Error,
+                        });
+                    }
+                },
+                Err(err) => tool_results.push(err),
+            }
+        }
+
+        if !tool_results.is_empty() {
+            conversation_state.add_tool_results(tool_results);
+            return Ok(Some(client.send_message(conversation_state.clone().into()).await?));
+        }
+    }
+
+    let user_input = match initial_input.take() {
+        Some(input) => input,
+        None => match input_source.read_line(Some("> "))? {
+            Some(line) => line,
+            None => return Ok(None),
+        },
+    };
+
+    match user_input.trim() {
+        "exit" | "quit" => {
+            if let Some(_id) = conversation_state.conversation_id.as_ref() {
+                // TODO: telemetry
+                // fig_telemetry::send_end_chat(id.clone()).await;
+            }
+
+            return Ok(None);
+        },
+        c if c == "c" && !queued_tools.is_empty() => {
+            *tool_use_recursions += 1;
+            if *tool_use_recursions > MAX_TOOL_USE_RECURSIONS {
+                bail!("Exceeded max tool use recursion limit: {}", MAX_TOOL_USE_RECURSIONS);
+            }
+
+            // Prompt for consent of the requested tools.
+            for tool_use in &queued_tools {
+                queue!(output, style::Print("-".repeat(terminal_width)));
+                queue!(output, cursor::MoveToColumn(2))?;
+                queue!(output, style::SetAttribute(Attribute::Bold))?;
+                queue!(output, style::Print(format!(" {} ", tool_use.1.display_name())));
+                queue!(output, cursor::MoveDown(1));
+                queue!(output, style::SetAttribute(Attribute::NormalIntensity));
+                tool_use.1.show_readable_intention(output);
+                output.flush()?;
+            }
+
+            // Execute the requested tools.
+            let mut tool_results = vec![];
+            for tool in queued_tools {
+                match tool.1.invoke(&ctx, output).await {
+                    Ok(result) => {
+                        tool_results.push(ToolResult {
+                            tool_use_id: tool.0,
+                            content: vec![result.into()],
+                            status: ToolResultStatus::Success,
+                        });
+                    },
+                    Err(err) => {
+                        error!(?err, "An error occurred processing the tool");
+                        tool_results.push(ToolResult {
+                            tool_use_id: tool.0,
+                            content: vec![ToolResultContentBlock::Text(format!(
+                                "An error occurred processing the tool: {}",
+                                err
+                            ))],
+                            status: ToolResultStatus::Error,
+                        });
+                    },
+                }
+            }
+
+            conversation_state.add_tool_results(tool_results);
+            Ok(Some(client.send_message(conversation_state.clone().into()).await?))
+        },
+        _ => {
+            *tool_use_recursions = 0;
+
+            if is_interactive {
+                queue!(output, style::SetForegroundColor(Color::Magenta))?;
+                if user_input.contains("@history") {
+                    queue!(output, style::Print("Using shell history\n"))?;
+                }
+                if user_input.contains("@git") {
+                    queue!(output, style::Print("Using git context\n"))?;
+                }
+                if user_input.contains("@env") {
+                    queue!(output, style::Print("Using environment\n"))?;
+                }
+                queue!(output, style::SetForegroundColor(Color::Reset))?;
+                queue!(output, cursor::Hide)?;
+                *spinner = Some(Spinner::new(Spinners::Dots, "Generating your answer...".to_owned()));
+                tokio::spawn(async {
+                    tokio::signal::ctrl_c().await.unwrap();
+                    execute!(std::io::stdout(), cursor::Show).unwrap();
+                    #[allow(clippy::exit)]
+                    std::process::exit(0);
+                });
+                execute!(output, style::Print("\n"))?;
+            }
+
+            conversation_state.append_new_user_message(user_input);
+            Ok(Some(client.send_message(conversation_state.clone().into()).await?))
+        },
+    }
 }

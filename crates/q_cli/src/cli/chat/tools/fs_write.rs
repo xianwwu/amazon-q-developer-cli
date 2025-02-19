@@ -8,7 +8,10 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::Result;
+use eyre::{
+    Result,
+    bail,
+};
 use fig_os_shim::Context;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
@@ -44,7 +47,7 @@ impl Tool for FsWrite {
         "Write to filesystem".to_owned()
     }
 
-    async fn invoke(&self, ctx: &Context, mut updates: Stdout) -> Result<InvokeOutput, Error> {
+    async fn invoke(&self, ctx: &Context, mut updates: &mut Stdout) -> Result<InvokeOutput> {
         let fs = ctx.fs();
         let cwd = ctx.env().current_dir()?;
         match self {
@@ -71,15 +74,13 @@ impl Tool for FsWrite {
                     style::Print("\n"),
                 )?;
                 match matches.len() {
-                    0 => Err(Error::ToolExecution("no occurrences of old_str were found".into())),
+                    0 => bail!("no occurrences of old_str were found"),
                     1 => {
                         let file = file.replacen(old_str, new_str, 1);
                         fs.write(path, file).await?;
                         Ok(Default::default())
                     },
-                    x => Err(Error::ToolExecution(
-                        format!("{x} occurrences of old_str were found when only 1 is expected").into(),
-                    )),
+                    x => bail!("{x} occurrences of old_str were found when only 1 is expected"),
                 }
             },
             FsWrite::Insert {
@@ -126,7 +127,7 @@ impl Tool for FsWrite {
                         path,
                         file_text.chars().take(10).collect::<String>()
                     ))
-                )?;
+                );
             },
             FsWrite::Insert {
                 path,
@@ -141,7 +142,7 @@ impl Tool for FsWrite {
                         insert_line,
                         new_str.chars().take(10).collect::<String>()
                     ))
-                )?;
+                );
             },
             FsWrite::StrReplace { path, old_str, new_str } => {
                 crossterm::queue!(
@@ -150,56 +151,54 @@ impl Tool for FsWrite {
                         "fs write str replace with path {} replacing {} with {}\n",
                         path, old_str, new_str
                     ))
-                )?;
+                );
             },
         }
-
-        Ok(())
     }
 
-    async fn validate(&mut self, _ctx: &Context) -> Result<(), Error> {
+    async fn validate(&mut self, _ctx: &Context) -> Result<()> {
         // TODO: check to see if paths are valid
         Ok(())
     }
 }
 
-impl Display for FsWrite {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FsWrite::Create { path, file_text: _ } => {
-                crossterm::queue!(
-                    updates,
-                    crossterm::style::Print(format!("fs write create with path {}\n", path))
-                )
-                .map_err(|_| std::fmt::Error)?;
-            },
-            FsWrite::Insert {
-                path,
-                insert_line: _,
-                new_str: _,
-            } => {
-                crossterm::queue!(
-                    updates,
-                    crossterm::style::Print(format!("fs write insert with path {}\n", path))
-                )
-                .map_err(|_| std::fmt::Error)?;
-            },
-            FsWrite::StrReplace {
-                path,
-                old_str: _,
-                new_str: _,
-            } => {
-                crossterm::queue!(
-                    updates,
-                    crossterm::style::Print(format!("fs write str replace with path {}\n", path))
-                )
-                .map_err(|_| std::fmt::Error)?;
-            },
-        }
-
-        Ok(())
-    }
-}
+// impl Display for FsWrite {
+//     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             FsWrite::Create { path, file_text: _ } => {
+//                 crossterm::queue!(
+//                     updates,
+//                     crossterm::style::Print(format!("fs write create with path {}\n", path))
+//                 )
+//                 .map_err(|_| std::fmt::Error)?;
+//             },
+//             FsWrite::Insert {
+//                 path,
+//                 insert_line: _,
+//                 new_str: _,
+//             } => {
+//                 crossterm::queue!(
+//                     updates,
+//                     crossterm::style::Print(format!("fs write insert with path {}\n", path))
+//                 )
+//                 .map_err(|_| std::fmt::Error)?;
+//             },
+//             FsWrite::StrReplace {
+//                 path,
+//                 old_str: _,
+//                 new_str: _,
+//             } => {
+//                 crossterm::queue!(
+//                     updates,
+//                     crossterm::style::Print(format!("fs write str replace with path {}\n", path))
+//                 )
+//                 .map_err(|_| std::fmt::Error)?;
+//             },
+//         }
+//
+//         Ok(())
+//     }
+// }
 
 /// Limits the passed str to `max_len`.
 ///
@@ -302,7 +301,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
 
@@ -323,7 +322,7 @@ mod tests {
         assert!(
             serde_json::from_value::<FsWrite>(v)
                 .unwrap()
-                .invoke(&ctx, stdout())
+                .invoke(&ctx, &mut stdout())
                 .await
                 .is_err()
         );
@@ -338,7 +337,7 @@ mod tests {
         assert!(
             serde_json::from_value::<FsWrite>(v)
                 .unwrap()
-                .invoke(&ctx, stdout())
+                .invoke(&ctx, &mut stdout())
                 .await
                 .is_err()
         );
@@ -352,7 +351,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
         assert_eq!(
@@ -380,7 +379,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(TEST_FILE_PATH).await.unwrap();
@@ -410,7 +409,7 @@ mod tests {
 
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(TEST_FILE_PATH).await.unwrap();
@@ -445,7 +444,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(test_file_path).await.unwrap();
@@ -460,7 +459,7 @@ mod tests {
         });
         serde_json::from_value::<FsWrite>(v)
             .unwrap()
-            .invoke(&ctx, stdout())
+            .invoke(&ctx, &mut stdout())
             .await
             .unwrap();
         let actual = ctx.fs().read_to_string(test_file_path).await.unwrap();

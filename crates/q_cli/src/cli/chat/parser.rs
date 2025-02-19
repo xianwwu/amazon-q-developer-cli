@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use eyre::Result;
 use fig_api_client::clients::SendMessageOutput;
 use fig_api_client::model::{
     AssistantResponseMessage,
