@@ -33,11 +33,6 @@ pub struct FsRead {
     pub ty: Option<bool>,
 }
 
-enum FsReadType {
-    File,
-    Dir,
-}
-
 impl FsRead {
     pub fn read_range(&self) -> Result<Option<(i32, Option<i32>)>> {
         match &self.read_range {
@@ -201,7 +196,7 @@ impl Tool for FsRead {
                     crossterm::queue!(updates, crossterm::style::Print(input));
                 },
                 _ => {
-                    unexpected!("Incorrect arguments passed");
+                    unreachable!("Incorrect arguments passed");
                 },
             };
         } else {
@@ -292,8 +287,8 @@ mod tests {
     /// /aaaa2/
     ///     .hidden
     /// ```
-    async fn setup_test_directory() -> Arc<FigContext> {
-        let ctx = FigContext::builder().with_test_home().await.unwrap().build_fake();
+    async fn setup_test_directory() -> Arc<Context> {
+        let ctx = Context::builder().with_test_home().await.unwrap().build_fake();
         let fs = ctx.fs();
         fs.write(TEST_FILE_PATH, TEST_FILE_CONTENTS).await.unwrap();
         fs.create_dir_all("/aaaa1/bbbb1/cccc1").await.unwrap();

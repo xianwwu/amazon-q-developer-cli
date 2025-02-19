@@ -71,7 +71,7 @@ impl Tool for ExecuteBash {
         );
     }
 
-    async fn validate(&mut self, _ctx: &FigContext) -> Result<()> {
+    async fn validate(&mut self, _ctx: &Context) -> Result<()> {
         Ok(())
     }
 }
