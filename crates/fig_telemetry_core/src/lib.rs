@@ -1,33 +1,23 @@
 use std::any::Any;
 use std::sync::OnceLock;
-use std::time::{
-    Duration,
-    SystemTime,
-};
+use std::time::{Duration, SystemTime};
 
 pub use amzn_toolkit_telemetry::types::MetricDatum;
 use aws_toolkit_telemetry_definitions::IntoMetricDatum;
 use aws_toolkit_telemetry_definitions::metrics::{
-    AmazonqEndChat,
-    AmazonqStartChat,
-    CodewhispererterminalAddChatMessage,
-    CodewhispererterminalCliSubcommandExecuted,
-    CodewhispererterminalCompletionInserted,
-    CodewhispererterminalDashboardPageViewed,
-    CodewhispererterminalDoctorCheckFailed,
-    CodewhispererterminalFigUserMigrated,
-    CodewhispererterminalInlineShellActioned,
-    CodewhispererterminalMenuBarActioned,
-    CodewhispererterminalMigrateOldClientId,
-    CodewhispererterminalRefreshCredentials,
-    CodewhispererterminalTranslationActioned,
-    CodewhispererterminalUserLoggedIn,
+    AmazonqEndChat, AmazonqStartChat, CodewhispererterminalAddChatMessage, CodewhispererterminalCliSubcommandExecuted,
+    CodewhispererterminalCompletionInserted, CodewhispererterminalDashboardPageViewed,
+    CodewhispererterminalDoctorCheckFailed, CodewhispererterminalFigUserMigrated,
+    CodewhispererterminalInlineShellActioned, CodewhispererterminalMenuBarActioned,
+    CodewhispererterminalMigrateOldClientId, CodewhispererterminalRefreshCredentials,
+    CodewhispererterminalToolUseSuggested, CodewhispererterminalTranslationActioned, CodewhispererterminalUserLoggedIn,
 };
-use aws_toolkit_telemetry_definitions::types::CodewhispererterminalInCloudshell;
-use strum::{
-    Display,
-    EnumString,
+use aws_toolkit_telemetry_definitions::types::{
+    CodewhispererterminalInCloudshell, CodewhispererterminalIsToolValid, CodewhispererterminalToolName,
+    CodewhispererterminalToolUseId, CodewhispererterminalToolUseIsSuccess, CodewhispererterminalUserInputId,
+    CodewhispererterminalUtteranceId,
 };
+use strum::{Display, EnumString};
 
 type GlobalTelemetryEmitter = dyn TelemetryEmitter + Send + Sync + 'static;
 
@@ -294,6 +284,31 @@ impl Event {
                 }
                 .into_metric_datum(),
             ),
+            EventType::ToolUseSuggested {
+                conversation_id,
+                utterance_id,
+                user_input_id,
+                tool_use_id,
+                tool_name,
+                is_accepted,
+                is_valid,
+                is_success,
+            } => Some(
+                CodewhispererterminalToolUseSuggested {
+                    create_time: self.created_time,
+                    credential_start_url: self.credential_start_url.map(Into::into),
+                    value: None,
+                    amazonq_conversation_id: Some(conversation_id.into()),
+                    codewhispererterminal_utterance_id: utterance_id.map(CodewhispererterminalUtteranceId),
+                    codewhispererterminal_user_input_id: user_input_id.map(CodewhispererterminalUserInputId),
+                    codewhispererterminal_tool_use_id: tool_use_id.map(CodewhispererterminalToolUseId),
+                    codewhispererterminal_tool_name: tool_name.map(CodewhispererterminalToolName),
+                    codewhispererterminal_is_tool_use_accepted: Some(is_accepted.into()),
+                    codewhispererterminal_is_tool_valid: is_valid.map(CodewhispererterminalIsToolValid),
+                    codewhispererterminal_tool_use_is_success: is_success.map(CodewhispererterminalToolUseIsSuccess),
+                }
+                .into_metric_datum(),
+            ),
         }
     }
 }
@@ -368,6 +383,16 @@ pub enum EventType {
     },
     MigrateClientId {
         old_client_id: String,
+    },
+    ToolUseSuggested {
+        conversation_id: String,
+        utterance_id: Option<String>,
+        user_input_id: Option<String>,
+        tool_use_id: Option<String>,
+        tool_name: Option<String>,
+        is_accepted: bool,
+        is_success: Option<bool>,
+        is_valid: Option<bool>,
     },
 }
 
