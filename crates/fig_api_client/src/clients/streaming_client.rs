@@ -11,6 +11,7 @@ use fig_aws_common::{
     UserAgentOverrideInterceptor,
     app_name,
 };
+use tracing::debug;
 
 use super::shared::{
     bearer_sdk_config,
@@ -93,6 +94,7 @@ impl StreamingClient {
     }
 
     pub async fn send_message(&self, conversation_state: ConversationState) -> Result<SendMessageOutput, Error> {
+        debug!("Sending conversation: {:#?}", conversation_state);
         let ConversationState {
             conversation_id,
             user_input_message,
@@ -101,7 +103,7 @@ impl StreamingClient {
 
         match &self.0 {
             inner::Inner::Codewhisperer(client) => {
-                let conversation_state_builder =
+                let conversation_state =
                     amzn_codewhisperer_streaming_client::types::ConversationState::builder()
                         .set_conversation_id(conversation_id)
                         .current_message(
@@ -114,12 +116,14 @@ impl StreamingClient {
                             history
                                 .map(|v| v.into_iter().map(|i| i.try_into()).collect::<Result<Vec<_>, _>>())
                                 .transpose()?,
-                        );
+                        )
+                        .build()
+                        .expect("fix me");
 
                 Ok(SendMessageOutput::Codewhisperer(
                     client
                         .generate_assistant_response()
-                        .conversation_state(conversation_state_builder.build().expect("fix me"))
+                        .conversation_state(conversation_state)
                         .send()
                         .await?,
                 ))

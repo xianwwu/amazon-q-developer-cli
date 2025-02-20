@@ -55,7 +55,6 @@ impl ResponseParser {
         loop {
             match self.next().await {
                 Ok(Some(output)) => {
-                    trace!(?output, "Received output");
                     match output {
                         ChatResponseStream::AssistantResponseEvent { content } => {
                             self.assistant_text.push_str(&content);
@@ -81,7 +80,7 @@ impl ResponseParser {
                             input,
                             stop,
                         } => {
-                            let tool_use = self.parse_tool_use(tool_use_id, name, input, stop).await?;
+                            let tool_use = self.parse_tool_use(tool_use_id, name, stop).await?;
                             return Ok(ResponseEvent::ToolUse(tool_use));
                         },
                         _ => {},
@@ -102,16 +101,10 @@ impl ResponseParser {
     /// Consumes the response stream until a valid [ToolUse] is parsed.
     ///
     /// The arguments are the fields from the first [ChatResponseStream::ToolUseEvent] consumed.
-    async fn parse_tool_use(
-        &mut self,
-        tool_use_id: String,
-        tool_name: String,
-        mut input: Option<String>,
-        stop: Option<bool>,
-    ) -> Result<ToolUse> {
-        assert!(input.is_some());
+    async fn parse_tool_use(&mut self, tool_use_id: String, tool_name: String, stop: Option<bool>) -> Result<ToolUse> {
+        // assert!(input.is_some());
         assert!(stop.is_none_or(|v| !v));
-        let mut tool_string = input.take().unwrap_or_default();
+        let mut tool_string = String::new();
         while let Some(ChatResponseStream::ToolUseEvent { .. }) = self.peek().await? {
             if let Some(ChatResponseStream::ToolUseEvent { input, stop, .. }) = self.next().await? {
                 if let Some(i) = input {
@@ -149,7 +142,9 @@ impl ResponseParser {
         if let Some(ev) = self.peek.take() {
             return Ok(Some(ev));
         }
-        self.response.recv().await
+        let r = self.response.recv().await?;
+        trace!("Received: {:?}", r);
+        Ok(r)
     }
 }
 
@@ -223,6 +218,12 @@ mod tests {
             },
             ChatResponseStream::AssistantResponseEvent {
                 content: " there".to_string(),
+            },
+            ChatResponseStream::ToolUseEvent {
+                tool_use_id: tool_use_id.clone(),
+                name: tool_name.clone(),
+                input: None,
+                stop: None,
             },
             ChatResponseStream::ToolUseEvent {
                 tool_use_id: tool_use_id.clone(),

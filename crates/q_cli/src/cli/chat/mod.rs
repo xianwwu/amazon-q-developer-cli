@@ -21,10 +21,23 @@ use fig_os_shim::Context;
 use fig_util::CLI_BINARY_NAME;
 use futures::StreamExt;
 use input_source::InputSource;
-use parser::{ResponseParser, ToolUse};
-use spinners::{Spinner, Spinners};
-use tools::{ToolE, ToolSpec};
-use tracing::{debug, error};
+use parser::{
+    ResponseParser,
+    ToolUse,
+};
+use spinners::{
+    Spinner,
+    Spinners,
+};
+use tools::{
+    ToolE,
+    ToolSpec,
+};
+use tracing::{
+    debug,
+    error,
+    trace,
+};
 use winnow::Partial;
 use winnow::stream::Offset;
 
@@ -184,21 +197,24 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
 
             loop {
                 match parser.recv().await {
-                    Ok(msg_event) => match msg_event {
-                        parser::ResponseEvent::ConversationId(id) => {
-                            conversation_state.conversation_id = Some(id);
-                        },
-                        parser::ResponseEvent::AssistantText(text) => {
-                            buf.push_str(&text);
-                        },
-                        parser::ResponseEvent::ToolUse(tool_use) => {
-                            buf.push_str(&format!("\n\n# Tool Use: {}", tool_use.args));
-                            self.tool_uses.push(tool_use);
-                        },
-                        parser::ResponseEvent::EndStream { message } => {
-                            conversation_state.push_assistant_message(message);
-                            ended = true;
-                        },
+                    Ok(msg_event) => {
+                        trace!("Consumed: {:?}", msg_event);
+                        match msg_event {
+                            parser::ResponseEvent::ConversationId(id) => {
+                                conversation_state.conversation_id = Some(id);
+                            },
+                            parser::ResponseEvent::AssistantText(text) => {
+                                buf.push_str(&text);
+                            },
+                            parser::ResponseEvent::ToolUse(tool_use) => {
+                                buf.push_str(&format!("\n\n# Tool Use: {}", tool_use.args));
+                                self.tool_uses.push(tool_use);
+                            },
+                            parser::ResponseEvent::EndStream { message } => {
+                                conversation_state.push_assistant_message(message);
+                                ended = true;
+                            },
+                        };
                     },
                     Err(err) => {
                         bail!("An error occurred reading the model's response: {:?}", err);
@@ -291,6 +307,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
             })
             .unwrap_or("No utterance id associated".to_string());
         if !self.tool_uses.is_empty() {
+            debug!(?self.tool_uses, "Validating tool uses");
             // Parse the requested tools then validate them initializing needed fields
             let mut tool_results = Vec::with_capacity(self.tool_uses.len());
             for tool_use in self.tool_uses.drain(..) {
@@ -330,10 +347,13 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
             }
 
             if !tool_results.is_empty() {
+                debug!(?tool_results, "Error found in the model tools");
                 self.conversation_state.add_tool_results(tool_results);
                 send_tool_use_events(event_builders).await;
                 return Ok(Some(
-                    self.client.send_message(self.conversation_state.clone().into()).await?,
+                    self.client
+                        .send_message(self.conversation_state.as_sendable_conversation_state())
+                        .await?,
                 ));
             }
         }
@@ -416,7 +436,9 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
                 self.conversation_state.add_tool_results(tool_results);
                 send_tool_use_events(event_builders).await;
                 Ok(Some(
-                    self.client.send_message(self.conversation_state.clone().into()).await?,
+                    self.client
+                        .send_message(self.conversation_state.as_sendable_conversation_state())
+                        .await?,
                 ))
             },
             _ => {
@@ -448,7 +470,9 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
                 self.conversation_state.append_new_user_message(user_input).await;
                 send_tool_use_events(event_builders).await;
                 Ok(Some(
-                    self.client.send_message(self.conversation_state.clone().into()).await?,
+                    self.client
+                        .send_message(self.conversation_state.as_sendable_conversation_state())
+                        .await?,
                 ))
             },
         }
@@ -580,8 +604,8 @@ mod tests {
     //         output: &mut output,
     //         ctx,
     //         initial_input: None,
-    //         input_source: InputSource::new_mock(vec!["create a new file".to_string(), "c".to_string()]),
-    //         is_interactive: true,
+    //         input_source: InputSource::new_mock(vec!["create a new file".to_string(),
+    // "c".to_string()]),         is_interactive: true,
     //         tool_config: load_tools().unwrap(),
     //         client: StreamingClient::mock(vec![vec![
     //             ChatResponseStream::AssistantResponseEvent {

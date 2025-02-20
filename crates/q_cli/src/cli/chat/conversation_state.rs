@@ -59,9 +59,10 @@ static CONTEXT_MODIFIER_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@
 #[derive(Debug, Clone)]
 pub struct ConversationState {
     pub conversation_id: Option<String>,
+    /// The next user message to be sent as part of the conversation. Required to be [Some] before
+    /// calling [Self::as_sendable_conversation_state].
     pub next_message: Option<Message>,
     pub history: Vec<Message>,
-    tool_results: Vec<ToolResult>,
     tools: Vec<Tool>,
 }
 
@@ -71,7 +72,6 @@ impl ConversationState {
             conversation_id: None,
             next_message: None,
             history: Vec::new(),
-            tool_results: Vec::new(),
             tools: tool_config
                 .tools
                 .into_values()
@@ -96,12 +96,8 @@ impl ConversationState {
 
         let mut user_input_message_context = UserInputMessageContext {
             shell_state: Some(build_shell_state(ctx.history, &history)),
-            env_state: Some(build_env_state(&ctx)),
-            tool_results: if self.tool_results.is_empty() {
-                None
-            } else {
-                Some(std::mem::take(&mut self.tool_results))
-            },
+            env_state: Some(build_env_state(Some(&ctx))),
+            tool_results: None,
             tools: if self.tools.is_empty() {
                 None
             } else {
@@ -128,8 +124,47 @@ impl ConversationState {
         self.history.push(message);
     }
 
-    pub fn add_tool_results(&mut self, mut results: Vec<ToolResult>) {
-        self.tool_results.append(&mut results);
+    pub fn add_tool_results(&mut self, tool_results: Vec<ToolResult>) {
+        let user_input_message_context = UserInputMessageContext {
+            shell_state: None,
+            env_state: Some(build_env_state(None)),
+            tool_results: Some(tool_results),
+            tools: if self.tools.is_empty() {
+                None
+            } else {
+                Some(self.tools.clone())
+            },
+            ..Default::default()
+        };
+        let msg = Message(ChatMessage::UserInputMessage(UserInputMessage {
+            content: String::new(),
+            user_input_message_context: Some(user_input_message_context),
+            user_intent: None,
+        }));
+        self.next_message = Some(msg);
+    }
+
+    /// Returns a [FigConversationState] capable of being sent by
+    /// [fig_api_client::StreamingClient] while preparing the current conversation state to be sent
+    /// in the next message.
+    pub fn as_sendable_conversation_state(&mut self) -> FigConversationState {
+        assert!(self.next_message.is_some());
+        let curr_state = self.clone();
+
+        let last_message = self.next_message.take().unwrap();
+        self.history.push(last_message);
+
+        FigConversationState {
+            conversation_id: curr_state.conversation_id,
+            user_input_message: curr_state
+                .next_message
+                .and_then(|m| match m.0 {
+                    ChatMessage::AssistantResponseMessage(_) => None,
+                    ChatMessage::UserInputMessage(user_input_message) => Some(user_input_message),
+                })
+                .expect("no user input message available"),
+            history: Some(curr_state.history.into_iter().map(|m| m.0).collect()),
+        }
     }
 }
 
@@ -220,20 +255,18 @@ async fn build_git_state(dir: Option<&Path>) -> Result<GitState> {
     }
 }
 
-fn build_env_state(modifiers: &ContextModifiers) -> EnvState {
+fn build_env_state(modifiers: Option<&ContextModifiers>) -> EnvState {
     let mut env_state = EnvState {
         operating_system: Some(env::consts::OS.into()),
         ..Default::default()
     };
 
-    if modifiers.any() {
-        if let Ok(current_dir) = env::current_dir() {
-            env_state.current_working_directory =
-                Some(truncate_safe(&current_dir.to_string_lossy(), MAX_CURRENT_WORKING_DIRECTORY_LEN).into());
-        }
+    if let Ok(current_dir) = env::current_dir() {
+        env_state.current_working_directory =
+            Some(truncate_safe(&current_dir.to_string_lossy(), MAX_CURRENT_WORKING_DIRECTORY_LEN).into());
     }
 
-    if modifiers.env {
+    if modifiers.is_some_and(|c| c.env) {
         for (key, value) in env::vars().take(MAX_ENV_VAR_LIST_LEN) {
             if !key.is_empty() && !value.is_empty() {
                 env_state.environment_variables.push(EnvironmentVariable {
@@ -400,18 +433,18 @@ mod tests {
     #[test]
     fn test_env_state() {
         // env: true
-        let env_state = build_env_state(&ContextModifiers {
+        let env_state = build_env_state(Some(&ContextModifiers {
             env: true,
             history: false,
             git: false,
-        });
+        }));
         assert!(!env_state.environment_variables.is_empty());
         assert!(!env_state.current_working_directory.as_ref().unwrap().is_empty());
         assert!(!env_state.operating_system.as_ref().unwrap().is_empty());
         println!("{env_state:?}");
 
         // env: false
-        let env_state = build_env_state(&ContextModifiers::default());
+        let env_state = build_env_state(Some(&ContextModifiers::default()));
         assert!(env_state.environment_variables.is_empty());
         assert!(env_state.current_working_directory.is_none());
         assert!(!env_state.operating_system.as_ref().unwrap().is_empty());
