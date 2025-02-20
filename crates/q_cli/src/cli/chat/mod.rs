@@ -19,6 +19,7 @@ use fig_api_client::clients::SendMessageOutput;
 use fig_api_client::model::{ToolResult, ToolResultContentBlock, ToolResultStatus};
 use fig_os_shim::Context;
 use fig_util::CLI_BINARY_NAME;
+use futures::StreamExt;
 use input_source::InputSource;
 use parser::{ResponseParser, ToolUse};
 use spinners::{Spinner, Spinners};
@@ -330,7 +331,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
 
             if !tool_results.is_empty() {
                 self.conversation_state.add_tool_results(tool_results);
-                send_tool_use_events(event_builders).await?;
+                send_tool_use_events(event_builders).await;
                 return Ok(Some(
                     self.client.send_message(self.conversation_state.clone().into()).await?,
                 ));
@@ -351,7 +352,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
                     // TODO: telemetry
                     // fig_telemetry::send_end_chat(id.clone()).await;
                 }
-                send_tool_use_events(event_builders).await?;
+                send_tool_use_events(event_builders).await;
 
                 Ok(None)
             },
@@ -413,7 +414,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
                 }
 
                 self.conversation_state.add_tool_results(tool_results);
-                send_tool_use_events(event_builders).await?;
+                send_tool_use_events(event_builders).await;
                 Ok(Some(
                     self.client.send_message(self.conversation_state.clone().into()).await?,
                 ))
@@ -445,7 +446,7 @@ Hi, I'm <g>Amazon Q</g>. I can answer questions about your workspace and tooling
                 }
 
                 self.conversation_state.append_new_user_message(user_input).await;
-                send_tool_use_events(event_builders).await?;
+                send_tool_use_events(event_builders).await;
                 Ok(Some(
                     self.client.send_message(self.conversation_state.clone().into()).await?,
                 ))
@@ -514,14 +515,16 @@ impl From<ToolUseEventBuilder> for fig_telemetry::EventType {
     }
 }
 
-async fn send_tool_use_events(events: Vec<ToolUseEventBuilder>) -> Result<()> {
-    for event in events {
+async fn send_tool_use_events(events: Vec<ToolUseEventBuilder>) {
+    let futures = events.into_iter().map(|event| async {
         let event: fig_telemetry::EventType = event.into();
         let app_event = fig_telemetry::AppTelemetryEvent::new(event).await;
         fig_telemetry::send_event(app_event).await;
-    }
-
-    Ok(())
+    });
+    let _ = futures::stream::iter(futures)
+        .buffer_unordered(10)
+        .collect::<Vec<_>>()
+        .await;
 }
 
 #[cfg(test)]
