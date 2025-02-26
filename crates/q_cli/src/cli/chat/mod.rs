@@ -590,6 +590,11 @@ Hi, I'm <g>Amazon Q</g>. Ask me anything.
                     );
                 }
 
+                let dialog_box = dialog_box::DialogBox::new(
+                    "test",
+                    "some text to display fffffffffffffffffffffffffffffff\n ddfjjdjjdd",
+                    2,
+                );
                 for (i, (_, tool)) in queued_tools.iter().enumerate() {
                     queue!(
                         self.output,
@@ -601,6 +606,7 @@ Hi, I'm <g>Amazon Q</g>. Ask me anything.
                         style::SetForegroundColor(Color::Reset),
                     )?;
                     tool.queue_description(&self.ctx, self.output)?;
+                    dialog_box.queue_boxed_output(self.output)?;
                     queue!(self.output, style::Print("\n"))?;
                 }
             }

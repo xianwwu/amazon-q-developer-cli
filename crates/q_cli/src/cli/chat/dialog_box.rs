@@ -1,6 +1,11 @@
 use std::io::Write;
 
-use crossterm::{queue, style};
+use crossterm::{
+    cursor,
+    queue,
+    style,
+};
+use eyre::Result;
 use unicode_width::UnicodeWidthStr;
 
 const TOP_LEFT_CORNER: &str = "┌";
@@ -25,7 +30,7 @@ impl<'a> DialogBox<'a> {
         }
     }
 
-    pub fn queue_boxed_output<W: Write>(&self, output: &mut W) -> Result<(), std::io::Error> {
+    pub fn queue_boxed_output<W: Write>(&self, output: &mut W) -> Result<()> {
         let longest_line_width = self.text_to_display.lines().fold(0_usize, |acc, line| {
             let grapheme_width = UnicodeWidthStr::width_cjk(line);
             if acc > grapheme_width { acc } else { grapheme_width }
@@ -46,7 +51,10 @@ impl<'a> DialogBox<'a> {
             let mut new_line = VER_LINE.to_string();
             new_line.push_str(&" ".repeat(self.padding));
             new_line.push_str(line.trim());
-            new_line.push_str(&" ".repeat(self.padding));
+            new_line.push_str(&" ".repeat({
+                let cur_width = UnicodeWidthStr::width_cjk(new_line.as_str());
+                box_width - cur_width - UnicodeWidthStr::width_cjk(VER_LINE)
+            }));
             new_line.push_str(VER_LINE);
             new_line.push('\n');
             boxed_content.push_str(&new_line);
@@ -60,6 +68,15 @@ impl<'a> DialogBox<'a> {
         boxed_content.push_str(BOT_RIGHT_CORNER);
         boxed_content.push('\n');
 
-        queue!(output, style::Print(boxed_content))
+        let box_height: u16 = boxed_content.split('\n').count().try_into()?;
+        Ok(queue!(
+            output,
+            style::Print('\n'),
+            style::Print(boxed_content),
+            cursor::MoveUp(box_height - 1),
+            cursor::MoveToColumn(2),
+            style::Print(format!(" {} ", self.title)),
+            cursor::MoveDown(box_height - 1)
+        )?)
     }
 }
