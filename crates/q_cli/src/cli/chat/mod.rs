@@ -1,4 +1,5 @@
 mod conversation_state;
+mod dialog_box;
 mod error;
 mod input_source;
 mod parse;
