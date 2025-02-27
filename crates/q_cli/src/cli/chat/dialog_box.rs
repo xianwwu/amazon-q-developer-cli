@@ -31,19 +31,22 @@ impl<'a> DialogBox<'a> {
     }
 
     pub fn queue_boxed_output<W: Write>(&self, output: &mut W) -> Result<()> {
-        let longest_line_width = self.text_to_display.lines().fold(0_usize, |acc, line| {
-            let grapheme_width = UnicodeWidthStr::width_cjk(line);
+        let stripped_text = String::from_utf8(strip_ansi_escapes::strip(self.text_to_display))
+            .map_err(|e| eyre::eyre!("failed to convert tool content to string: {:?}", e))?;
+        let longest_line_width = &stripped_text.lines().fold(0_usize, |acc, line| {
+            let grapheme_width = UnicodeWidthStr::width_cjk(line.trim());
             if acc > grapheme_width { acc } else { grapheme_width }
         });
+        let top_right_corner_width = UnicodeWidthStr::width_cjk(TOP_RIGHT_CORNER);
+        let bot_left_corner_width = UnicodeWidthStr::width_cjk(BOT_LEFT_CORNER);
+        let bot_right_corner_width = UnicodeWidthStr::width_cjk(BOT_RIGHT_CORNER);
         let box_width = longest_line_width
-            + self.padding * 2 // assuming a space has a grapheme width of 1
-            + UnicodeWidthStr::width_cjk(TOP_LEFT_CORNER)
-            + UnicodeWidthStr::width_cjk(TOP_RIGHT_CORNER);
+            + UnicodeWidthStr::width_cjk(" ") * self.padding * 2
+            + UnicodeWidthStr::width_cjk(VER_LINE) * 2;
         let mut boxed_content = TOP_LEFT_CORNER.to_string();
         boxed_content.push_str({
-            let hor_line_width =
-                box_width - UnicodeWidthStr::width_cjk(TOP_LEFT_CORNER) - UnicodeWidthStr::width_cjk(TOP_RIGHT_CORNER);
-            &HOR_LINE.repeat(hor_line_width)
+            let length = box_width - bot_left_corner_width - bot_right_corner_width;
+            &HOR_LINE.repeat(length)
         });
         boxed_content.push_str(TOP_RIGHT_CORNER);
         boxed_content.push('\n');
@@ -52,8 +55,10 @@ impl<'a> DialogBox<'a> {
             new_line.push_str(&" ".repeat(self.padding));
             new_line.push_str(line.trim());
             new_line.push_str(&" ".repeat({
-                let cur_width = UnicodeWidthStr::width_cjk(new_line.as_str());
-                box_width - cur_width - UnicodeWidthStr::width_cjk(VER_LINE)
+                let new_line_stripped = String::from_utf8(strip_ansi_escapes::strip(&new_line))
+                    .map_err(|e| eyre::eyre!("failed to convert tool content to string: {:?}", e))?;
+                let cur_width = UnicodeWidthStr::width_cjk(new_line_stripped.as_str());
+                box_width - cur_width - top_right_corner_width
             }));
             new_line.push_str(VER_LINE);
             new_line.push('\n');
@@ -61,9 +66,8 @@ impl<'a> DialogBox<'a> {
         }
         boxed_content.push_str(BOT_LEFT_CORNER);
         boxed_content.push_str({
-            let hor_line_width =
-                box_width - UnicodeWidthStr::width_cjk(BOT_LEFT_CORNER) - UnicodeWidthStr::width_cjk(BOT_RIGHT_CORNER);
-            &HOR_LINE.repeat(hor_line_width)
+            let length = box_width - bot_left_corner_width - bot_right_corner_width;
+            &HOR_LINE.repeat(length)
         });
         boxed_content.push_str(BOT_RIGHT_CORNER);
         boxed_content.push('\n');
