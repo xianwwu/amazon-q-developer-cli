@@ -159,17 +159,17 @@ mod tests {
             git!({"command": "diff"}),
             git!({"command": "show"}),
             git!({"command": "ls-files"}),
-            git!({"command": "branch"}), 
-            git!({"command": "tag"}),    
-            git!({"command": "remote"}), 
+            git!({"command": "branch"}),
+            git!({"command": "tag"}),
+            git!({"command": "remote"}),
             git!({"command": "blame", "parameters": {"file": "src/main.rs"}}),
             git!({"command": "rev-parse", "parameters": {"show-toplevel": true}}),
             git!({"command": "ls-remote", "repo": "origin"}),
             git!({"command": "config", "subcommand": "get", "parameters": {"name": "user.email"}}),
             git!({"command": "config", "subcommand": "list"}),
-            git!({"command": "describe", "parameters": {"tags": true}})
+            git!({"command": "describe", "parameters": {"tags": true}}),
         ];
-        
+
         for cmd in readonly_commands {
             assert!(!cmd.requires_consent(), "Command should not require consent: {:?}", cmd);
         }
@@ -188,9 +188,9 @@ mod tests {
             git!({"command": "clean", "parameters": {"-fd": true}}),
             git!({"command": "clone", "repo": "https://github.com/user/repo.git"}),
             git!({"command": "remote", "subcommand": "add", "repo": "https://github.com/user/repo.git", "parameters": {"name": "upstream"}}),
-            git!({"command": "config", "subcommand": "set", "parameters": {"name": "user.email", "value": "email@example.com"}})
+            git!({"command": "config", "subcommand": "set", "parameters": {"name": "user.email", "value": "email@example.com"}}),
         ];
-        
+
         for cmd in write_commands {
             assert!(cmd.requires_consent(), "Command should require consent: {:?}", cmd);
         }
