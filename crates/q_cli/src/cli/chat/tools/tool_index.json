@@ -131,10 +131,10 @@
         },
         "label": {
           "type": "string",
-          "description": "Optional: Human readable description of the git operation being performed."
+          "description": "Human readable description of the git operation being performed."
         }
       },
-      "required": ["command"]
+      "required": ["command", "label"]
     }
   }
 }

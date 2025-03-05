@@ -109,10 +109,13 @@ impl Git {
     }
 
     pub fn queue_description(&self, updates: &mut impl Write) -> Result<()> {
+        if let Some(label) = self.label.as_ref() {
+            queue!(updates, style::Print(label))?;
+        }
         queue!(
             updates,
-            style::Print("Running git command:\n"),
-            style::Print(format!("git {}", self.command))
+            style::Print("\n"),
+            style::Print(format!("Command: git {}", self.command))
         )?;
         if let Some(subcommand) = self.subcommand.as_ref() {
             queue!(updates, style::Print(format!(" {}", subcommand)))?;
@@ -129,9 +132,6 @@ impl Git {
                 let param_val = val.as_str().map(|s| s.to_string()).unwrap_or(val.to_string());
                 queue!(updates, style::Print(format!(" {} {}", param_name, param_val)))?;
             }
-        }
-        if let Some(label) = self.label.as_ref() {
-            queue!(updates, style::Print("\n"), style::Print(label))?;
         }
         Ok(())
     }
