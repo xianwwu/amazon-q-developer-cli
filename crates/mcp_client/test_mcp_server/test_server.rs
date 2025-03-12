@@ -3,7 +3,11 @@ use std::{
     env,
     io,
 };
-use mcp_client::transport::base_protocol::{JsonRpcMessage, JsonRpcResponse};
+
+use mcp_client::transport::base_protocol::{
+    JsonRpcMessage,
+    JsonRpcResponse,
+};
 
 fn main() {
     let args: Vec<String> = env::args().collect();

@@ -1,19 +1,23 @@
 use std::process::Stdio;
+use std::sync::Arc;
+use std::time::Duration;
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::Deserialize;
 use thiserror::Error;
+use tokio::time;
+use uuid::Uuid;
 
-use crate::protocol::{
-    Protocol,
-    ProtocolError,
+use crate::transport::base_protocol::{
+    JsonRpcMessage,
+    JsonRpcNotification,
+    JsonRpcRequest,
+    JsonRpcVersion,
 };
 use crate::transport::stdio::JsonRpcStdioTransport;
 use crate::transport::{
     self,
     Transport,
+    TransportError,
 };
 
 pub type ToolSpec = serde_json::Value;
@@ -29,15 +33,20 @@ pub struct ClientConfig {
 #[derive(Debug, Error)]
 pub enum ClientError {
     #[error(transparent)]
-    ProtocolError(#[from] ProtocolError),
+    TransportError(#[from] TransportError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Serialization(#[from] serde_json::Error),
+    #[error(transparent)]
+    RuntimeError(#[from] tokio::time::error::Elapsed),
+    #[error("Unexpected msg type encountered")]
+    UnexpectedMsgType,
 }
 
 pub struct Client<T: Transport> {
-    protocol: Protocol<T>,
+    transport: Arc<T>,
+    timeout: u64,
 }
 
 impl Client<StdioTransport> {
@@ -53,9 +62,8 @@ impl Client<StdioTransport> {
             .stderr(Stdio::inherit())
             .args(args)
             .spawn()?;
-        let transport = transport::stdio::JsonRpcStdioTransport::client(child);
-        let protocol = Protocol::new(transport, timeout);
-        Ok(Self { protocol })
+        let transport = Arc::new(transport::stdio::JsonRpcStdioTransport::client(child)?);
+        Ok(Self { transport, timeout })
     }
 }
 
@@ -63,8 +71,24 @@ impl<T> Client<T>
 where
     T: Transport,
 {
-    pub async fn init(&mut self) -> Result<ToolSpec, ClientError> {
-        todo!();
+    pub fn init(&mut self) -> Result<(), ClientError> {
+        let transport_ref = self.transport.clone();
+        tokio::spawn(async move { 
+            loop {
+                match transport_ref.listen().await {
+                    Ok(msg) => {
+                        match msg {
+                            JsonRpcMessage::Request(req) => {},
+                            JsonRpcMessage::Notification(notif) => {},
+                            JsonRpcMessage::Response(_) => { /* noop since direct response is handled inside the request api */ }
+                        }
+                    }
+                    Err(_) => { todo!() }
+                }
+            } 
+        });
+
+        Ok(())
     }
 
     pub async fn request(
@@ -72,8 +96,29 @@ where
         method: &str,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, ClientError> {
-        let resp = self.protocol.request(method, params).await?;
+        let request = JsonRpcRequest {
+            jsonrpc: JsonRpcVersion::new(),
+            id: Uuid::new_v4().as_u128(),
+            method: method.to_owned(),
+            params,
+        };
+        let msg = JsonRpcMessage::Request(request);
+        time::timeout(Duration::from_secs(self.timeout), self.transport.send(&msg)).await??;
+        let resp = time::timeout(Duration::from_secs(self.timeout), self.transport.listen()).await??;
+        let JsonRpcMessage::Response(resp) = resp else {
+            return Err(ClientError::UnexpectedMsgType);
+        };
         Ok(serde_json::to_value(resp)?)
+    }
+
+    pub async fn notify(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<(), ClientError> {
+        let notification = JsonRpcNotification {
+            jsonrpc: JsonRpcVersion::new(),
+            method: method.to_owned(),
+            params,
+        };
+        let msg = JsonRpcMessage::Notification(notification);
+        Ok(time::timeout(Duration::from_secs(self.timeout), self.transport.send(&msg)).await??)
     }
 }
 
@@ -118,6 +163,7 @@ mod tests {
             timeout: 60,
         };
         let mut client = Client::<StdioTransport>::from_config(client_config).unwrap();
+        client.init();
         let output = client.request("some_method", None).await.unwrap();
 
         println!("output is {:?}", output);
