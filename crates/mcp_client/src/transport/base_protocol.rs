@@ -1,0 +1,70 @@
+//! Referencing https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/messages/
+//! Protocol Revision 2024-11-05
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+pub type RequestId = u128;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct JsonRpcVersion(String);
+
+impl JsonRpcVersion {
+    pub fn new() -> Self {
+        JsonRpcVersion("2.0".to_owned())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub enum JsonRpcMessage {
+    Response(JsonRpcResponse),
+    Request(JsonRpcRequest),
+    Notification(JsonRpcNotification),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct JsonRpcRequest {
+    pub jsonrpc: JsonRpcVersion,
+    pub id: RequestId,
+    pub method: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct JsonRpcResponse {
+    pub jsonrpc: JsonRpcVersion,
+    pub id: RequestId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct JsonRpcNotification {
+    pub jsonrpc: JsonRpcVersion,
+    pub method: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct JsonRpcError {
+    pub code: i32,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub enum TransportType {
+    #[default]
+    Stdio,
+    Websocket,
+}
