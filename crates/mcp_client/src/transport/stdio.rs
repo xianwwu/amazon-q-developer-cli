@@ -15,16 +15,11 @@ use tokio::sync::{
     Mutex,
     broadcast,
 };
-use uuid::Uuid;
 
 use super::base_protocol::JsonRpcMessage;
 use super::{
     Transport,
     TransportError,
-};
-use crate::transport::base_protocol::{
-    JsonRpcRequest,
-    JsonRpcVersion,
 };
 
 #[derive(Debug)]
@@ -55,10 +50,7 @@ impl JsonRpcStdioTransport {
             loop {
                 buffer.clear();
                 match buf_reader.read_until(b'\n', &mut buffer).await {
-                    Ok(0) => {
-                        println!("read 0 bytes");
-                        continue;
-                    },
+                    Ok(0) => continue,
                     Ok(_) => match serde_json::from_slice::<JsonRpcMessage>(buffer.as_slice()) {
                         Ok(msg) => {
                             let _ = tx.send(Ok(msg));
@@ -83,18 +75,6 @@ impl JsonRpcStdioTransport {
 
 #[async_trait::async_trait]
 impl Transport for JsonRpcStdioTransport {
-    async fn init(&self) -> Result<JsonRpcMessage, TransportError> {
-        let client_hello = JsonRpcRequest {
-            jsonrpc: JsonRpcVersion::new(),
-            id: Uuid::new_v4().as_u128(),
-            method: "client_hello".to_owned(),
-            params: None,
-        };
-        let msg = JsonRpcMessage::Request(client_hello);
-        self.send(&msg).await?;
-        Ok(self.listen().await?)
-    }
-
     async fn send(&self, msg: &JsonRpcMessage) -> Result<(), TransportError> {
         match self {
             JsonRpcStdioTransport::Client { stdin, .. } => {

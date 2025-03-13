@@ -32,10 +32,8 @@ impl From<std::io::Error> for TransportError {
 
 #[async_trait::async_trait]
 pub trait Transport: Send + Sync + Debug + 'static {
-    /// Method for init handshake as per https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/lifecycle/.
-    async fn init(&self) -> Result<JsonRpcMessage, TransportError>;
     /// Sends a message over the transport layer.
     async fn send(&self, msg: &JsonRpcMessage) -> Result<(), TransportError>;
-    /// Listens to Awaits for a response.
+    /// Listens to awaits for a response.
     async fn listen(&self) -> Result<JsonRpcMessage, TransportError>;
 }

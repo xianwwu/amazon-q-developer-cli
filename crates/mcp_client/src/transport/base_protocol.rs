@@ -7,12 +7,20 @@ use serde::{
 
 pub type RequestId = u128;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct JsonRpcVersion(String);
 
-impl JsonRpcVersion {
-    pub fn new() -> Self {
+impl Default for JsonRpcVersion {
+    fn default() -> Self {
         JsonRpcVersion("2.0".to_owned())
+    }
+}
+impl JsonRpcVersion {
+    pub fn as_u32_vec(&self) -> Vec<u32> {
+        self.0
+            .split(".")
+            .map(|n| n.parse::<u32>().unwrap())
+            .collect::<Vec<u32>>()
     }
 }
 
