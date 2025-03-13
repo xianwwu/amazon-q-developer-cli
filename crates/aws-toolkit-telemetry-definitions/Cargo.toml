@@ -8,12 +8,12 @@ publish = false
 workspace = true
 
 [build-dependencies]
-convert_case = "0.6.0"
-prettyplease = "0.2.15"
-quote = "1.0.33"
+convert_case = "0.8.0"
+prettyplease = "0.2.30"
+quote = "1.0.40"
 serde.workspace = true
 serde_json.workspace = true
-syn = "2.0.90"
+syn = "2.0.100"
 
 [dependencies]
 amzn-toolkit-telemetry = { path = "../amzn-toolkit-telemetry" }

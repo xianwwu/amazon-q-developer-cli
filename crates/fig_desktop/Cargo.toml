@@ -60,12 +60,12 @@ fnv = "1.0.7"
 futures.workspace = true
 http.workspace = true
 image = "0.25.0"
-infer = "0.16.0"
+infer = "0.19.0"
 keyboard-types = "0.7.0"
 mime = "0.3.17"
 moka = { version = "0.12.1", features = ["future"] }
 muda = { version = "0.15.3", default-features = false }
-notify = "7.0.0"
+notify = "8.0.0"
 parking_lot = { workspace = true, features = ["serde"] }
 paste = "1.0.11"
 percent-encoding.workspace = true

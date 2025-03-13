@@ -30,7 +30,7 @@ bytes.workspace = true
 camino.workspace = true
 cfg-if.workspace = true
 clap.workspace = true
-clap_complete = "4.5.39"
+clap_complete = "4.5.46"
 clap_complete_fig = "4.4.0"
 color-eyre = "0.6.2"
 color-print = "0.3.5"
@@ -59,11 +59,11 @@ globset.workspace = true
 indicatif.workspace = true
 indoc.workspace = true
 mimalloc.workspace = true
-owo-colors = "4.0.0"
+owo-colors = "4.2.0"
 parking_lot.workspace = true
 rand.workspace = true
 regex.workspace = true
-rustyline = { version = "14.0.0", features = ["derive"] }
+rustyline = { version = "15.0.0", features = ["derive"] }
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -86,6 +86,7 @@ walkdir.workspace = true
 which.workspace = true
 whoami.workspace = true
 winnow.workspace = true
+shell-color.workspace = true
 syntect = { version = "5.2.0", features = [ "default-syntaxes", "default-themes" ]}
 
 [target.'cfg(unix)'.dependencies]
