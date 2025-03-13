@@ -31,6 +31,7 @@ pub struct ClientConfig {
     pub bin_path: String,
     pub args: Vec<String>,
     pub timeout: u64,
+    pub init_params: serde_json::Value,
 }
 
 #[derive(Debug, Error)]
@@ -49,6 +50,8 @@ pub enum ClientError {
     NegotiationError(String),
     #[error("Failed to obtain process id")]
     MissingProcessId,
+    #[error("Invalid path received")]
+    InvalidPath,
 }
 
 pub struct Client<T: Transport> {
@@ -56,6 +59,7 @@ pub struct Client<T: Transport> {
     transport: Arc<T>,
     timeout: u64,
     server_process_id: u32,
+    init_params: serde_json::Value,
 }
 
 impl Client<StdioTransport> {
@@ -65,6 +69,7 @@ impl Client<StdioTransport> {
             bin_path,
             args,
             timeout,
+            init_params,
         } = config;
         let child = tokio::process::Command::new(bin_path)
             .stdin(Stdio::piped())
@@ -72,6 +77,7 @@ impl Client<StdioTransport> {
             .stderr(Stdio::inherit())
             .args(args)
             .spawn()?;
+        #[allow(clippy::map_err_ignore)]
         let server_process_id = child.id().ok_or(ClientError::MissingProcessId)?;
         let transport = Arc::new(transport::stdio::JsonRpcStdioTransport::client(child)?);
         Ok(Self {
@@ -79,6 +85,7 @@ impl Client<StdioTransport> {
             transport,
             timeout,
             server_process_id,
+            init_params,
         })
     }
 }
@@ -100,8 +107,8 @@ where
                 match transport_ref.listen().await {
                     Ok(msg) => {
                         match msg {
-                            JsonRpcMessage::Request(req) => {},
-                            JsonRpcMessage::Notification(notif) => {},
+                            JsonRpcMessage::Request(_req) => {},
+                            JsonRpcMessage::Notification(_notif) => {},
                             JsonRpcMessage::Response(_) => { /* noop since direct response is handled inside the request api */
                             },
                         }
@@ -113,10 +120,10 @@ where
             }
         });
 
-        // TODO: construct the init params
-        let init_params = None;
-        let server_capabilities = self.request("initialize", init_params).await?;
-        if let Err(e) = self.examine_server_capabilities(&server_capabilities) {
+        let server_capabilities = self
+            .request("initialize", Some(self.init_params.clone()))
+            .await?;
+        if let Err(e) = examine_server_capabilities(&server_capabilities) {
             #[allow(clippy::map_err_ignore)]
             let pid = Pid::from_raw(
                 self.server_process_id
@@ -167,34 +174,34 @@ where
         let msg = JsonRpcMessage::Notification(notification);
         Ok(time::timeout(Duration::from_secs(self.timeout), self.transport.send(&msg)).await??)
     }
+}
 
-    fn examine_server_capabilities(&self, ser_cap: &serde_json::Value) -> Result<(), ClientError> {
-        // Check the jrpc version.
-        // Currently we are only proceeding if the versions are EXACTLY the same.
-        let jrpc_version = ser_cap
-            .get("jsonrpc")
-            .map(|v| {
-                v.to_string()
-                    .trim_matches('"')
-                    .replace("\\\"", "\"")
-                    .split(".")
-                    .map(|n| n.parse::<u32>())
-                    .collect::<Vec<Result<u32, _>>>()
-            })
-            .ok_or(ClientError::NegotiationError("Missing jsonrpc from server".to_owned()))?;
-        let client_jrpc_version = JsonRpcVersion::default().as_u32_vec();
-        for (sv, cv) in jrpc_version.iter().zip(client_jrpc_version.iter()) {
-            let sv = sv
-                .as_ref()
-                .map_err(|e| ClientError::NegotiationError(format!("Failed to parse server jrpc version: {:?}", e)))?;
-            if sv != cv {
-                return Err(ClientError::NegotiationError(
-                    "Incompatible jrpc version between server and client".to_owned(),
-                ));
-            }
+fn examine_server_capabilities(ser_cap: &serde_json::Value) -> Result<(), ClientError> {
+    // Check the jrpc version.
+    // Currently we are only proceeding if the versions are EXACTLY the same.
+    let jrpc_version = ser_cap
+        .get("jsonrpc")
+        .map(|v| {
+            v.to_string()
+                .trim_matches('"')
+                .replace("\\\"", "\"")
+                .split(".")
+                .map(|n| n.parse::<u32>())
+                .collect::<Vec<Result<u32, _>>>()
+        })
+        .ok_or(ClientError::NegotiationError("Missing jsonrpc from server".to_owned()))?;
+    let client_jrpc_version = JsonRpcVersion::default().as_u32_vec();
+    for (sv, cv) in jrpc_version.iter().zip(client_jrpc_version.iter()) {
+        let sv = sv
+            .as_ref()
+            .map_err(|e| ClientError::NegotiationError(format!("Failed to parse server jrpc version: {:?}", e)))?;
+        if sv != cv {
+            return Err(ClientError::NegotiationError(
+                "Incompatible jrpc version between server and client".to_owned(),
+            ));
         }
-        Ok(())
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -227,9 +234,8 @@ mod tests {
             .args(["build", "--bin", TEST_SERVER_NAME])
             .status()
             .expect("Failed to build binary");
-        let mut bin_path = get_workspace_root();
-        bin_path.push(TEST_BIN_OUT_DIR);
-        bin_path.push(TEST_SERVER_NAME);
+        let workspace_root = get_workspace_root();
+        let bin_path = workspace_root.join(TEST_BIN_OUT_DIR).join(TEST_SERVER_NAME);
         println!("bin path: {}", bin_path.to_str().unwrap_or("no path found"));
 
         let client_config = ClientConfig {
@@ -237,6 +243,7 @@ mod tests {
             bin_path: bin_path.to_str().unwrap().to_string(),
             args: ["1".to_owned()].to_vec(),
             timeout: 60,
+            init_params: serde_json::json!({})
         };
         let mut client = Client::<StdioTransport>::from_config(client_config).expect("Failed to create client");
         client.init().await.expect("Client init failed");
