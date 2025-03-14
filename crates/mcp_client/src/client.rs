@@ -1,6 +1,9 @@
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
 use std::time::Duration;
 
 use nix::sys::signal::Signal;
@@ -144,7 +147,7 @@ where
     /// Sends a request to the server asociated.
     /// This call will yield until a response is received.
     pub async fn request(
-        &mut self,
+        &self,
         method: &str,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, ClientError> {
@@ -165,7 +168,7 @@ where
 
     /// Sends a notification to the server associated.
     /// Notifications are requests that expect no responses.
-    pub async fn notify(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<(), ClientError> {
+    pub async fn notify(&self, method: &str, params: Option<serde_json::Value>) -> Result<(), ClientError> {
         let notification = JsonRpcNotification {
             jsonrpc: JsonRpcVersion::default(),
             method: format!("notifications/{}", method),

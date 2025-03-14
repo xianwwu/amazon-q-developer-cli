@@ -1,4 +1,9 @@
-use mcp_client::server::{self, Response, ServerError, ServerRequestHandler};
+use mcp_client::server::{
+    self,
+    Response,
+    ServerError,
+    ServerRequestHandler,
+};
 use mcp_client::transport::base_protocol::{
     JsonRpcMessage,
     JsonRpcResponse,
@@ -33,8 +38,8 @@ impl ServerRequestHandler for Handler {
                 };
                 let msg = JsonRpcMessage::Response(resp);
                 Ok(Some(serde_json::to_value(msg).expect("Failed to convert msg to value")))
-            }
-            _ => Err(ServerError::MissingMethod)
+            },
+            _ => Err(ServerError::MissingMethod),
         }
     }
 }
@@ -44,7 +49,8 @@ async fn main() {
     let handler = Handler;
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    let mut test_server = server::Server::<JsonRpcStdioTransport, _>::new(handler, stdin, stdout).expect("Failed to create server");
+    let mut test_server =
+        server::Server::<JsonRpcStdioTransport, _>::new(handler, stdin, stdout).expect("Failed to create server");
     test_server.init().await.expect("Test server failed to init");
     let _ = test_server.await;
 }

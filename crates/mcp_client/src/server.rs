@@ -49,7 +49,7 @@ pub enum ServerError {
     #[error("Failed to obtain request method")]
     MissingMethod,
     #[error(transparent)]
-    TokioJoinError(#[from] tokio::task::JoinError)
+    TokioJoinError(#[from] tokio::task::JoinError),
 }
 
 impl<H> Server<StdioTransport, H>
@@ -66,14 +66,16 @@ where
     }
 }
 
-impl<T, H> Clone for Server<T, H> 
-where T: Transport, H: ServerRequestHandler
+impl<T, H> Clone for Server<T, H>
+where
+    T: Transport,
+    H: ServerRequestHandler,
 {
     fn clone(&self) -> Self {
         Self {
             transport: self.transport.clone(),
             handler: self.handler.clone(),
-            listener: None
+            listener: None,
         }
     }
 }
@@ -106,7 +108,7 @@ where
                                             id,
                                             result: None,
                                             error: Some(err),
-                                        }; 
+                                        };
                                         JsonRpcMessage::Response(resp)
                                     },
                                     |result| {
