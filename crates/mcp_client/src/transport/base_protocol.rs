@@ -5,7 +5,7 @@ use serde::{
     Serialize,
 };
 
-pub type RequestId = u128;
+pub type RequestId = u64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct JsonRpcVersion(String);

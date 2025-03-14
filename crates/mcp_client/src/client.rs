@@ -1,4 +1,5 @@
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,7 +8,6 @@ use nix::unistd::Pid;
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::time;
-use uuid::Uuid;
 
 use crate::transport::base_protocol::{
     JsonRpcMessage,
@@ -22,7 +22,7 @@ use crate::transport::{
     TransportError,
 };
 
-pub type ToolSpec = serde_json::Value;
+pub type ServerCapabilities = serde_json::Value;
 pub type StdioTransport = JsonRpcStdioTransport;
 
 #[derive(Debug, Deserialize)]
@@ -60,6 +60,7 @@ pub struct Client<T: Transport> {
     timeout: u64,
     server_process_id: u32,
     init_params: serde_json::Value,
+    current_id: AtomicU64,
 }
 
 impl Client<StdioTransport> {
@@ -86,6 +87,7 @@ impl Client<StdioTransport> {
             timeout,
             server_process_id,
             init_params,
+            current_id: AtomicU64::new(0),
         })
     }
 }
@@ -98,7 +100,7 @@ where
     ///
     /// Also done is the spawn of a background task that constantly listens for incoming messages
     /// from the server.
-    pub async fn init(&mut self) -> Result<(), ClientError> {
+    pub async fn init(&mut self) -> Result<ServerCapabilities, ClientError> {
         let transport_ref = self.transport.clone();
         let tool_name = self.tool_name.clone();
 
@@ -120,9 +122,7 @@ where
             }
         });
 
-        let server_capabilities = self
-            .request("initialize", Some(self.init_params.clone()))
-            .await?;
+        let server_capabilities = self.request("initialize", Some(self.init_params.clone())).await?;
         if let Err(e) = examine_server_capabilities(&server_capabilities) {
             #[allow(clippy::map_err_ignore)]
             let pid = Pid::from_raw(
@@ -138,7 +138,7 @@ where
         }
         self.notify("initialized", None).await?;
 
-        Ok(())
+        Ok(server_capabilities)
     }
 
     /// Sends a request to the server asociated.
@@ -150,7 +150,7 @@ where
     ) -> Result<serde_json::Value, ClientError> {
         let request = JsonRpcRequest {
             jsonrpc: JsonRpcVersion::default(),
-            id: Uuid::new_v4().as_u128(),
+            id: self.get_id(),
             method: method.to_owned(),
             params,
         };
@@ -168,11 +168,15 @@ where
     pub async fn notify(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<(), ClientError> {
         let notification = JsonRpcNotification {
             jsonrpc: JsonRpcVersion::default(),
-            method: method.to_owned(),
+            method: format!("notifications/{}", method),
             params,
         };
         let msg = JsonRpcMessage::Notification(notification);
         Ok(time::timeout(Duration::from_secs(self.timeout), self.transport.send(&msg)).await??)
+    }
+
+    fn get_id(&self) -> u64 {
+        self.current_id.fetch_add(1, Ordering::SeqCst)
     }
 }
 
@@ -229,7 +233,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_client_overall() {
+    async fn test_client_stdio() {
         std::process::Command::new("cargo")
             .args(["build", "--bin", TEST_SERVER_NAME])
             .status()
@@ -243,7 +247,7 @@ mod tests {
             bin_path: bin_path.to_str().unwrap().to_string(),
             args: ["1".to_owned()].to_vec(),
             timeout: 60,
-            init_params: serde_json::json!({})
+            init_params: serde_json::json!({}),
         };
         let mut client = Client::<StdioTransport>::from_config(client_config).expect("Failed to create client");
         client.init().await.expect("Client init failed");

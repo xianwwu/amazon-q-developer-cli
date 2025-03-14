@@ -1,44 +1,50 @@
-use std::io::Write as _;
-use std::{
-    env,
-    io,
-};
-
+use mcp_client::server::{self, Response, ServerError, ServerRequestHandler};
 use mcp_client::transport::base_protocol::{
     JsonRpcMessage,
     JsonRpcResponse,
 };
+use mcp_client::transport::stdio::JsonRpcStdioTransport;
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+#[derive(Clone)]
+struct Handler;
 
-    if args.len() < 2 {
-        eprintln!("Process needs a name");
-        std::process::exit(1);
-    }
-
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
-    let out_going_msg = {
-        let resp = JsonRpcResponse::default();
-        JsonRpcMessage::Response(resp)
-    };
-    let mut out_going_msg = serde_json::to_vec(&out_going_msg).expect("Failed to convert outgoing msg to vec");
-    out_going_msg.push(b'\n');
-
-    let mut buffer = String::new();
-    loop {
-        match stdin.read_line(&mut buffer) {
-            Ok(0) => continue,
-            Ok(_) => {
-                stdout.write_all(out_going_msg.as_slice()).expect("write failed");
-                stdout.flush().expect("flush failed");
-                buffer.clear();
+#[async_trait::async_trait]
+impl ServerRequestHandler for Handler {
+    async fn handle_request(&self, method: &str, params: Option<serde_json::Value>) -> Result<Response, ServerError> {
+        match method {
+            "initialize" => {
+                let resp = JsonRpcResponse {
+                    id: 0,
+                    // TODO: fill this in
+                    result: None,
+                    error: None,
+                    ..Default::default()
+                };
+                let msg = JsonRpcMessage::Response(resp);
+                Ok(Some(serde_json::to_value(msg).expect("Failed to convert msg to value")))
             },
-            Err(e) => {
-                eprintln!("Ecountered error {:?}", e);
-                break;
-            },
+            "some_method" => {
+                let resp = JsonRpcResponse {
+                    id: 0,
+                    // TODO: fill this in
+                    result: None,
+                    error: None,
+                    ..Default::default()
+                };
+                let msg = JsonRpcMessage::Response(resp);
+                Ok(Some(serde_json::to_value(msg).expect("Failed to convert msg to value")))
+            }
+            _ => Err(ServerError::MissingMethod)
         }
     }
+}
+
+#[tokio::main]
+async fn main() {
+    let handler = Handler;
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    let mut test_server = server::Server::<JsonRpcStdioTransport, _>::new(handler, stdin, stdout).expect("Failed to create server");
+    test_server.init().await.expect("Test server failed to init");
+    let _ = test_server.await;
 }

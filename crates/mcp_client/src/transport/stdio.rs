@@ -29,8 +29,8 @@ pub enum JsonRpcStdioTransport {
         receiver: broadcast::Receiver<Result<JsonRpcMessage, TransportError>>,
     },
     Server {
-        stdin: Stdin,
-        stdout: Stdout,
+        stdout: Arc<Mutex<Stdout>>,
+        receiver: broadcast::Receiver<Result<JsonRpcMessage, TransportError>>,
     },
 }
 
@@ -49,6 +49,8 @@ impl JsonRpcStdioTransport {
             let mut buf_reader = BufReader::new(stdout);
             loop {
                 buffer.clear();
+                // Messages are delimited by newlines and assumed to contain no embedded newlines
+                // See https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/transports/#stdio
                 match buf_reader.read_until(b'\n', &mut buffer).await {
                     Ok(0) => continue,
                     Ok(_) => match serde_json::from_slice::<JsonRpcMessage>(buffer.as_slice()) {
@@ -68,8 +70,33 @@ impl JsonRpcStdioTransport {
         Ok(JsonRpcStdioTransport::Client { stdin, receiver })
     }
 
-    pub fn server(stdin: Stdin, stdout: Stdout) -> Self {
-        JsonRpcStdioTransport::Server { stdin, stdout }
+    pub fn server(stdin: Stdin, stdout: Stdout) -> Result<Self, TransportError> {
+        let (tx, receiver) = broadcast::channel::<Result<JsonRpcMessage, TransportError>>(100);
+        tokio::spawn(async move {
+            let mut buffer = Vec::<u8>::new();
+            let mut buf_reader = BufReader::new(stdin);
+            loop {
+                buffer.clear();
+                // Messages are delimited by newlines and assumed to contain no embedded newlines
+                // See https://spec.modelcontextprotocol.io/specification/2024-11-05/basic/transports/#stdio
+                match buf_reader.read_until(b'\n', &mut buffer).await {
+                    Ok(0) => continue,
+                    Ok(_) => match serde_json::from_slice::<JsonRpcMessage>(buffer.as_slice()) {
+                        Ok(msg) => {
+                            let _ = tx.send(Ok(msg));
+                        },
+                        Err(e) => {
+                            let _ = tx.send(Err(e.into()));
+                        },
+                    },
+                    Err(e) => {
+                        let _ = tx.send(Err(e.into()));
+                    },
+                }
+            }
+        });
+        let stdout = Arc::new(Mutex::new(stdout));
+        Ok(JsonRpcStdioTransport::Server { stdout, receiver })
     }
 }
 
@@ -91,20 +118,28 @@ impl Transport for JsonRpcStdioTransport {
                     .map_err(|e| TransportError::Custom(format!("Error writing to server: {:?}", e)))?;
                 Ok(())
             },
-            JsonRpcStdioTransport::Server { stdin: _, stdout: _ } => {
-                todo!()
+            JsonRpcStdioTransport::Server { stdout, .. } => {
+                let mut serialized = serde_json::to_vec(msg)?;
+                serialized.push(b'\n');
+                let mut stdout = stdout.lock().await;
+                stdout
+                    .write_all(&serialized)
+                    .await
+                    .map_err(|e| TransportError::Custom(format!("Error writing to client: {:?}", e)))?;
+                stdout
+                    .flush()
+                    .await
+                    .map_err(|e| TransportError::Custom(format!("Error writing to client: {:?}", e)))?;
+                Ok(())
             },
         }
     }
 
     async fn listen(&self) -> Result<JsonRpcMessage, TransportError> {
         match self {
-            JsonRpcStdioTransport::Client { receiver, .. } => {
+            JsonRpcStdioTransport::Client { receiver, .. } | JsonRpcStdioTransport::Server { receiver, .. } => {
                 let mut rx = receiver.resubscribe();
                 rx.recv().await?
-            },
-            JsonRpcStdioTransport::Server { stdin: _, stdout: _ } => {
-                todo!();
             },
         }
     }
