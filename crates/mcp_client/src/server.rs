@@ -1,5 +1,9 @@
-use std::future::Future;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::atomic::AtomicU64;
+use std::sync::{
+    Arc,
+    Mutex,
+};
 
 use tokio::io::{
     Stdin,
@@ -8,30 +12,43 @@ use tokio::io::{
 use tokio::task::JoinHandle;
 
 use crate::client::StdioTransport;
+use crate::error::ErrorCode;
 use crate::transport::base_protocol::{
     JsonRpcError,
     JsonRpcMessage,
+    JsonRpcNotification,
     JsonRpcRequest,
     JsonRpcResponse,
 };
 use crate::transport::stdio::JsonRpcStdioTransport;
 use crate::transport::{
+    JsonRpcVersion,
     Transport,
     TransportError,
 };
 
 pub type Request = serde_json::Value;
 pub type Response = Option<serde_json::Value>;
+pub type InitializedServer = JoinHandle<Result<(), ServerError>>;
+
+pub trait PreServerRequestHandler {
+    fn register_pending_request_callback(&mut self, cb: impl Fn(u64) -> Option<JsonRpcRequest> + Send + Sync + 'static);
+}
 
 #[async_trait::async_trait]
-pub trait ServerRequestHandler: Send + Sync + Clone + 'static {
-    async fn handle_request(&self, method: &str, params: Option<serde_json::Value>) -> Result<Response, ServerError>;
+pub trait ServerRequestHandler: PreServerRequestHandler + Send + Sync + 'static {
+    async fn handle_initialize(&self, params: Option<serde_json::Value>) -> Result<Response, ServerError>;
+    async fn handle_incoming(&self, method: &str, params: Option<serde_json::Value>) -> Result<Response, ServerError>;
+    async fn handle_response(&self, resp: JsonRpcResponse) -> Result<(), ServerError>;
+    async fn handle_shutdown(&self) -> Result<(), ServerError>;
 }
 
 pub struct Server<T: Transport, H: ServerRequestHandler> {
-    transport: Arc<T>,
-    handler: H,
-    listener: Option<JoinHandle<Result<(), ServerError>>>,
+    has_initialized: bool,
+    transport: Option<Arc<T>>,
+    handler: Option<H>,
+    pending_requests: Arc<Mutex<HashMap<u64, JsonRpcRequest>>>,
+    current_id: AtomicU64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -46,37 +63,41 @@ pub enum ServerError {
     UnexpectedMsgType,
     #[error("{0}")]
     NegotiationError(String),
-    #[error("Failed to obtain request method")]
-    MissingMethod,
     #[error(transparent)]
     TokioJoinError(#[from] tokio::task::JoinError),
+    #[error("Failed to obtain request method")]
+    MissingMethod,
+    #[error("Failed to obtain request id")]
+    MissingId,
+    #[error("Failed to initialize server. Missing transport")]
+    MissingTransport,
+    #[error("Failed to initialize server. Missing handler")]
+    MissingHandler,
 }
 
 impl<H> Server<StdioTransport, H>
 where
     H: ServerRequestHandler,
 {
-    pub fn new(handler: H, stdin: Stdin, stdout: Stdout) -> Result<Self, ServerError> {
+    pub fn new(mut handler: H, stdin: Stdin, stdout: Stdout) -> Result<Self, ServerError> {
         let transport = JsonRpcStdioTransport::server(stdin, stdout)?;
-        Ok(Self {
-            transport: Arc::new(transport),
-            handler,
-            listener: None,
-        })
-    }
-}
-
-impl<T, H> Clone for Server<T, H>
-where
-    T: Transport,
-    H: ServerRequestHandler,
-{
-    fn clone(&self) -> Self {
-        Self {
-            transport: self.transport.clone(),
-            handler: self.handler.clone(),
-            listener: None,
-        }
+        let pending_requests = Arc::new(Mutex::new(HashMap::<u64, JsonRpcRequest>::new()));
+        let pending_requests_clone = pending_requests.clone();
+        let cb = move |id: u64| -> Option<JsonRpcRequest> {
+            match pending_requests_clone.lock() {
+                Ok(mut p) => p.remove(&id),
+                Err(_) => None,
+            }
+        };
+        handler.register_pending_request_callback(cb);
+        let server = Self {
+            has_initialized: false,
+            transport: Some(Arc::new(transport)),
+            handler: Some(handler),
+            pending_requests,
+            current_id: AtomicU64::new(0),
+        };
+        Ok(server)
     }
 }
 
@@ -85,17 +106,80 @@ where
     T: Transport,
     H: ServerRequestHandler,
 {
-    pub async fn init(&mut self) -> Result<(), ServerError> {
-        let server_clone = self.clone();
+    pub fn init(mut self) -> Result<InitializedServer, ServerError> {
+        let transport = self.transport.take().ok_or(ServerError::MissingTransport)?;
+        let handler = self.handler.take().ok_or(ServerError::MissingHandler)?;
         let listener = tokio::spawn(async move {
             loop {
-                match server_clone.transport.listen().await {
-                    Ok(msg) => {
+                match transport.listen().await {
+                    Ok(msg) if msg.is_initialize() => {
+                        let id = msg.id().unwrap_or_default();
+                        if self.has_initialized {
+                            let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                                jsonrpc: JsonRpcVersion::default(),
+                                id,
+                                error: Some(JsonRpcError {
+                                    code: ErrorCode::InvalidRequest.into(),
+                                    message: "Server has already been initialized".to_owned(),
+                                    data: None,
+                                }),
+                                ..Default::default()
+                            });
+                            let _ = transport.send(&resp).await;
+                            continue;
+                        }
+                        let JsonRpcMessage::Request(req) = msg else {
+                            let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                                jsonrpc: JsonRpcVersion::default(),
+                                id,
+                                error: Some(JsonRpcError {
+                                    code: ErrorCode::InvalidRequest.into(),
+                                    message: "Invalid method for initialization (use request)".to_owned(),
+                                    data: None,
+                                }),
+                                ..Default::default()
+                            });
+                            let _ = transport.send(&resp).await;
+                            continue;
+                        };
+                        let JsonRpcRequest { params, .. } = req;
+                        match handler.handle_initialize(params).await {
+                            Ok(result) => {
+                                let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                                    id,
+                                    result,
+                                    ..Default::default()
+                                });
+                                let _ = transport.send(&resp).await;
+                                self.has_initialized = true;
+                                continue;
+                            },
+                            Err(_e) => {
+                                let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                                    jsonrpc: JsonRpcVersion::default(),
+                                    id,
+                                    error: Some(JsonRpcError {
+                                        code: ErrorCode::InternalError.into(),
+                                        message: "Error producing initialization response".to_owned(),
+                                        data: None,
+                                    }),
+                                    ..Default::default()
+                                });
+                                let _ = transport.send(&resp).await;
+                                continue;
+                            },
+                        }
+                    },
+                    Ok(msg) if msg.is_shutdown() => {
+                        // TODO: add shutdown routine
+                    },
+                    Ok(msg) if self.has_initialized => {
                         match msg {
                             JsonRpcMessage::Request(req) => {
-                                let jsonrpc = req.jsonrpc.clone();
-                                let id = req.id;
-                                let resp = server_clone.handle_request(req).await.map_or_else(
+                                let JsonRpcRequest {
+                                    id, jsonrpc, params, ..
+                                } = req;
+                                let resp = handler.handle_initialize(params).await.map_or_else(
                                     // TODO: handle error generation
                                     |error| {
                                         let err = JsonRpcError {
@@ -121,12 +205,31 @@ where
                                         JsonRpcMessage::Response(resp)
                                     },
                                 );
-                                let _ = server_clone.transport.send(&resp).await;
+                                let _ = transport.send(&resp).await;
                             },
-                            JsonRpcMessage::Notification(_notif) => {},
-                            JsonRpcMessage::Response(_) => { /* noop since direct response is handled inside the request api */
+                            JsonRpcMessage::Notification(notif) => {
+                                let JsonRpcNotification { ref method, params, .. } = notif;
+                                let _ = handler.handle_incoming(method, params).await;
+                            },
+                            JsonRpcMessage::Response(resp) => {
+                                let _ = handler.handle_response(resp).await;
                             },
                         }
+                    },
+                    Ok(msg) => {
+                        let id = msg.id().unwrap_or_default();
+                        let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                            jsonrpc: JsonRpcVersion::default(),
+                            id,
+                            error: Some(JsonRpcError {
+                                code: ErrorCode::ServerNotInitialized.into(),
+                                message: "Server has not been initialized".to_owned(),
+                                data: None,
+                            }),
+                            ..Default::default()
+                        });
+                        let _ = transport.send(&resp).await;
+                        continue;
                     },
                     Err(_e) => {
                         // TODO: error handling
@@ -134,30 +237,6 @@ where
                 }
             }
         });
-        self.listener.replace(listener);
-        Ok(())
-    }
-
-    async fn handle_request(&self, request: JsonRpcRequest) -> Result<Response, ServerError> {
-        let JsonRpcRequest { ref method, params, .. } = request;
-        self.handler.handle_request(method, params).await
-    }
-}
-
-impl<T, H> Future for Server<T, H>
-where
-    T: Transport,
-    H: ServerRequestHandler,
-{
-    type Output = Result<(), ServerError>;
-
-    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-        // SAFETY: we're not moving any pinned fields out of self
-        let self_mut = unsafe { self.as_mut().get_unchecked_mut() };
-        let Some(listener) = self_mut.listener.take() else {
-            return std::task::Poll::Ready(Ok(()));
-        };
-        let listener = std::pin::pin!(listener);
-        listener.poll(cx)?
+        Ok(listener)
     }
 }

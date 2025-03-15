@@ -250,10 +250,51 @@ mod tests {
             bin_path: bin_path.to_str().unwrap().to_string(),
             args: ["1".to_owned()].to_vec(),
             timeout: 60,
-            init_params: serde_json::json!({}),
+            init_params: serde_json::json!({
+              "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                  "roots": {
+                    "listChanged": true
+                  },
+                  "sampling": {}
+                },
+                "clientInfo": {
+                  "name": "ExampleClient",
+                  "version": "1.0.0"
+                }
+              }
+            }),
+        };
+        let client_config_two = ClientConfig {
+            tool_name: "test_tool".to_owned(),
+            bin_path: bin_path.to_str().unwrap().to_string(),
+            args: ["1".to_owned()].to_vec(),
+            timeout: 60,
+            init_params: serde_json::json!({
+              "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                  "roots": {
+                    "listChanged": false
+                  },
+                  "sampling": {}
+                },
+                "clientInfo": {
+                  "name": "ExampleClient",
+                  "version": "1.0.0"
+                }
+              }
+            }),
         };
         let mut client = Client::<StdioTransport>::from_config(client_config).expect("Failed to create client");
-        client.init().await.expect("Client init failed");
+        let mut client_two = Client::<StdioTransport>::from_config(client_config_two).expect("Failed to create client");
+        // let sercap = client.init().await.expect("Client init failed");
+        let (sercap, sercap_two) = tokio::join!(client.init(), client_two.init());
+        let sercap = sercap.expect("Init for client one failed");
+        let sercap_two = sercap_two.expect("init for client two failed");
+        println!("sercap: {:#?}", sercap);
+        println!("sercap: {:#?}", sercap_two);
         let output = client.request("some_method", None).await.unwrap();
 
         println!("output is {:?}", output);

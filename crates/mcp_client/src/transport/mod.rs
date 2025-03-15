@@ -3,7 +3,8 @@ pub mod stdio;
 
 use std::fmt::Debug;
 
-use base_protocol::JsonRpcMessage;
+pub use base_protocol::*;
+pub use stdio::*;
 use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]

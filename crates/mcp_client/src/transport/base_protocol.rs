@@ -32,6 +32,30 @@ pub enum JsonRpcMessage {
     Notification(JsonRpcNotification),
 }
 
+impl JsonRpcMessage {
+    pub fn is_initialize(&self) -> bool {
+        match self {
+            JsonRpcMessage::Request(req) => req.method == "initialize",
+            _ => false,
+        }
+    }
+
+    pub fn is_shutdown(&self) -> bool {
+        match self {
+            JsonRpcMessage::Notification(notif) => notif.method == "notification/shutdown",
+            _ => false,
+        }
+    }
+
+    pub fn id(&self) -> Option<u64> {
+        match self {
+            JsonRpcMessage::Request(req) => Some(req.id),
+            JsonRpcMessage::Response(resp) => Some(resp.id),
+            JsonRpcMessage::Notification(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct JsonRpcRequest {
     pub jsonrpc: JsonRpcVersion,
