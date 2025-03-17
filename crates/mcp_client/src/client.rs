@@ -216,6 +216,7 @@ fn examine_server_capabilities(ser_cap: &serde_json::Value) -> Result<(), Client
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use serde_json::Value;
 
     use super::*;
     const TEST_BIN_OUT_DIR: &str = "target/debug";
@@ -312,7 +313,7 @@ mod tests {
 
     async fn test_client_routine<T: Transport>(
         mut client: Client<T>,
-        _cap_sent: serde_json::Value,
+        cap_sent: serde_json::Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let _ = client.init().await.expect("Client init failed");
         let client_capabilities_sent = client
@@ -330,10 +331,34 @@ mod tests {
         let cap_recvd = cap_recvd
             .get("result")
             .expect("Verify init params mock request does not contain required field (result)");
-        assert_eq!(
-            serde_json::to_string_pretty(&_cap_sent).expect("Failed to stringify capabilities object"),
-            serde_json::to_string_pretty(cap_recvd).expect("Failed to stringify capabilities object")
-        );
+        assert!(are_json_values_equal(&cap_sent, cap_recvd));
         Ok(())
+    }
+
+    fn are_json_values_equal(a: &Value, b: &Value) -> bool {
+        match (a, b) {
+            (Value::Null, Value::Null) => true,
+            (Value::Bool(a_val), Value::Bool(b_val)) => a_val == b_val,
+            (Value::Number(a_val), Value::Number(b_val)) => a_val == b_val,
+            (Value::String(a_val), Value::String(b_val)) => a_val == b_val,
+            (Value::Array(a_arr), Value::Array(b_arr)) => {
+                if a_arr.len() != b_arr.len() {
+                    return false;
+                }
+                a_arr.iter().zip(b_arr.iter()).all(|(a_item, b_item)| are_json_values_equal(a_item, b_item))
+            },
+            (Value::Object(a_obj), Value::Object(b_obj)) => {
+                if a_obj.len() != b_obj.len() {
+                    return false;
+                }
+                a_obj.iter().all(|(key, a_value)| {
+                    match b_obj.get(key) {
+                        Some(b_value) => are_json_values_equal(a_value, b_value),
+                        None => false
+                    }
+                })
+            },
+            _ => false
+        }
     }
 }
