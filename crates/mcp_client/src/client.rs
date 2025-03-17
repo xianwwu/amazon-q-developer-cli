@@ -216,6 +216,7 @@ fn examine_server_capabilities(ser_cap: &serde_json::Value) -> Result<(), Client
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+
     use serde_json::Value;
 
     use super::*;
@@ -345,20 +346,21 @@ mod tests {
                 if a_arr.len() != b_arr.len() {
                     return false;
                 }
-                a_arr.iter().zip(b_arr.iter()).all(|(a_item, b_item)| are_json_values_equal(a_item, b_item))
+                a_arr
+                    .iter()
+                    .zip(b_arr.iter())
+                    .all(|(a_item, b_item)| are_json_values_equal(a_item, b_item))
             },
             (Value::Object(a_obj), Value::Object(b_obj)) => {
                 if a_obj.len() != b_obj.len() {
                     return false;
                 }
-                a_obj.iter().all(|(key, a_value)| {
-                    match b_obj.get(key) {
-                        Some(b_value) => are_json_values_equal(a_value, b_value),
-                        None => false
-                    }
+                a_obj.iter().all(|(key, a_value)| match b_obj.get(key) {
+                    Some(b_value) => are_json_values_equal(a_value, b_value),
+                    None => false,
                 })
             },
-            _ => false
+            _ => false,
         }
     }
 }
