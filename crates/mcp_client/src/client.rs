@@ -112,7 +112,9 @@ where
                 match transport_ref.listen().await {
                     Ok(msg) => {
                         match msg {
-                            JsonRpcMessage::Request(_req) => {},
+                            JsonRpcMessage::Request(req) => {
+                                println!("Received request {:#?}", req);
+                            },
                             JsonRpcMessage::Notification(_notif) => {},
                             JsonRpcMessage::Response(_) => { /* noop since direct response is handled inside the request api */
                             },
@@ -144,7 +146,7 @@ where
         Ok(server_capabilities)
     }
 
-    /// Sends a request to the server asociated.
+    /// Sends a request to the server associated.
     /// This call will yield until a response is received.
     pub async fn request(
         &self,
@@ -245,58 +247,93 @@ mod tests {
         let bin_path = workspace_root.join(TEST_BIN_OUT_DIR).join(TEST_SERVER_NAME);
         println!("bin path: {}", bin_path.to_str().unwrap_or("no path found"));
 
-        let client_config = ClientConfig {
+        // Testing 2 concurrent sessions to make sure transport layer does not overlap.
+        let init_params_one = serde_json::json!({
+          "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+              "roots": {
+                "listChanged": true
+              },
+              "sampling": {}
+            },
+            "clientInfo": {
+              "name": "TestClientOne",
+              "version": "1.0.0"
+            }
+          }
+        });
+        let client_config_one = ClientConfig {
             tool_name: "test_tool".to_owned(),
             bin_path: bin_path.to_str().unwrap().to_string(),
             args: ["1".to_owned()].to_vec(),
             timeout: 60,
-            init_params: serde_json::json!({
-              "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {
-                  "roots": {
-                    "listChanged": true
-                  },
-                  "sampling": {}
-                },
-                "clientInfo": {
-                  "name": "ExampleClient",
-                  "version": "1.0.0"
-                }
-              }
-            }),
+            init_params: init_params_one.clone(),
         };
+        let init_params_two = serde_json::json!({
+          "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+              "roots": {
+                "listChanged": false
+              },
+              "sampling": {}
+            },
+            "clientInfo": {
+              "name": "TestClientTwo",
+              "version": "1.0.0"
+            }
+          }
+        });
         let client_config_two = ClientConfig {
             tool_name: "test_tool".to_owned(),
             bin_path: bin_path.to_str().unwrap().to_string(),
             args: ["1".to_owned()].to_vec(),
             timeout: 60,
-            init_params: serde_json::json!({
-              "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {
-                  "roots": {
-                    "listChanged": false
-                  },
-                  "sampling": {}
-                },
-                "clientInfo": {
-                  "name": "ExampleClient",
-                  "version": "1.0.0"
-                }
-              }
-            }),
+            init_params: init_params_two.clone(),
         };
-        let mut client = Client::<StdioTransport>::from_config(client_config).expect("Failed to create client");
-        let mut client_two = Client::<StdioTransport>::from_config(client_config_two).expect("Failed to create client");
-        // let sercap = client.init().await.expect("Client init failed");
-        let (sercap, sercap_two) = tokio::join!(client.init(), client_two.init());
-        let sercap = sercap.expect("Init for client one failed");
-        let sercap_two = sercap_two.expect("init for client two failed");
-        println!("sercap: {:#?}", sercap);
-        println!("sercap: {:#?}", sercap_two);
-        let output = client.request("some_method", None).await.unwrap();
+        let client_one = Client::<StdioTransport>::from_config(client_config_one).expect("Failed to create client");
+        let client_two = Client::<StdioTransport>::from_config(client_config_two).expect("Failed to create client");
+        let (res_one, res_two) = tokio::join!(
+            time::timeout(
+                time::Duration::from_secs(2),
+                test_client_routine(client_one, init_params_one)
+            ),
+            time::timeout(
+                time::Duration::from_secs(2),
+                test_client_routine(client_two, init_params_two)
+            )
+        );
+        let res_one = res_one.expect("Client one timed out");
+        let res_two = res_two.expect("Client two timed out");
+        assert!(res_one.is_ok());
+        assert!(res_two.is_ok());
+    }
 
-        println!("output is {:?}", output);
+    async fn test_client_routine<T: Transport>(
+        mut client: Client<T>,
+        _cap_sent: serde_json::Value,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let _ = client.init().await.expect("Client init failed");
+        let client_capabilities_sent = client
+            .request("verify_init_ack_sent", None)
+            .await
+            .expect("Verify init ack mock request failed");
+        let has_server_recvd_init_ack = client_capabilities_sent
+            .get("result")
+            .expect("Failed to retrieve client capabilities sent.");
+        assert_eq!(has_server_recvd_init_ack.to_string(), "true");
+        let cap_recvd = client
+            .request("verify_init_params_sent", None)
+            .await
+            .expect("Verify init params mock request failed");
+        let cap_recvd = cap_recvd
+            .get("result")
+            .expect("Verify init params mock request does not contain required field (result)");
+        assert_eq!(
+            serde_json::to_string_pretty(&_cap_sent).expect("Failed to stringify capabilities object"),
+            serde_json::to_string_pretty(cap_recvd).expect("Failed to stringify capabilities object")
+        );
+        Ok(())
     }
 }

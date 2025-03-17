@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::str::FromStr;
+
 use mcp_client::server::{
     self,
     PreServerRequestHandler,
@@ -10,10 +13,14 @@ use mcp_client::transport::{
     JsonRpcResponse,
     JsonRpcStdioTransport,
 };
+use tokio::sync::Mutex;
 
 #[derive(Default)]
 struct Handler {
     pending_request: Option<Box<dyn Fn(u64) -> Option<JsonRpcRequest> + Send + Sync>>,
+    #[allow(clippy::type_complexity)]
+    send_request: Option<Box<dyn Fn(&str, Option<serde_json::Value>) -> Result<(), ServerError> + Send + Sync>>,
+    storage: Mutex<HashMap<String, serde_json::Value>>,
 }
 
 impl PreServerRequestHandler for Handler {
@@ -23,31 +30,106 @@ impl PreServerRequestHandler for Handler {
     ) {
         self.pending_request = Some(Box::new(cb));
     }
+
+    fn register_send_request_callback(
+        &mut self,
+        cb: impl Fn(&str, Option<serde_json::Value>) -> Result<(), ServerError> + Send + Sync + 'static,
+    ) {
+        self.send_request = Some(Box::new(cb));
+    }
 }
 
 #[async_trait::async_trait]
 impl ServerRequestHandler for Handler {
     async fn handle_initialize(&self, params: Option<serde_json::Value>) -> Result<Response, ServerError> {
-        // For test, we are just going to repeat what we received back to the client for it to be
-        // verified
-        Ok(params)
+        let mut storage = self.storage.lock().await;
+        if let Some(params) = params {
+            storage.insert("client_cap".to_owned(), params);
+        }
+        let capabilities = serde_json::json!({
+          "protocolVersion": "2024-11-05",
+          "capabilities": {
+            "logging": {},
+            "prompts": {
+              "listChanged": true
+            },
+            "resources": {
+              "subscribe": true,
+              "listChanged": true
+            },
+            "tools": {
+              "listChanged": true
+            }
+          },
+          "serverInfo": {
+            "name": "TestServer",
+            "version": "1.0.0"
+          }
+        });
+        Ok(Some(capabilities))
     }
 
-    async fn handle_incoming(&self, method: &str, params: Option<serde_json::Value>) -> Result<Response, ServerError> {
+    async fn handle_incoming(&self, method: &str, _params: Option<serde_json::Value>) -> Result<Response, ServerError> {
         match method {
-            "notification/initialized" => Ok(None),
+            "notifications/initialized" => {
+                self.storage.lock().await.insert(
+                    "init_ack_sent".to_owned(),
+                    serde_json::Value::from_str("true").expect("Failed to convert string to value"),
+                );
+                Ok(None)
+            },
+            "verify_init_params_sent" => {
+                let storage = self.storage.lock().await;
+                let client_capabilities = storage.get("client_cap").cloned();
+                Ok(client_capabilities)
+            },
+            "verify_init_ack_sent" => {
+                let storage = self.storage.lock().await;
+                Ok(storage.get("init_ack_sent").cloned())
+            },
+            // This is a test path relevant only to sampling
+            "trigger_server_request" => {
+                let Some(ref send_request) = self.send_request else {
+                    return Err(ServerError::MissingMethod);
+                };
+                let params = Some(serde_json::json!({
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": {
+                        "type": "text",
+                        "text": "What is the capital of France?"
+                      }
+                    }
+                  ],
+                  "modelPreferences": {
+                    "hints": [
+                      {
+                        "name": "claude-3-sonnet"
+                      }
+                    ],
+                    "intelligencePriority": 0.8,
+                    "speedPriority": 0.5
+                  },
+                  "systemPrompt": "You are a helpful assistant.",
+                  "maxTokens": 100
+                }));
+                send_request("sampling/createMessage", params)?;
+                Ok(None)
+            },
             _ => Err(ServerError::MissingMethod),
         }
     }
 
+    // This is a test path relevant only to sampling
     async fn handle_response(&self, resp: JsonRpcResponse) -> Result<(), ServerError> {
-        let JsonRpcResponse { id, result, error, .. } = resp;
-        let pending = self.pending_request.as_ref().and_then(|f| f(id));
+        let JsonRpcResponse { id, .. } = resp;
+        let _pending = self.pending_request.as_ref().and_then(|f| f(id));
         Ok(())
     }
 
     async fn handle_shutdown(&self) -> Result<(), ServerError> {
-        todo!();
+        Ok(())
     }
 }
 
