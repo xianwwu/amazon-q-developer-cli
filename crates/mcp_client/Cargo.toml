@@ -19,7 +19,6 @@ path = "test_mcp_server/test_server.rs"
 test = true
 doc = false
 
-
 [dependencies]
 tokio.workspace = true
 serde.workspace = true
