@@ -26,17 +26,18 @@ use super::{
 pub enum JsonRpcStdioTransport {
     Client {
         stdin: Arc<Mutex<ChildStdin>>,
-        receiver: broadcast::Receiver<Result<JsonRpcMessage, TransportError>>,
+        receiver: Arc<Mutex<broadcast::Receiver<Result<JsonRpcMessage, TransportError>>>>,
     },
     Server {
         stdout: Arc<Mutex<Stdout>>,
-        receiver: broadcast::Receiver<Result<JsonRpcMessage, TransportError>>,
+        receiver: Arc<Mutex<broadcast::Receiver<Result<JsonRpcMessage, TransportError>>>>,
     },
 }
 
 impl JsonRpcStdioTransport {
     pub fn client(child_process: Child) -> Result<Self, TransportError> {
         let (tx, receiver) = broadcast::channel::<Result<JsonRpcMessage, TransportError>>(100);
+        let receiver = Arc::new(Mutex::new(receiver));
         let Some(stdout) = child_process.stdout else {
             return Err(TransportError::Custom("No stdout found on child process".to_owned()));
         };
@@ -72,6 +73,7 @@ impl JsonRpcStdioTransport {
 
     pub fn server(stdin: Stdin, stdout: Stdout) -> Result<Self, TransportError> {
         let (tx, receiver) = broadcast::channel::<Result<JsonRpcMessage, TransportError>>(100);
+        let receiver = Arc::new(Mutex::new(receiver));
         tokio::spawn(async move {
             let mut buffer = Vec::<u8>::new();
             let mut buf_reader = BufReader::new(stdin);
@@ -138,8 +140,16 @@ impl Transport for JsonRpcStdioTransport {
     async fn listen(&self) -> Result<JsonRpcMessage, TransportError> {
         match self {
             JsonRpcStdioTransport::Client { receiver, .. } | JsonRpcStdioTransport::Server { receiver, .. } => {
-                let mut rx = receiver.resubscribe();
+                let mut rx = receiver.lock().await.resubscribe();
                 rx.recv().await?
+            },
+        }
+    }
+
+    async fn monitor(&self) -> Result<JsonRpcMessage, TransportError> {
+        match self {
+            JsonRpcStdioTransport::Client { receiver, .. } | JsonRpcStdioTransport::Server { receiver, .. } => {
+                receiver.lock().await.recv().await?
             },
         }
     }

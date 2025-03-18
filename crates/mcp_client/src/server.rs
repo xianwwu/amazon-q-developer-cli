@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::{
+    AtomicBool,
     AtomicU64,
     Ordering,
 };
@@ -51,7 +52,6 @@ pub trait ServerRequestHandler: PreServerRequestHandler + Send + Sync + 'static 
 }
 
 pub struct Server<T: Transport, H: ServerRequestHandler> {
-    has_initialized: bool,
     transport: Option<Arc<T>>,
     handler: Option<H>,
     #[allow(dead_code)]
@@ -125,7 +125,6 @@ where
         };
         handler.register_send_request_callback(request_sender);
         let server = Self {
-            has_initialized: false,
             transport: Some(transport),
             handler: Some(handler),
             pending_requests,
@@ -142,135 +141,151 @@ where
 {
     pub fn init(mut self) -> Result<InitializedServer, ServerError> {
         let transport = self.transport.take().ok_or(ServerError::MissingTransport)?;
-        let handler = self.handler.take().ok_or(ServerError::MissingHandler)?;
+        let handler = Arc::new(self.handler.take().ok_or(ServerError::MissingHandler)?);
+        let has_initialized = Arc::new(AtomicBool::new(false));
         let listener = tokio::spawn(async move {
             loop {
-                match transport.listen().await {
-                    Ok(msg) if msg.is_initialize() => {
-                        let id = msg.id().unwrap_or_default();
-                        if self.has_initialized {
-                            let resp = JsonRpcMessage::Response(JsonRpcResponse {
-                                jsonrpc: JsonRpcVersion::default(),
-                                id,
-                                error: Some(JsonRpcError {
-                                    code: ErrorCode::InvalidRequest.into(),
-                                    message: "Server has already been initialized".to_owned(),
-                                    data: None,
-                                }),
-                                ..Default::default()
-                            });
-                            let _ = transport.send(&resp).await;
-                            continue;
-                        }
-                        let JsonRpcMessage::Request(req) = msg else {
-                            let resp = JsonRpcMessage::Response(JsonRpcResponse {
-                                jsonrpc: JsonRpcVersion::default(),
-                                id,
-                                error: Some(JsonRpcError {
-                                    code: ErrorCode::InvalidRequest.into(),
-                                    message: "Invalid method for initialization (use request)".to_owned(),
-                                    data: None,
-                                }),
-                                ..Default::default()
-                            });
-                            let _ = transport.send(&resp).await;
-                            continue;
-                        };
-                        let JsonRpcRequest { params, .. } = req;
-                        match handler.handle_initialize(params).await {
-                            Ok(result) => {
-                                let resp = JsonRpcMessage::Response(JsonRpcResponse {
-                                    id,
-                                    result,
-                                    ..Default::default()
-                                });
-                                let _ = transport.send(&resp).await;
-                                self.has_initialized = true;
-                                continue;
-                            },
-                            Err(_e) => {
-                                let resp = JsonRpcMessage::Response(JsonRpcResponse {
-                                    jsonrpc: JsonRpcVersion::default(),
-                                    id,
-                                    error: Some(JsonRpcError {
-                                        code: ErrorCode::InternalError.into(),
-                                        message: "Error producing initialization response".to_owned(),
-                                        data: None,
-                                    }),
-                                    ..Default::default()
-                                });
-                                let _ = transport.send(&resp).await;
-                                continue;
-                            },
-                        }
-                    },
-                    Ok(msg) if msg.is_shutdown() => {
-                        // TODO: add shutdown routine
-                    },
-                    Ok(msg) if self.has_initialized => match msg {
-                        JsonRpcMessage::Request(req) => {
-                            let JsonRpcRequest {
-                                id,
-                                jsonrpc,
-                                params,
-                                ref method,
-                            } = req;
-                            let resp = handler.handle_incoming(method, params).await.map_or_else(
-                                |error| {
-                                    let err = JsonRpcError {
-                                        code: ErrorCode::InternalError.into(),
-                                        message: error.to_string(),
-                                        data: None,
-                                    };
-                                    let resp = JsonRpcResponse {
-                                        jsonrpc: jsonrpc.clone(),
-                                        id,
-                                        result: None,
-                                        error: Some(err),
-                                    };
-                                    JsonRpcMessage::Response(resp)
-                                },
-                                |result| {
-                                    let resp = JsonRpcResponse {
-                                        jsonrpc: jsonrpc.clone(),
-                                        id,
-                                        result,
-                                        error: None,
-                                    };
-                                    JsonRpcMessage::Response(resp)
-                                },
-                            );
-                            let _ = transport.send(&resp).await;
-                        },
-                        JsonRpcMessage::Notification(notif) => {
-                            let JsonRpcNotification { ref method, params, .. } = notif;
-                            let _ = handler.handle_incoming(method, params).await;
-                        },
-                        JsonRpcMessage::Response(resp) => {
-                            let _ = handler.handle_response(resp).await;
-                        },
-                    },
-                    Ok(msg) => {
-                        let id = msg.id().unwrap_or_default();
-                        let resp = JsonRpcMessage::Response(JsonRpcResponse {
-                            jsonrpc: JsonRpcVersion::default(),
-                            id,
-                            error: Some(JsonRpcError {
-                                code: ErrorCode::ServerNotInitialized.into(),
-                                message: "Server has not been initialized".to_owned(),
-                                data: None,
-                            }),
-                            ..Default::default()
-                        });
-                        let _ = transport.send(&resp).await;
-                        continue;
-                    },
-                    Err(_e) => {
-                        // TODO: error handling
-                    },
-                }
+                let request = transport.monitor().await;
+                let transport_clone = transport.clone();
+                let has_init_clone = has_initialized.clone();
+                let handler_clone = handler.clone();
+                tokio::task::spawn(async move {
+                    process_request(has_init_clone, transport_clone, handler_clone, request).await;
+                });
             }
         });
         Ok(listener)
+    }
+}
+
+async fn process_request<T, H>(
+    has_initialized: Arc<AtomicBool>,
+    transport: Arc<T>,
+    handler: Arc<H>,
+    request: Result<JsonRpcMessage, TransportError>,
+) where
+    T: Transport,
+    H: ServerRequestHandler,
+{
+    match request {
+        Ok(msg) if msg.is_initialize() => {
+            let id = msg.id().unwrap_or_default();
+            if has_initialized.load(Ordering::SeqCst) {
+                let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                    jsonrpc: JsonRpcVersion::default(),
+                    id,
+                    error: Some(JsonRpcError {
+                        code: ErrorCode::InvalidRequest.into(),
+                        message: "Server has already been initialized".to_owned(),
+                        data: None,
+                    }),
+                    ..Default::default()
+                });
+                let _ = transport.send(&resp).await;
+                return;
+            }
+            let JsonRpcMessage::Request(req) = msg else {
+                let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                    jsonrpc: JsonRpcVersion::default(),
+                    id,
+                    error: Some(JsonRpcError {
+                        code: ErrorCode::InvalidRequest.into(),
+                        message: "Invalid method for initialization (use request)".to_owned(),
+                        data: None,
+                    }),
+                    ..Default::default()
+                });
+                let _ = transport.send(&resp).await;
+                return;
+            };
+            let JsonRpcRequest { params, .. } = req;
+            match handler.handle_initialize(params).await {
+                Ok(result) => {
+                    let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                        id,
+                        result,
+                        ..Default::default()
+                    });
+                    let _ = transport.send(&resp).await;
+                    has_initialized.store(true, Ordering::SeqCst);
+                },
+                Err(_e) => {
+                    let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                        jsonrpc: JsonRpcVersion::default(),
+                        id,
+                        error: Some(JsonRpcError {
+                            code: ErrorCode::InternalError.into(),
+                            message: "Error producing initialization response".to_owned(),
+                            data: None,
+                        }),
+                        ..Default::default()
+                    });
+                    let _ = transport.send(&resp).await;
+                },
+            }
+        },
+        Ok(msg) if msg.is_shutdown() => {
+            // TODO: add shutdown routine
+        },
+        Ok(msg) if has_initialized.load(Ordering::SeqCst) => match msg {
+            JsonRpcMessage::Request(req) => {
+                let JsonRpcRequest {
+                    id,
+                    jsonrpc,
+                    params,
+                    ref method,
+                } = req;
+                let resp = handler.handle_incoming(method, params).await.map_or_else(
+                    |error| {
+                        let err = JsonRpcError {
+                            code: ErrorCode::InternalError.into(),
+                            message: error.to_string(),
+                            data: None,
+                        };
+                        let resp = JsonRpcResponse {
+                            jsonrpc: jsonrpc.clone(),
+                            id,
+                            result: None,
+                            error: Some(err),
+                        };
+                        JsonRpcMessage::Response(resp)
+                    },
+                    |result| {
+                        let resp = JsonRpcResponse {
+                            jsonrpc: jsonrpc.clone(),
+                            id,
+                            result,
+                            error: None,
+                        };
+                        JsonRpcMessage::Response(resp)
+                    },
+                );
+                let _ = transport.send(&resp).await;
+            },
+            JsonRpcMessage::Notification(notif) => {
+                let JsonRpcNotification { ref method, params, .. } = notif;
+                let _ = handler.handle_incoming(method, params).await;
+            },
+            JsonRpcMessage::Response(resp) => {
+                let _ = handler.handle_response(resp).await;
+            },
+        },
+        Ok(msg) => {
+            let id = msg.id().unwrap_or_default();
+            let resp = JsonRpcMessage::Response(JsonRpcResponse {
+                jsonrpc: JsonRpcVersion::default(),
+                id,
+                error: Some(JsonRpcError {
+                    code: ErrorCode::ServerNotInitialized.into(),
+                    message: "Server has not been initialized".to_owned(),
+                    data: None,
+                }),
+                ..Default::default()
+            });
+            let _ = transport.send(&resp).await;
+        },
+        Err(_e) => {
+            // TODO: error handling
+        },
     }
 }

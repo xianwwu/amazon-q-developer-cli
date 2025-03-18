@@ -72,20 +72,28 @@ impl ServerRequestHandler for Handler {
     async fn handle_incoming(&self, method: &str, _params: Option<serde_json::Value>) -> Result<Response, ServerError> {
         match method {
             "notifications/initialized" => {
-                self.storage.lock().await.insert(
-                    "init_ack_sent".to_owned(),
-                    serde_json::Value::from_str("true").expect("Failed to convert string to value"),
-                );
+                {
+                    let mut storage = self.storage.lock().await;
+                    storage.insert(
+                        "init_ack_sent".to_owned(),
+                        serde_json::Value::from_str("true").expect("Failed to convert string to value"),
+                    );
+                }
                 Ok(None)
             },
             "verify_init_params_sent" => {
-                let storage = self.storage.lock().await;
-                let client_capabilities = storage.get("client_cap").cloned();
+                let client_capabilities = {
+                    let storage = self.storage.lock().await;
+                    storage.get("client_cap").cloned()
+                };
                 Ok(client_capabilities)
             },
             "verify_init_ack_sent" => {
-                let storage = self.storage.lock().await;
-                Ok(storage.get("init_ack_sent").cloned())
+                let result = {
+                    let storage = self.storage.lock().await;
+                    storage.get("init_ack_sent").cloned()
+                };
+                Ok(result)
             },
             // This is a test path relevant only to sampling
             "trigger_server_request" => {

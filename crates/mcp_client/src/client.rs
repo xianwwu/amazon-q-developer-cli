@@ -55,13 +55,15 @@ pub enum ClientError {
     MissingProcessId,
     #[error("Invalid path received")]
     InvalidPath,
+    #[error("{0}")]
+    ProcessKillError(String),
 }
 
 pub struct Client<T: Transport> {
     tool_name: String,
     transport: Arc<T>,
     timeout: u64,
-    server_process_id: u32,
+    server_process_id: Pid,
     init_params: serde_json::Value,
     current_id: AtomicU64,
 }
@@ -81,8 +83,13 @@ impl Client<StdioTransport> {
             .stderr(Stdio::inherit())
             .args(args)
             .spawn()?;
-        #[allow(clippy::map_err_ignore)]
         let server_process_id = child.id().ok_or(ClientError::MissingProcessId)?;
+        #[allow(clippy::map_err_ignore)]
+        let server_process_id = Pid::from_raw(
+            server_process_id
+                .try_into()
+                .map_err(|_| ClientError::MissingProcessId)?,
+        );
         let transport = Arc::new(transport::stdio::JsonRpcStdioTransport::client(child)?);
         Ok(Self {
             tool_name,
@@ -92,6 +99,15 @@ impl Client<StdioTransport> {
             init_params,
             current_id: AtomicU64::new(0),
         })
+    }
+}
+
+impl<T> Drop for Client<T>
+where
+    T: Transport,
+{
+    fn drop(&mut self) {
+        let _ = nix::sys::signal::kill(self.server_process_id, Signal::SIGTERM);
     }
 }
 
@@ -109,14 +125,14 @@ where
 
         tokio::spawn(async move {
             loop {
-                match transport_ref.listen().await {
+                match transport_ref.monitor().await {
                     Ok(msg) => {
                         match msg {
                             JsonRpcMessage::Request(req) => {
                                 println!("Received request {:#?}", req);
                             },
                             JsonRpcMessage::Notification(_notif) => {},
-                            JsonRpcMessage::Response(_) => { /* noop since direct response is handled inside the request api */
+                            JsonRpcMessage::Response(_resp) => { /* noop since direct response is handled inside the request api */
                             },
                         }
                     },
@@ -129,13 +145,7 @@ where
 
         let server_capabilities = self.request("initialize", Some(self.init_params.clone())).await?;
         if let Err(e) = examine_server_capabilities(&server_capabilities) {
-            #[allow(clippy::map_err_ignore)]
-            let pid = Pid::from_raw(
-                self.server_process_id
-                    .try_into()
-                    .map_err(|_| ClientError::MissingProcessId)?,
-            );
-            let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
+            let _ = nix::sys::signal::kill(self.server_process_id, Signal::SIGTERM);
             return Err(ClientError::NegotiationError(format!(
                 "Client {} has failed to negotiate server capabilities with server: {:?}",
                 self.tool_name, e
@@ -239,7 +249,7 @@ mod tests {
         PathBuf::from(workspace_root)
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_client_stdio() {
         std::process::Command::new("cargo")
             .args(["build", "--bin", TEST_SERVER_NAME])
@@ -290,20 +300,21 @@ mod tests {
         let client_config_two = ClientConfig {
             tool_name: "test_tool".to_owned(),
             bin_path: bin_path.to_str().unwrap().to_string(),
-            args: ["1".to_owned()].to_vec(),
+            args: ["2".to_owned()].to_vec(),
             timeout: 60,
             init_params: init_params_two.clone(),
         };
-        let client_one = Client::<StdioTransport>::from_config(client_config_one).expect("Failed to create client");
-        let client_two = Client::<StdioTransport>::from_config(client_config_two).expect("Failed to create client");
+        let mut client_one = Client::<StdioTransport>::from_config(client_config_one).expect("Failed to create client");
+        let mut client_two = Client::<StdioTransport>::from_config(client_config_two).expect("Failed to create client");
+
         let (res_one, res_two) = tokio::join!(
             time::timeout(
-                time::Duration::from_secs(2),
-                test_client_routine(client_one, init_params_one)
+                time::Duration::from_secs(5),
+                test_client_routine(&mut client_one, init_params_one)
             ),
             time::timeout(
-                time::Duration::from_secs(2),
-                test_client_routine(client_two, init_params_two)
+                time::Duration::from_secs(5),
+                test_client_routine(&mut client_two, init_params_two)
             )
         );
         let res_one = res_one.expect("Client one timed out");
@@ -313,10 +324,11 @@ mod tests {
     }
 
     async fn test_client_routine<T: Transport>(
-        mut client: Client<T>,
+        client: &mut Client<T>,
         cap_sent: serde_json::Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let _ = client.init().await.expect("Client init failed");
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
         let client_capabilities_sent = client
             .request("verify_init_ack_sent", None)
             .await

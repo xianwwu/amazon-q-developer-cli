@@ -37,4 +37,6 @@ pub trait Transport: Send + Sync + Debug + 'static {
     async fn send(&self, msg: &JsonRpcMessage) -> Result<(), TransportError>;
     /// Listens to awaits for a response.
     async fn listen(&self) -> Result<JsonRpcMessage, TransportError>;
+    /// Monitors for a reasponse.
+    async fn monitor(&self) -> Result<JsonRpcMessage, TransportError>;
 }
