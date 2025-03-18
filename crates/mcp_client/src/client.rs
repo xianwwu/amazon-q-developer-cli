@@ -128,9 +128,7 @@ where
                 match transport_ref.monitor().await {
                     Ok(msg) => {
                         match msg {
-                            JsonRpcMessage::Request(req) => {
-                                println!("Received request {:#?}", req);
-                            },
+                            JsonRpcMessage::Request(_req) => {},
                             JsonRpcMessage::Notification(_notif) => {},
                             JsonRpcMessage::Response(_resp) => { /* noop since direct response is handled inside the request api */
                             },

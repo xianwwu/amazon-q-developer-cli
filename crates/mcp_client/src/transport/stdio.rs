@@ -26,18 +26,21 @@ use super::{
 pub enum JsonRpcStdioTransport {
     Client {
         stdin: Arc<Mutex<ChildStdin>>,
-        receiver: Arc<Mutex<broadcast::Receiver<Result<JsonRpcMessage, TransportError>>>>,
+        exclusive_receiver: Arc<Mutex<broadcast::Receiver<Result<JsonRpcMessage, TransportError>>>>,
+        shared_receiver: broadcast::Receiver<Result<JsonRpcMessage, TransportError>>,
     },
     Server {
         stdout: Arc<Mutex<Stdout>>,
-        receiver: Arc<Mutex<broadcast::Receiver<Result<JsonRpcMessage, TransportError>>>>,
+        exclusive_receiver: Arc<Mutex<broadcast::Receiver<Result<JsonRpcMessage, TransportError>>>>,
+        shared_receiver: broadcast::Receiver<Result<JsonRpcMessage, TransportError>>,
     },
 }
 
 impl JsonRpcStdioTransport {
     pub fn client(child_process: Child) -> Result<Self, TransportError> {
         let (tx, receiver) = broadcast::channel::<Result<JsonRpcMessage, TransportError>>(100);
-        let receiver = Arc::new(Mutex::new(receiver));
+        let exclusive_receiver = Arc::new(Mutex::new(receiver));
+        let shared_receiver = tx.subscribe();
         let Some(stdout) = child_process.stdout else {
             return Err(TransportError::Custom("No stdout found on child process".to_owned()));
         };
@@ -68,12 +71,17 @@ impl JsonRpcStdioTransport {
                 }
             }
         });
-        Ok(JsonRpcStdioTransport::Client { stdin, receiver })
+        Ok(JsonRpcStdioTransport::Client {
+            stdin,
+            exclusive_receiver,
+            shared_receiver,
+        })
     }
 
     pub fn server(stdin: Stdin, stdout: Stdout) -> Result<Self, TransportError> {
         let (tx, receiver) = broadcast::channel::<Result<JsonRpcMessage, TransportError>>(100);
-        let receiver = Arc::new(Mutex::new(receiver));
+        let exclusive_receiver = Arc::new(Mutex::new(receiver));
+        let shared_receiver = tx.subscribe();
         tokio::spawn(async move {
             let mut buffer = Vec::<u8>::new();
             let mut buf_reader = BufReader::new(stdin);
@@ -98,7 +106,11 @@ impl JsonRpcStdioTransport {
             }
         });
         let stdout = Arc::new(Mutex::new(stdout));
-        Ok(JsonRpcStdioTransport::Server { stdout, receiver })
+        Ok(JsonRpcStdioTransport::Server {
+            stdout,
+            exclusive_receiver,
+            shared_receiver,
+        })
     }
 }
 
@@ -139,8 +151,9 @@ impl Transport for JsonRpcStdioTransport {
 
     async fn listen(&self) -> Result<JsonRpcMessage, TransportError> {
         match self {
-            JsonRpcStdioTransport::Client { receiver, .. } | JsonRpcStdioTransport::Server { receiver, .. } => {
-                let mut rx = receiver.lock().await.resubscribe();
+            JsonRpcStdioTransport::Client { shared_receiver, .. }
+            | JsonRpcStdioTransport::Server { shared_receiver, .. } => {
+                let mut rx = shared_receiver.resubscribe();
                 rx.recv().await?
             },
         }
@@ -148,8 +161,9 @@ impl Transport for JsonRpcStdioTransport {
 
     async fn monitor(&self) -> Result<JsonRpcMessage, TransportError> {
         match self {
-            JsonRpcStdioTransport::Client { receiver, .. } | JsonRpcStdioTransport::Server { receiver, .. } => {
-                receiver.lock().await.recv().await?
+            JsonRpcStdioTransport::Client { exclusive_receiver, .. }
+            | JsonRpcStdioTransport::Server { exclusive_receiver, .. } => {
+                exclusive_receiver.lock().await.recv().await?
             },
         }
     }
