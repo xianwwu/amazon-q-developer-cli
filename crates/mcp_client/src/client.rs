@@ -24,6 +24,13 @@ use crate::transport::{
     Transport,
     TransportError,
 };
+use crate::{
+    PaginationSupportedOps,
+    PromptsListResult,
+    ResourceTemplatesListResult,
+    ResourcesListResult,
+    ToolsListResult,
+};
 
 pub type ServerCapabilities = serde_json::Value;
 pub type StdioTransport = JsonRpcStdioTransport;
@@ -170,9 +177,76 @@ where
         let msg = JsonRpcMessage::Request(request);
         time::timeout(Duration::from_secs(self.timeout), self.transport.send(&msg)).await??;
         let resp = time::timeout(Duration::from_secs(self.timeout), self.transport.listen()).await??;
-        let JsonRpcMessage::Response(resp) = resp else {
+        let JsonRpcMessage::Response(mut resp) = resp else {
             return Err(ClientError::UnexpectedMsgType);
         };
+        // Pagination support: https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/pagination/#pagination-model
+        let mut next_cursor = resp.result.as_ref().and_then(|v| v.get("nextCursor"));
+        if next_cursor.is_some() {
+            let mut current_resp = resp.clone();
+            let mut results = Vec::<serde_json::Value>::new();
+            let pagination_supported_ops = {
+                let maybe_pagination_supported_op: Result<PaginationSupportedOps, _> = method.try_into();
+                maybe_pagination_supported_op.ok()
+            };
+            if let Some(ops) = pagination_supported_ops {
+                loop {
+                    let result = current_resp.result.as_ref().cloned().unwrap();
+                    let mut list: Vec<serde_json::Value> = match ops {
+                        PaginationSupportedOps::ResourcesList => {
+                            let ResourcesListResult { resources: list, .. } =
+                                serde_json::from_value::<ResourcesListResult>(result)
+                                    .map_err(ClientError::Serialization)?;
+                            list
+                        },
+                        PaginationSupportedOps::ResourceTemplatesList => {
+                            let ResourceTemplatesListResult {
+                                resource_templates: list,
+                                ..
+                            } = serde_json::from_value::<ResourceTemplatesListResult>(result)
+                                .map_err(ClientError::Serialization)?;
+                            list
+                        },
+                        PaginationSupportedOps::PromptsList => {
+                            let PromptsListResult { prompts: list, .. } =
+                                serde_json::from_value::<PromptsListResult>(result)
+                                    .map_err(ClientError::Serialization)?;
+                            list
+                        },
+                        PaginationSupportedOps::ToolsList => {
+                            let ToolsListResult { tools: list, .. } = serde_json::from_value::<ToolsListResult>(result)
+                                .map_err(ClientError::Serialization)?;
+                            list
+                        },
+                    };
+                    results.append(&mut list);
+                    if next_cursor.is_none() {
+                        break;
+                    }
+                    let next_request = JsonRpcRequest {
+                        jsonrpc: JsonRpcVersion::default(),
+                        id: self.get_id(),
+                        method: method.to_owned(),
+                        params: Some(serde_json::json!({
+                            "cursor": next_cursor,
+                        })),
+                    };
+                    let msg = JsonRpcMessage::Request(next_request);
+                    time::timeout(Duration::from_secs(self.timeout), self.transport.send(&msg)).await??;
+                    let resp = time::timeout(Duration::from_secs(self.timeout), self.transport.listen()).await??;
+                    let JsonRpcMessage::Response(resp) = resp else {
+                        return Err(ClientError::UnexpectedMsgType);
+                    };
+                    current_resp = resp;
+                    next_cursor = current_resp.result.as_ref().and_then(|v| v.get("nextCursor"));
+                }
+                resp.result = Some({
+                    let mut map = serde_json::Map::new();
+                    map.insert(ops.as_key().to_owned(), serde_json::to_value(results)?);
+                    serde_json::to_value(map)?
+                });
+            }
+        }
         Ok(serde_json::to_value(resp)?)
     }
 
@@ -326,7 +400,7 @@ mod tests {
         cap_sent: serde_json::Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let _ = client.init().await.expect("Client init failed");
-        tokio::time::sleep(time::Duration::from_secs(1)).await;
+        tokio::time::sleep(time::Duration::from_millis(1500)).await;
         let client_capabilities_sent = client
             .request("verify_init_ack_sent", None)
             .await
@@ -343,6 +417,34 @@ mod tests {
             .get("result")
             .expect("Verify init params mock request does not contain required field (result)");
         assert!(are_json_values_equal(&cap_sent, cap_recvd));
+
+        let fake_tool_names = ["get_weather_one", "get_weather_two", "get_weather_three"];
+        let mock_result_spec = fake_tool_names.map(create_fake_tool_spec);
+        let mock_tool_specs_for_verify = serde_json::json!(mock_result_spec.clone());
+        let mock_tool_specs_prep_param = mock_result_spec
+            .iter()
+            .zip(fake_tool_names.iter())
+            .map(|(v, n)| {
+                serde_json::json!({
+                    "key": (*n).to_string(),
+                    "value": v
+                })
+            })
+            .collect::<Vec<serde_json::Value>>();
+        let mock_tool_specs_prep_param =
+            serde_json::to_value(mock_tool_specs_prep_param).expect("Failed to create mock tool specs prep param");
+        let _ = client
+            .request("store_mock_tool_spec", Some(mock_tool_specs_prep_param))
+            .await
+            .expect("Mock tool spec prep failed");
+        let tool_spec_recvd = client.request("tools/list", None).await.expect("List tools failed");
+        assert!(are_json_values_equal(
+            tool_spec_recvd
+                .get("result")
+                .and_then(|v| v.get("tools"))
+                .expect("Failed to retrieve tool specs from result received"),
+            &mock_tool_specs_for_verify
+        ));
         Ok(())
     }
 
@@ -372,5 +474,22 @@ mod tests {
             },
             _ => false,
         }
+    }
+
+    fn create_fake_tool_spec(name_to_append: &str) -> serde_json::Value {
+        serde_json::json!({
+            "name": name_to_append,
+            "description": "Get current weather information for a location",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name or zip code"
+                }
+              },
+              "required": ["location"]
+            }
+        })
     }
 }

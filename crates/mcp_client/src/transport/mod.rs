@@ -35,8 +35,9 @@ impl From<std::io::Error> for TransportError {
 pub trait Transport: Send + Sync + Debug + 'static {
     /// Sends a message over the transport layer.
     async fn send(&self, msg: &JsonRpcMessage) -> Result<(), TransportError>;
-    /// Listens to awaits for a response.
+    /// Listens to awaits for a response. This is a call that should be used after `send` is called
+    /// to listen for a response from the message recipient.
     async fn listen(&self) -> Result<JsonRpcMessage, TransportError>;
-    /// Monitors for a reasponse.
+    /// Monitors for a response. This is meant for use in the background loop.
     async fn monitor(&self) -> Result<JsonRpcMessage, TransportError>;
 }

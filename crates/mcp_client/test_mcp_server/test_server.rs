@@ -21,6 +21,8 @@ struct Handler {
     #[allow(clippy::type_complexity)]
     send_request: Option<Box<dyn Fn(&str, Option<serde_json::Value>) -> Result<(), ServerError> + Send + Sync>>,
     storage: Mutex<HashMap<String, serde_json::Value>>,
+    tool_spec: Mutex<HashMap<String, Response>>,
+    tool_spec_key_list: Mutex<Vec<String>>,
 }
 
 impl PreServerRequestHandler for Handler {
@@ -69,7 +71,7 @@ impl ServerRequestHandler for Handler {
         Ok(Some(capabilities))
     }
 
-    async fn handle_incoming(&self, method: &str, _params: Option<serde_json::Value>) -> Result<Response, ServerError> {
+    async fn handle_incoming(&self, method: &str, params: Option<serde_json::Value>) -> Result<Response, ServerError> {
         match method {
             "notifications/initialized" => {
                 {
@@ -94,6 +96,96 @@ impl ServerRequestHandler for Handler {
                     storage.get("init_ack_sent").cloned()
                 };
                 Ok(result)
+            },
+            "store_mock_tool_spec" => {
+                let Some(params) = params else {
+                    eprintln!("Params missing from store mock tool spec");
+                    return Ok(None);
+                };
+                // expecting a mock_specs: { key: String, value: serde_json::Value }[];
+                let Ok(mock_specs) = serde_json::from_value::<Vec<serde_json::Value>>(params) else {
+                    eprintln!("Failed to convert to mock specs from value");
+                    return Ok(None);
+                };
+                let self_tool_specs = self.tool_spec.lock().await;
+                let mut self_tool_spec_key_list = self.tool_spec_key_list.lock().await;
+                let _ = mock_specs.iter().fold(self_tool_specs, |mut acc, spec| {
+                    let Some(key) = spec.get("key").cloned() else {
+                        return acc;
+                    };
+                    let Ok(key) = serde_json::from_value::<String>(key) else {
+                        eprintln!("Failed to convert serde value to string for key");
+                        return acc;
+                    };
+                    self_tool_spec_key_list.push(key.clone());
+                    acc.insert(key, spec.get("value").cloned());
+                    acc
+                });
+                Ok(None)
+            },
+            "tools/list" => {
+                if let Some(params) = params {
+                    if let Some(cursor) = params.get("cursor").cloned() {
+                        let Ok(cursor) = serde_json::from_value::<String>(cursor) else {
+                            eprintln!("Failed to convert cursor to string: {:#?}", params);
+                            return Ok(None);
+                        };
+                        let self_tool_spec_key_list = self.tool_spec_key_list.lock().await;
+                        let self_tool_spec = self.tool_spec.lock().await;
+                        let (next_cursor, spec) = {
+                            'blk: {
+                                for (i, item) in self_tool_spec_key_list.iter().enumerate() {
+                                    if item == &cursor {
+                                        break 'blk (
+                                            self_tool_spec_key_list.get(i + 1).cloned(),
+                                            self_tool_spec.get(&cursor).cloned().unwrap(),
+                                        );
+                                    }
+                                }
+                                (None, None)
+                            }
+                        };
+                        if let Some(next_cursor) = next_cursor {
+                            return Ok(Some(serde_json::json!({
+                                "tools": [spec.unwrap()],
+                                "nextCursor": next_cursor,
+                            })));
+                        } else {
+                            return Ok(Some(serde_json::json!({
+                                "tools": [spec.unwrap()],
+                            })));
+                        }
+                    } else {
+                        eprintln!("Params exist but cursor is missing");
+                        return Ok(None);
+                    }
+                } else {
+                    let first_key = self
+                        .tool_spec_key_list
+                        .lock()
+                        .await
+                        .first()
+                        .expect("First key missing from tool specs")
+                        .clone();
+                    let first_value = self
+                        .tool_spec
+                        .lock()
+                        .await
+                        .get(&first_key)
+                        .expect("First value missing from tool specs")
+                        .clone();
+                    let second_key = self
+                        .tool_spec_key_list
+                        .lock()
+                        .await
+                        .get(1)
+                        .expect("Second key missing from tool specs")
+                        .clone();
+                    return Ok(Some(serde_json::json!({
+                        "tools": [first_value],
+                        "nextCursor": second_key
+                    })));
+                };
             },
             // This is a test path relevant only to sampling
             "trigger_server_request" => {
