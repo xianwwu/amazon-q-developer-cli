@@ -1,3 +1,4 @@
+//! This is a bin used solely for testing the client
 use std::collections::HashMap;
 use std::str::FromStr;
 
