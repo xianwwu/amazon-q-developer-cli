@@ -1,3 +1,4 @@
+pub mod custom_tool;
 pub mod execute_bash;
 pub mod fs_read;
 pub mod fs_write;
@@ -13,6 +14,7 @@ use aws_smithy_types::{
     Document,
     Number as SmithyNumber,
 };
+use custom_tool::CustomTool;
 use execute_bash::ExecuteBash;
 use eyre::Result;
 use fig_api_client::model::{
@@ -28,7 +30,7 @@ use use_aws::UseAws;
 
 use super::parser::ToolUse;
 
-pub const MAX_TOOL_RESPONSE_SIZE: usize = 30720;
+pub const MAX_TOOL_RESPONSE_SIZE: usize = 800000;
 
 /// Represents an executable tool use.
 #[derive(Debug, Clone)]
@@ -37,6 +39,7 @@ pub enum Tool {
     FsWrite(FsWrite),
     ExecuteBash(ExecuteBash),
     UseAws(UseAws),
+    // Custom(CustomTool),
 }
 
 impl Tool {

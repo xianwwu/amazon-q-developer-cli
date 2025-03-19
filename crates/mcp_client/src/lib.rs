@@ -9,6 +9,8 @@ pub mod error;
 pub mod server;
 pub mod transport;
 
+pub use client::*;
+
 /// https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/pagination/#operations-supporting-pagination
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaginationSupportedOps {

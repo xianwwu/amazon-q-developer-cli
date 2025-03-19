@@ -66,6 +66,7 @@ pub enum ClientError {
     ProcessKillError(String),
 }
 
+#[derive(Debug)]
 pub struct Client<T: Transport> {
     tool_name: String,
     transport: Arc<T>,
