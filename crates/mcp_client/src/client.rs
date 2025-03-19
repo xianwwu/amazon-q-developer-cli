@@ -127,7 +127,7 @@ where
     ///
     /// Also done is the spawn of a background task that constantly listens for incoming messages
     /// from the server.
-    pub async fn init(&mut self) -> Result<ServerCapabilities, ClientError> {
+    pub async fn init(&self) -> Result<ServerCapabilities, ClientError> {
         let transport_ref = self.transport.clone();
         let tool_name = self.tool_name.clone();
 
@@ -334,7 +334,6 @@ mod tests {
 
         // Testing 2 concurrent sessions to make sure transport layer does not overlap.
         let init_params_one = serde_json::json!({
-          "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {
               "roots": {
@@ -346,7 +345,6 @@ mod tests {
               "name": "TestClientOne",
               "version": "1.0.0"
             }
-          }
         });
         let client_config_one = ClientConfig {
             tool_name: "test_tool".to_owned(),
@@ -356,7 +354,6 @@ mod tests {
             init_params: init_params_one.clone(),
         };
         let init_params_two = serde_json::json!({
-          "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {
               "roots": {
@@ -368,7 +365,6 @@ mod tests {
               "name": "TestClientTwo",
               "version": "1.0.0"
             }
-          }
         });
         let client_config_two = ClientConfig {
             tool_name: "test_tool".to_owned(),
