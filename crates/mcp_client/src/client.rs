@@ -37,7 +37,7 @@ pub type StdioTransport = JsonRpcStdioTransport;
 
 #[derive(Debug, Deserialize)]
 pub struct ClientConfig {
-    pub tool_name: String,
+    pub server_name: String,
     pub bin_path: String,
     pub args: Vec<String>,
     pub timeout: u64,
@@ -68,7 +68,7 @@ pub enum ClientError {
 
 #[derive(Debug)]
 pub struct Client<T: Transport> {
-    tool_name: String,
+    server_name: String,
     transport: Arc<T>,
     timeout: u64,
     server_process_id: Pid,
@@ -79,7 +79,7 @@ pub struct Client<T: Transport> {
 impl Client<StdioTransport> {
     pub fn from_config(config: ClientConfig) -> Result<Self, ClientError> {
         let ClientConfig {
-            tool_name,
+            server_name,
             bin_path,
             args,
             timeout,
@@ -100,7 +100,7 @@ impl Client<StdioTransport> {
         );
         let transport = Arc::new(transport::stdio::JsonRpcStdioTransport::client(child)?);
         Ok(Self {
-            tool_name,
+            server_name,
             transport,
             timeout,
             server_process_id,
@@ -129,7 +129,7 @@ where
     /// from the server.
     pub async fn init(&self) -> Result<ServerCapabilities, ClientError> {
         let transport_ref = self.transport.clone();
-        let tool_name = self.tool_name.clone();
+        let server_name = self.server_name.clone();
 
         tokio::spawn(async move {
             loop {
@@ -143,7 +143,7 @@ where
                         }
                     },
                     Err(e) => {
-                        tracing::error!("Background listening thread for client {}: {:?}", tool_name, e);
+                        tracing::error!("Background listening thread for client {}: {:?}", server_name, e);
                     },
                 }
             }
@@ -154,7 +154,7 @@ where
             let _ = nix::sys::signal::kill(self.server_process_id, Signal::SIGTERM);
             return Err(ClientError::NegotiationError(format!(
                 "Client {} has failed to negotiate server capabilities with server: {:?}",
-                self.tool_name, e
+                self.server_name, e
             )));
         }
         self.notify("initialized", None).await?;
@@ -176,6 +176,7 @@ where
             params,
         };
         let msg = JsonRpcMessage::Request(request);
+        println!("sending {}", serde_json::to_string_pretty(&msg)?);
         time::timeout(Duration::from_secs(self.timeout), self.transport.send(&msg)).await??;
         let resp = time::timeout(Duration::from_secs(self.timeout), self.transport.listen()).await??;
         let JsonRpcMessage::Response(mut resp) = resp else {
@@ -347,7 +348,7 @@ mod tests {
             }
         });
         let client_config_one = ClientConfig {
-            tool_name: "test_tool".to_owned(),
+            server_name: "test_tool".to_owned(),
             bin_path: bin_path.to_str().unwrap().to_string(),
             args: ["1".to_owned()].to_vec(),
             timeout: 60,
@@ -367,7 +368,7 @@ mod tests {
             }
         });
         let client_config_two = ClientConfig {
-            tool_name: "test_tool".to_owned(),
+            server_name: "test_tool".to_owned(),
             bin_path: bin_path.to_str().unwrap().to_string(),
             args: ["2".to_owned()].to_vec(),
             timeout: 60,
@@ -415,12 +416,12 @@ mod tests {
             .expect("Verify init params mock request does not contain required field (result)");
         assert!(are_json_values_equal(&cap_sent, cap_recvd));
 
-        let fake_tool_names = ["get_weather_one", "get_weather_two", "get_weather_three"];
-        let mock_result_spec = fake_tool_names.map(create_fake_tool_spec);
+        let fake_server_names = ["get_weather_one", "get_weather_two", "get_weather_three"];
+        let mock_result_spec = fake_server_names.map(create_fake_tool_spec);
         let mock_tool_specs_for_verify = serde_json::json!(mock_result_spec.clone());
         let mock_tool_specs_prep_param = mock_result_spec
             .iter()
-            .zip(fake_tool_names.iter())
+            .zip(fake_server_names.iter())
             .map(|(v, n)| {
                 serde_json::json!({
                     "key": (*n).to_string(),

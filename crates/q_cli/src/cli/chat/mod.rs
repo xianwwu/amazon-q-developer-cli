@@ -63,6 +63,10 @@ use tokio::signal::unix::{
     SignalKind,
     signal,
 };
+use tool_manager::{
+    McpServerConfig,
+    ToolManager,
+};
 use tools::{
     Tool,
     ToolSpec,
@@ -140,6 +144,24 @@ pub async fn chat(input: Option<String>, accept_all: bool) -> Result<ExitCode> {
         _ => StreamingClient::new().await?,
     };
 
+    let mcp_server_config = r#"
+        {
+          "mcpServers": {
+            "markdown-downloader": {
+              "command": "node",
+              "args": [
+                "/Users/dingfeli/doodle/markdown-downloader/build/index.js"
+              ],
+              "disabled": false,
+              "alwaysAllow": [
+                "download_markdown",
+                "set_download_directory"
+              ]
+            }
+          }
+        }
+        "#;
+    let mcp_server_configs = serde_json::from_str::<McpServerConfig>(mcp_server_config).expect("Failed to deserialize");
     let mut chat = ChatContext::new(
         ctx,
         Settings::new(),
@@ -149,8 +171,10 @@ pub async fn chat(input: Option<String>, accept_all: bool) -> Result<ExitCode> {
         interactive,
         client,
         || terminal::window_size().map(|s| s.columns.into()).ok(),
+        Some(mcp_server_configs),
         accept_all,
-    )?;
+    )
+    .await?;
 
     let result = chat.try_chat().await.map(|_| ExitCode::SUCCESS);
     drop(chat); // Explicit drop for clarity
@@ -204,12 +228,14 @@ pub struct ChatContext<W: Write> {
     tool_use_telemetry_events: HashMap<String, ToolUseEventBuilder>,
     /// State used to keep track of tool use relation
     tool_use_status: ToolUseStatus,
+    /// Abstraction that consolidates custom tools with native ones
+    tool_manager: ToolManager,
     accept_all: bool,
 }
 
 impl<W: Write> ChatContext<W> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub async fn new(
         ctx: Arc<Context>,
         settings: Settings,
         output: W,
@@ -218,8 +244,12 @@ impl<W: Write> ChatContext<W> {
         interactive: bool,
         client: StreamingClient,
         terminal_width_provider: fn() -> Option<usize>,
+        mcp_server_config: Option<McpServerConfig>,
         accept_all: bool,
     ) -> Result<Self> {
+        let mcp_server_config = mcp_server_config.unwrap_or_default();
+        let tool_manager = ToolManager::from_configs(mcp_server_config).await;
+        let conversation_state = ConversationState::new(tool_manager.load_tools().await?);
         Ok(Self {
             ctx,
             settings,
@@ -230,9 +260,10 @@ impl<W: Write> ChatContext<W> {
             client,
             terminal_width_provider,
             spinner: None,
-            conversation_state: ConversationState::new(load_tools()?),
+            conversation_state,
             tool_use_telemetry_events: HashMap::new(),
             tool_use_status: ToolUseStatus::Idle,
+            tool_manager,
             accept_all,
         })
     }
@@ -895,7 +926,7 @@ where
                 .set_tool_use_id(tool_use_id.clone())
                 .set_tool_name(tool_use.name.clone())
                 .utterance_id(self.conversation_state.message_id().map(|s| s.to_string()));
-            match Tool::try_from(tool_use) {
+            match self.tool_manager.get_tool_from_tool_use(tool_use) {
                 Ok(mut tool) => {
                     match tool.validate(&self.ctx).await {
                         Ok(()) => {
@@ -1192,8 +1223,10 @@ mod tests {
             true,
             test_client,
             || Some(80),
+            None,
             false,
         )
+        .await
         .unwrap()
         .try_chat()
         .await

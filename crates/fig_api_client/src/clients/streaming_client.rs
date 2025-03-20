@@ -97,6 +97,7 @@ impl StreamingClient {
 
     pub async fn send_message(&self, conversation_state: ConversationState) -> Result<SendMessageOutput, Error> {
         debug!("Sending conversation: {:?}", conversation_state);
+        tracing::info!("Sending conversation: {:#?}", conversation_state);
         let ConversationState {
             conversation_id,
             user_input_message,

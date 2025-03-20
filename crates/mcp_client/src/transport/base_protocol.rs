@@ -25,6 +25,7 @@ impl JsonRpcVersion {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum JsonRpcMessage {
     Response(JsonRpcResponse),
