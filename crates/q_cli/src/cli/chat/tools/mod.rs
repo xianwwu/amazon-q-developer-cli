@@ -25,7 +25,10 @@ use fig_api_client::model::{
 use fig_os_shim::Context;
 use fs_read::FsRead;
 use fs_write::FsWrite;
-use serde::{Deserialize, Deserializer};
+use serde::{
+    Deserialize,
+    Deserializer,
+};
 use use_aws::UseAws;
 
 use super::parser::ToolUse;

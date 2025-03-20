@@ -263,10 +263,13 @@ async fn process_request<T, H>(
                 let _ = transport.send(&resp).await;
             },
             JsonRpcMessage::Notification(notif) => {
+                eprintln!("server received the following notif: {:#?}", notif);
                 let JsonRpcNotification { ref method, params, .. } = notif;
                 let _ = handler.handle_incoming(method, params).await;
             },
             JsonRpcMessage::Response(resp) => {
+                eprintln!("########## server handling response #########");
+                eprintln!("server received the following resp: {:#?}", resp);
                 let _ = handler.handle_response(resp).await;
             },
         },

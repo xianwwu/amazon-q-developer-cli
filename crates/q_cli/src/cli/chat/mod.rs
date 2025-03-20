@@ -144,24 +144,11 @@ pub async fn chat(input: Option<String>, accept_all: bool) -> Result<ExitCode> {
         _ => StreamingClient::new().await?,
     };
 
-    let mcp_server_config = r#"
-        {
-          "mcpServers": {
-            "markdown-downloader": {
-              "command": "node",
-              "args": [
-                "/Users/dingfeli/doodle/markdown-downloader/build/index.js"
-              ],
-              "disabled": false,
-              "alwaysAllow": [
-                "download_markdown",
-                "set_download_directory"
-              ]
-            }
-          }
-        }
-        "#;
-    let mcp_server_configs = serde_json::from_str::<McpServerConfig>(mcp_server_config).expect("Failed to deserialize");
+    let mcp_server_configs = McpServerConfig::load_config().await.unwrap_or_else(|e| {
+        tracing::warn!("No mcp server config loaded: {}", e);
+        McpServerConfig::default()
+    });
+
     let mut chat = ChatContext::new(
         ctx,
         Settings::new(),

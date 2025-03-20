@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
-use crossterm::{queue, style};
+use crossterm::{
+    queue,
+    style,
+};
 use eyre::Result;
 use fig_os_shim::Context;
 use mcp_client::{
@@ -71,7 +74,9 @@ impl CustomToolClient {
 
     pub async fn get_tool_spec(&self) -> Result<(String, Vec<ToolSpec>)> {
         match self {
-            CustomToolClient::Stdio { client, server_name, .. } => {
+            CustomToolClient::Stdio {
+                client, server_name, ..
+            } => {
                 let resp = client.request("tools/list", None).await?;
                 // Assuming a shape of return as per https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/#listing-tools
                 let result = resp
@@ -114,27 +119,20 @@ impl CustomTool {
     pub async fn invoke(&self, _ctx: &Context, _updates: &mut impl Write) -> Result<InvokeOutput> {
         // Assuming a response shape as per https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/#calling-tools
         let resp = self.client.request(self.method.as_str(), self.params.clone()).await?;
-        let result = resp.get("result").ok_or(eyre::eyre!("{} invocation failed to produce a result", self.name))?;
+        let result = resp
+            .get("result")
+            .ok_or(eyre::eyre!("{} invocation failed to produce a result", self.name))?;
         Ok(InvokeOutput {
-            output: super::OutputKind::Json(result.clone())
+            output: super::OutputKind::Json(result.clone()),
         })
     }
 
     pub fn queue_description(&self, updates: &mut impl Write) -> Result<()> {
-        queue!(
-            updates,
-            style::Print(format!("Running {}", self.name)),
-        )?;
+        queue!(updates, style::Print(format!("Running {}", self.name)),)?;
         if let Some(params) = &self.params {
-            queue!(
-                updates,
-                style::Print(format!(" with the param:\n{}", params)),
-            )?;
+            queue!(updates, style::Print(format!(" with the param:\n{}", params)),)?;
         }
-        queue!(
-            updates,
-            style::Print("\n"),
-        )?;
+        queue!(updates, style::Print("\n"),)?;
         Ok(())
     }
 

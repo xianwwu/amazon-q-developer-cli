@@ -27,6 +27,9 @@ impl JsonRpcVersion {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
+// DO NOT change the order of these variants. This body of json is [untagged](https://serde.rs/enum-representations.html#untagged)
+// The categorization of the deserialization depends on the order in which the variants are
+// declared.
 pub enum JsonRpcMessage {
     Response(JsonRpcResponse),
     Request(JsonRpcRequest),
@@ -58,6 +61,7 @@ impl JsonRpcMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
 pub struct JsonRpcRequest {
     pub jsonrpc: JsonRpcVersion,
     pub id: RequestId,
@@ -67,7 +71,7 @@ pub struct JsonRpcRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct JsonRpcResponse {
     pub jsonrpc: JsonRpcVersion,
     pub id: RequestId,
@@ -78,7 +82,7 @@ pub struct JsonRpcResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct JsonRpcNotification {
     pub jsonrpc: JsonRpcVersion,
     pub method: String,
@@ -87,7 +91,7 @@ pub struct JsonRpcNotification {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct JsonRpcError {
     pub code: i32,
     pub message: String,

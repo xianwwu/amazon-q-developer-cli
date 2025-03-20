@@ -6573,6 +6573,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shell-color",
+ "shellexpand",
  "shlex",
  "similar",
  "spinners",

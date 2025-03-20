@@ -136,7 +136,8 @@ where
                 match transport_ref.monitor().await {
                     Ok(msg) => {
                         match msg {
-                            JsonRpcMessage::Request(_req) => {},
+                            JsonRpcMessage::Request(_req) => {
+                            },
                             JsonRpcMessage::Notification(_notif) => {},
                             JsonRpcMessage::Response(_resp) => { /* noop since direct response is handled inside the request api */
                             },
@@ -176,7 +177,6 @@ where
             params,
         };
         let msg = JsonRpcMessage::Request(request);
-        println!("sending {}", serde_json::to_string_pretty(&msg)?);
         time::timeout(Duration::from_secs(self.timeout), self.transport.send(&msg)).await??;
         let resp = time::timeout(Duration::from_secs(self.timeout), self.transport.listen()).await??;
         let JsonRpcMessage::Response(mut resp) = resp else {
@@ -397,7 +397,7 @@ mod tests {
         client: &mut Client<T>,
         cap_sent: serde_json::Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let _ = client.init().await.expect("Client init failed");
+        let sercap = client.init().await.expect("Client init failed");
         tokio::time::sleep(time::Duration::from_millis(1500)).await;
         let client_capabilities_sent = client
             .request("verify_init_ack_sent", None)
