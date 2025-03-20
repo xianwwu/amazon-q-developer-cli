@@ -144,7 +144,7 @@ impl ToolManager {
                 // The field "params" expected by MCP is { name, arguments }, where name is the
                 // name of the tool being invoked,
                 // https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/#calling-tools.
-                // The field "arguments" is where ToolUse::args belong. 
+                // The field "arguments" is where ToolUse::args belong.
                 let mut params = serde_json::Map::<String, serde_json::Value>::new();
                 params.insert("name".to_owned(), serde_json::Value::String(tool_name.to_owned()));
                 params.insert("arguments".to_owned(), value.args);

@@ -70,10 +70,7 @@ use tool_manager::{
     McpServerConfig,
     ToolManager,
 };
-use tools::{
-    Tool,
-    ToolSpec,
-};
+use tools::Tool;
 use tracing::{
     debug,
     error,
@@ -1530,11 +1527,6 @@ fn create_stream(model_responses: serde_json::Value) -> StreamingClient {
         mock.push(stream);
     }
     StreamingClient::mock(mock)
-}
-
-/// Returns all tools supported by Q chat.
-fn load_tools() -> Result<HashMap<String, ToolSpec>> {
-    Ok(serde_json::from_str(include_str!("tools/tool_index.json"))?)
 }
 
 #[cfg(test)]
