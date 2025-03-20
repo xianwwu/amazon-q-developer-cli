@@ -47,7 +47,7 @@ pub enum CustomToolClient {
 impl CustomToolClient {
     // TODO: add support for http transport
     pub async fn from_config(server_name: String, config: CustomToolConfig) -> Result<Self> {
-        // TODO: accomodate for envs specified
+        // TODO: accommodate for envs specified
         let CustomToolConfig { command, args, env: _ } = config;
         let mcp_client_config = McpClientConfig {
             server_name: server_name.clone(),
@@ -86,7 +86,6 @@ impl CustomToolClient {
                     "Failed to retrieve tools from result for custom tool {}",
                     server_name
                 ))?;
-                tracing::info!("################ tools/list result {:#?}", tools);
                 let tools = serde_json::from_value::<Vec<ToolSpec>>(tools.clone())?;
                 Ok((server_name.clone(), tools))
             },
