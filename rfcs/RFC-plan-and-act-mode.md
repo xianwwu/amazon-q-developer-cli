@@ -165,7 +165,7 @@ When using `/acceptall` with plan mode:
 
 ```bash
 # In chat mode
-/planacceptall update all security groups
+/plan acceptall update all security groups
 ```
 
 This will generate a comprehensive plan that includes all steps that would have been executed, but without making any actual changes. Even with `/acceptall`, Plan mode maintains its strict read-only nature, ensuring complete safety. The plan can then be reviewed and executed later using `/act` or `q act`.
@@ -469,10 +469,6 @@ pub struct ExecutionSummary {
 
 ## CLI Integration
 
-### CLI Integration
-
-We'll add the following commands to the CLI:
-
 ```rust
 // In crates/q_cli/src/cli/mod.rs
 #[derive(Debug, PartialEq, Subcommand)]
@@ -716,28 +712,16 @@ Without this feature:
 [future-possibilities]: #future-possibilities
 
 1. **Plan templates**: Create reusable templates for common operations
-2. **Plan approval workflows**: Add formal approval processes for plans
-3. **Plan simulation**: Simulate plan execution without making changes
-4. **Plan visualization**: Graphical representation of plans and their impacts
-5. **Plan comparison**: Compare different plans or versions of plans
-6. **Integration with AWS CloudFormation**: Use CloudFormation change sets for AWS resource changes
-7. **Integration with CI/CD**: Execute plans as part of CI/CD pipelines
-8. **Plan annotations**: Allow users to add notes and comments to plans
-9. **Plan metrics**: Track statistics about plan generation and execution
-10. **Plan recommendations**: Suggest improvements to plans based on best practices
-11. **Execution rollback**: Automatically roll back failed executions
-12. **Multi-environment plans**: Create plans that can be executed in different environments
-13. **Collaborative review**: Allow multiple users to review and comment on plans
-14. **Infrastructure-specific safeguards**: Additional safety measures for AWS resource operations
-15. **Plan cost estimation**: Estimate AWS costs for infrastructure changes
-16. **Code Reasoning Integration**: Enhance the Plan mode with specialized code reasoning capabilities:
+2. **Code Reasoning Integration**: Enhance the Plan mode with specialized code reasoning capabilities:
     - Static analysis of code changes before execution
     - Dependency impact analysis
     - Security vulnerability scanning
     - Integration with existing code quality tools
     - Visualization of code changes in the plan
-17. **Plan versioning**: Track changes to plans over time and support branching
-18. **Plan testing**: Automated testing of plans in isolated environments
-19. **Plan documentation**: Generate comprehensive documentation from plans
-20. **Plan optimization**:  Q CLI-driven suggestions for optimizing plans
-21. **Execution Monitoring**: When executing plans in Act mode, the system implements comprehensive monitoring. Provides real-time visibility and safeguards during plan execution by integrating with AWS CloudWatch. It tracks resource creation, monitors state transitions, and validates performance and security outcomes. The system detects configuration drift, estimates costs, flags policy issues, and suggests corrective or optimization actions when needed. Each execution step is observed for timing, output, and compliance with the original plan, ensuring safe, transparent, and cost-aware automation.
+3. **Infrastructure-specific safeguards**: Additional safety measures for AWS resource operations
+4. **Plan cost estimation**: Estimate AWS costs for infrastructure changes
+5. **Execution Monitoring**: When executing plans in Act mode, the system implements comprehensive monitoring. Provides real-time visibility and safeguards during plan execution by integrating with AWS CloudWatch. It tracks resource creation, monitors state transitions, and validates performance and security outcomes. The system detects configuration drift, estimates costs, flags policy issues, and suggests corrective or optimization actions when needed. Each execution step is observed for timing, output, and compliance with the original plan, ensuring safe, transparent, and cost-aware automation.
+6. **Integration with AWS CloudFormation**: Use CloudFormation change sets for AWS resource changes
+7. **Integration with CI/CD**: Execute plans as part of CI/CD pipelines
+9. **Plan metrics**: Track statistics about plan generation and execution
+10. **Plan recommendations**: Suggest improvements to plans based on best practices 
