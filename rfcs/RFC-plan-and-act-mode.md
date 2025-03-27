@@ -200,7 +200,6 @@ These modules will integrate with the existing command structure and execution f
 Plan mode will have strictly enforced read-only access to tools and resources:
 
 ```rust
-#[derive(Debug, Clone, PartialEq)]
 pub enum ToolAccessMode {
     ReadOnly,
     ReadWrite,
@@ -243,14 +242,12 @@ The Plan mode will use `ToolAccessMode::ReadOnly`, which will restrict access to
 Tools will be classified based on their access patterns:
 
 ```rust
-#[derive(Debug, Clone)]
 pub struct Tool {
     name: String,
     access_type: ToolAccessType,
     // Other tool properties
 }
 
-#[derive(Debug, Clone, PartialEq)]
 pub enum ToolAccessType {
     ReadOnly,
     ReadWrite,
@@ -285,7 +282,6 @@ These guarantees are implemented at the system level, not relying on model instr
 The system will maintain a library of common plan patterns for infrastructure operations:
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanTemplate {
     id: String,                      // Unique identifier for the template
     name: String,                    // Human-readable name
@@ -296,7 +292,6 @@ pub struct PlanTemplate {
     applicability_check: Option<String>, // Logic to determine if template is applicable
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TemplateCategory {
     ResourceCreation,
     SecurityUpdate,
@@ -308,7 +303,6 @@ pub enum TemplateCategory {
     Custom(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplatePlanStep {
     action: String,                  // Action with parameter placeholders
     parameter_mappings: HashMap<String, String>, // Maps template params to action params
@@ -316,7 +310,6 @@ pub struct TemplatePlanStep {
     validation_checks_template: Vec<String>, // Templates for validation checks
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateParameter {
     name: String,                    // Parameter name
     description: String,             // Description of the parameter
@@ -355,13 +348,11 @@ Plans will be stored in two formats:
 A plan index file will track the history of plans:
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanIndex {
     plans: Vec<PlanSummary>,
     last_accessed: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanSummary {
     id: String,
     timestamp: DateTime<Utc>,
@@ -376,7 +367,6 @@ pub struct PlanSummary {
 To maintain a history of plan executions and their results:
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActExecution {
     id: String,                      // Unique identifier for the execution
     plan_id: String,                 // ID of the executed plan
@@ -387,7 +377,6 @@ pub struct ActExecution {
     adaptations: Vec<Adaptation>,    // Any adaptations made during execution
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecutionStatus {
     Success,
     PartialSuccess,
@@ -395,7 +384,6 @@ pub enum ExecutionStatus {
     Aborted,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionStep {
     step_id: usize,                  // Index of the step in the plan
     status: ExecutionStatus,         // Status of this step
@@ -405,7 +393,6 @@ pub struct ExecutionStep {
     adaptations: Vec<Adaptation>,    // Adaptations made for this step
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Adaptation {
     reason: String,                  // Why the adaptation was needed
     original_action: String,         // Original planned action
@@ -418,13 +405,11 @@ pub struct Adaptation {
 Similar to the plan index, an execution index will track the history of executions:
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionIndex {
     executions: Vec<ExecutionSummary>,
     last_accessed: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionSummary {
     id: String,
     plan_id: String,
@@ -471,7 +456,6 @@ pub struct ExecutionSummary {
 
 ```rust
 // In crates/q_cli/src/cli/mod.rs
-#[derive(Debug, PartialEq, Subcommand)]
 pub enum CliRootCommands {
     // Existing commands...
     
@@ -487,7 +471,6 @@ pub enum CliRootCommands {
 }
 
 // In crates/q_cli/src/cli/plan.rs
-#[derive(Debug, PartialEq, Subcommand)]
 pub enum PlanSubcommand {
     /// List available plans
     List,
@@ -510,7 +493,6 @@ pub enum PlanSubcommand {
 }
 
 // Template subcommands
-#[derive(Debug, PartialEq, Subcommand)]
 pub enum TemplateSubcommand {
     /// List available templates
     List,
@@ -544,7 +526,6 @@ pub enum TemplateSubcommand {
 }
 
 // In crates/q_cli/src/cli/act.rs
-#[derive(Debug, Parser, PartialEq)]
 pub struct ActArgs {
     /// Plan ID to execute (defaults to most recent)
     #[arg(long)]
@@ -560,7 +541,6 @@ pub struct ActArgs {
 }
 
 // In crates/q_cli/src/cli/planandact.rs
-#[derive(Debug, Parser, PartialEq)]
 pub struct PlanAndActArgs {
     /// Command to execute
     pub command: String,
@@ -574,6 +554,7 @@ pub struct PlanAndActArgs {
     pub self_scrutinize: bool,
 }
 ```
+
 # Drawbacks
 
 [drawbacks]: #drawbacks
