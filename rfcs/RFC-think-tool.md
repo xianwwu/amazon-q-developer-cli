@@ -129,15 +129,21 @@ The implementation consists of the following key components:
            Self::is_enabled()
        }
        
-       
        /// Invokes the think tool
-       pub async fn invoke(&self, updates: &mut impl Write) -> Result<InvokeOutput> {
-           // Only log non-empty thoughts if the feature is enabled
+       pub async fn invoke(&self, _updates: &mut impl Write) -> Result<InvokeOutput> {
+           // Only process non-empty thoughts if the feature is enabled
            if Self::is_enabled() && !self.thought.trim().is_empty() {
                // Log the thought for debugging purposes
                log::debug!("Model thought: {}", self.thought);
+               
+               // Return the thought as part of the output, but mark it as internal
+               // This ensures it's added to conversation history but not displayed to the user
+               return Ok(InvokeOutput {
+                   output: OutputKind::Internal(self.thought.clone()),
+               });
            }
            
+           // If disabled or empty thought, return empty output
            Ok(InvokeOutput {
                output: OutputKind::Text(String::new()),
            })
@@ -184,7 +190,7 @@ The implementation consists of the following key components:
    ```json
    "think": {
      "name": "think",
-     "description": "A tool designed to help the model think through complex problems. This internal tool doesn't generate any visible output for the user, doesn't gather new information, and doesn't modify the repository. It simply logs the model's thought process. Use it specifically for intricate reasoning tasks or brainstorming sessions.",
+     "description": "A tool for the model to reason through complex problems. This is an internal tool that doesn't produce visible output to the user.",
      "input_schema": {
        "type": "object",
        "properties": {
@@ -197,6 +203,43 @@ The implementation consists of the following key components:
      }
    }
    ```
+
+5. Added a new `OutputKind::Internal` variant to handle thoughts that should be added to conversation history but not displayed to the user:
+   ```rust
+   #[non_exhaustive]
+   #[derive(Debug)]
+   pub enum OutputKind {
+       Text(String),
+       Json(serde_json::Value),
+       /// Internal output that should be added to conversation history but not displayed to the user
+       Internal(String),
+   }
+   ```
+
+6. Updated the `From<InvokeOutput>` implementation to handle the new `Internal` variant:
+   ```rust
+   impl From<InvokeOutput> for ToolResultContentBlock {
+       fn from(value: InvokeOutput) -> Self {
+           match value.output {
+               crate::cli::chat::tools::OutputKind::Text(text) => Self::Text(text),
+               crate::cli::chat::tools::OutputKind::Json(value) => Self::Json(serde_value_to_document(value)),
+               crate::cli::chat::tools::OutputKind::Internal(thought) => {
+                   // For internal thoughts, we still add them to the conversation history
+                   // but they won't be displayed to the user
+                   Self::Text(thought)
+               },
+           }
+       }
+   }
+   ```
+
+   This implementation ensures that thoughts are properly added to the conversation state while remaining invisible to the user. When a thought is processed:
+   
+   1. The thought is converted to a `ToolResultContentBlock::Text`
+   2. This block is added to the conversation history in `ConversationState`
+   3. The model can reference this thought in future responses
+   4. The thought is not displayed in the user interface
+
 
 # Drawbacks
 
@@ -255,3 +298,4 @@ Without this feature, complex reasoning will continue to happen implicitly withi
    - Financial data reasoning templates
    - Security assessment templates
 2. **Add Think Tool rules** : Usage Guidelines (This will be added to rules) :The Think Tool is an internal reasoning mechanism enabling the model to systematically approach complex tasks by logically breaking them down before responding or acting; use it specifically for multi-step problems requiring step-by-step dependencies, reasoning through multiple constraints, synthesizing results from previous tool calls, planning intricate sequences of actions, troubleshooting complex errors, or making decisions involving multiple trade-offs. Avoid using it for straightforward tasks, basic information retrieval, summaries, always clearly define the reasoning challenge, structure thoughts explicitly, consider multiple perspectives, and summarize key insights before important decisions or complex tool interactions.
+3. **Plan Mode Integration** : This can be incorporated in Plan Mode.
