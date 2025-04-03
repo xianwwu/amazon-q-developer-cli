@@ -118,9 +118,9 @@ fi
 
 # Build or rebuild Docker image if needed
 build_image() {
-    if [ -f "$SCRIPT_DIR/Dockerfile.sample" ]; then
-        echo "🔨 Building Docker image from $SCRIPT_DIR/Dockerfile.sample for architecture: $DOCKER_ARCH..."
-        docker build --build-arg ARCH=$DOCKER_ARCH -t amazon-q-dev -f "$SCRIPT_DIR/Dockerfile.sample" "$SCRIPT_DIR"
+    if [ -f "$SCRIPT_DIR/Dockerfile" ]; then
+        echo "🔨 Building Docker image from $SCRIPT_DIR/Dockerfile for architecture: $DOCKER_ARCH..."
+        docker build --build-arg ARCH=$DOCKER_ARCH -t amazon-q-dev -f "$SCRIPT_DIR/Dockerfile" "$SCRIPT_DIR"
         if [ $? -eq 0 ]; then
             echo "✅ Docker image built successfully"
         else
@@ -128,8 +128,8 @@ build_image() {
             return 1
         fi
     else
-        echo "❌ Dockerfile.sample not found in $SCRIPT_DIR"
-        echo "Please create a Dockerfile first using the sample from the documentation."
+        echo "❌ Dockerfile not found in $SCRIPT_DIR"
+        echo "Please create a Dockerfile first using the template from the documentation."
         return 1
     fi
     return 0
@@ -148,7 +148,7 @@ elif ! docker image inspect amazon-q-dev &>/dev/null; then
         build_image
     else
         echo "📝 You can build the image later with:"
-        echo "  docker build --build-arg ARCH=$DOCKER_ARCH -t amazon-q-dev -f $SCRIPT_DIR/Dockerfile.sample $SCRIPT_DIR"
+        echo "  docker build --build-arg ARCH=$DOCKER_ARCH -t amazon-q-dev -f $SCRIPT_DIR/Dockerfile $SCRIPT_DIR"
         echo "  or run this script with the --rebuild flag"
     fi
 fi

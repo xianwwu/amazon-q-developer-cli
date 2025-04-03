@@ -1,64 +1,10 @@
-# Docker Setup for Amazon Q CLI Chat
+# Running Amazon Q CLI in Docker
 
-This guide explains how to set up a Docker container for Amazon Q CLI Chat development, with proper data persistence using Docker volumes.
-
-## Dockerfile
-
-Create a `Dockerfile` in your project directory:
-
-```dockerfile
-# Use Ubuntu with the appropriate architecture
-ARG ARCH=amd64
-FROM --platform=linux/${ARCH} ubuntu:latest
-
-# Set environment variables (timezone will be set at runtime)
-ENV DEBIAN_FRONTEND=noninteractive TERM="xterm-256color"
-
-# Install common dependencies and mise
-RUN apt-get update && apt-get install -y curl wget git jq vim nano unzip zip ssh ca-certificates \
-    gnupg lsb-release software-properties-common build-essential pkg-config tzdata sqlite3 && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install AWS CLI and Amazon Q CLI with architecture detection
-ARG TARGETARCH
-RUN ARCH_AWS=$([ "$TARGETARCH" = "amd64" ] && echo "x86_64" || echo "aarch64") && \
-    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$ARCH_AWS.zip" -o awscliv2.zip && \
-    curl --proto '=https' --tlsv1.2 -sSf "https://desktop-release.codewhisperer.us-east-1.amazonaws.com/latest/q-$ARCH_AWS-linux.zip" -o q.zip && \
-    unzip awscliv2.zip && ./aws/install && rm -rf awscliv2.zip ./aws && \
-    unzip q.zip -d /tmp && chmod +x /tmp/q/install.sh && Q_INSTALL_GLOBAL=true /tmp/q/install.sh && \
-    rm -rf q.zip /tmp/q
-
-# Create non-root user and set up directories
-RUN useradd -ms /bin/bash dev && \
-    mkdir -p /home/dev/src /home/dev/.aws/amazonq/profiles /home/dev/.ssh && \
-    mkdir -p /home/dev/.local/share/amazon-q /home/dev/.cache/amazon-q && \
-    chown -R dev:dev /home/dev
-
-# Switch to non-root user
-USER dev
-WORKDIR /home/dev/src
-
-RUN echo 'export PS1="\[\033[01;32m\]q-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/dev/.bashrc
-
-# Initialize the SQLite database to ensure proper permissions
-RUN mkdir -p /home/dev/.local/share/amazon-q && \
-    touch /home/dev/.local/share/amazon-q/data.sqlite3 && \
-    chmod 644 /home/dev/.local/share/amazon-q/data.sqlite3
-
-# Install mise for managing multiple language runtimes
-RUN curl https://mise.run | sh && \
-    echo 'eval "$(~/.local/bin/mise activate --shims bash)"' >> ~/.bashrc && \
-    eval "$(~/.local/bin/mise activate --shims bash)" && \
-    ~/.local/bin/mise use -g python@latest uv@latest node@lts java@latest go@latest
-
-# Default command starts Amazon Q chat
-ENTRYPOINT [ "q" ]
-CMD ["chat"]
-```
+This guide explains how to run Amazon Q CLI Chat in a Docker container for development and testing.
 
 ## Quick Setup
 
-The easiest way to set up is to use our setup script:
+The easiest way to get started is to use our setup script:
 
 ```bash
 # Download the setup script
@@ -69,143 +15,249 @@ chmod +x setup-q-dev-alias.sh
 
 # Source it to add the alias to your current session
 source ./setup-q-dev-alias.sh
-
-# Or force rebuild the Docker image
-source ./setup-q-dev-alias.sh --rebuild
 ```
 
-## Manual Setup
+This will:
+1. Create necessary Docker volumes
+2. Build the Docker image (if it doesn't exist)
+3. Add a `q-dev` alias to your shell
 
-### Building the Docker Image
+## Using Amazon Q in Docker
 
-Build the image with:
+After setting up, you can use Amazon Q CLI in Docker:
 
 ```bash
-# Detect architecture automatically
-ARCH=$(uname -m | sed 's/x86_64/amd64/' | sed 's/arm64\|aarch64/arm64/')
-docker build --build-arg ARCH=$ARCH -t amazon-q-dev .
+# Navigate to your project directory
+cd ~/my-project
+
+# Start Amazon Q chat
+q-dev
+
+# Or run a specific command
+q-dev --help
 ```
 
-Or specify the architecture explicitly:
+## Common Commands
 
-```bash
-# For Intel/AMD processors
-docker build --build-arg ARCH=amd64 -t amazon-q-dev .
+| Command | Description |
+|---------|-------------|
+| `q-dev` | Start Amazon Q chat in the current directory |
+| `q-dev --help` | Show Amazon Q CLI help |
+| `q-dev --entrypoint bash` | Start a bash shell instead of Q chat |
 
-# For ARM processors (M1/M2/M3 Macs, Graviton, etc.)
-docker build --build-arg ARCH=arm64 -t amazon-q-dev .
-```
+## Development Workflow
 
-### Creating Docker Volumes
+### Understanding Container Context
 
-Create persistent volumes for Amazon Q data:
+When using Amazon Q in Docker, it's important to understand what context is available:
 
-```bash
-docker volume create amazon-q-data
-docker volume create amazon-q-cache
-```
+- **Only the current directory** is mounted in the container
+- Amazon Q can only see and access files in your current directory (and subdirectories)
+- System-wide tools and dependencies inside the container may differ from your host machine
+- The container runs Ubuntu Linux, regardless of your host OS (macOS, Windows, etc.)
 
-### Setting Up the Alias
+### Best Practices for Development
 
-Create a shell alias for easy access:
-
-```bash
-alias q-dev='docker run -it --rm \
-  -v "$(pwd):/home/dev/src" \
-  -v "${HOME}/.aws/credentials:/home/dev/.aws/credentials:ro" \
-  -v "${HOME}/.aws/config:/home/dev/.aws/config:ro" \
-  -v "${HOME}/.aws/amazonq:/home/dev/.aws/amazonq:rw" \
-  -v amazon-q-data:/home/dev/.local/share/amazon-q \
-  -v amazon-q-cache:/home/dev/.cache/amazon-q \
-  -v "${HOME}/.gitconfig:/home/dev/.gitconfig:ro" \
-  -v "${HOME}/.ssh:/home/dev/.ssh:ro" \
-  -e AWS_PROFILE \
-  -e AWS_REGION \
-  -e TZ \
-  amazon-q-dev'
-```
-
-## Understanding the Directory Mapping
-
-Amazon Q CLI stores its data in different locations:
-
-| Purpose | Container Path | Storage Method |
-|---------|---------------|----------------|
-| **Main Data Directory** | `/home/dev/.local/share/amazon-q` | Docker volume: `amazon-q-data` |
-| **Cache Directory** | `/home/dev/.cache/amazon-q` | Docker volume: `amazon-q-cache` |
-| **AWS Profile Data** | `/home/dev/.aws/amazonq` | Host mount from `~/.aws/amazonq` |
-| **Current Directory** | `/home/dev/src` | Host mount from current directory |
-
-Using Docker volumes for the data and cache directories ensures:
-1. Persistence across container restarts
-2. No issues with paths containing spaces
-3. Better performance
-4. Proper isolation
-
-## Usage
-
-After setting up the alias:
-
-1. Navigate to your project directory
-2. Run the container:
+1. **Always navigate to your project root** before running `q-dev`
    ```bash
+   cd ~/path/to/project-root
    q-dev
    ```
-3. Amazon Q chat will start automatically
-4. Use context commands to add project files:
+
+2. **Add context from your project files**
    ```
    /context add README.md
+   /context add src/
    ```
 
-## Resource Allocation
+3. **For larger codebases**, be selective about which files you add to context
+   ```
+   /context add src/main.py
+   /context add src/important_module/
+   ```
 
-For better performance, you can allocate more resources by adding these parameters to your Docker run command:
+4. **Use the container's bash shell** to explore or modify the environment
+   ```bash
+   q-dev --entrypoint bash
+   ```
+
+5. **Install additional dependencies** in the container if needed
+   ```bash
+   q-dev --entrypoint bash
+   pip install some-package
+   ```
+   Note: These changes will persist only until the container is stopped
+
+### Working with Different Languages
+
+The container comes with several language runtimes pre-installed:
+
+- **Python**: Use with `python` or `uv`
+- **Node.js**: Use with `node` or `npm`
+- **Java**: Available with `java` and `javac`
+- **Go**: Available with `go`
+- **AWS CLI**: Available with `aws`
+- **Git**: Available for version control
+
+Example workflows:
+
+**Python project:**
+```bash
+# Start a bash shell in the container
+q-dev --entrypoint bash
+
+# Create and run a Python script
+echo 'print("Hello from container")' > test.py
+python test.py
+```
+
+**Node.js project:**
+```bash
+# Initialize a Node.js project
+q-dev --entrypoint bash
+npm init -y
+npm install express
+echo 'console.log("Hello from Node.js");' > index.js
+node index.js
+```
+
+**AWS CLI usage:**
+```bash
+# AWS CLI commands use your host credentials
+q-dev --entrypoint bash
+aws s3 ls
+```
+
+## Common Development Tasks
+
+### Git Operations
+
+Git is pre-installed and configured to use your host's Git credentials:
 
 ```bash
---cpus=2 \
---memory=4g \
+# Inside the container
+git status
+git add .
+git commit -m "Update code"
+```
+
+### Running Tests
+
+Run tests for different languages:
+
+```bash
+# Python tests
+pytest tests/
+
+# JavaScript tests
+npm test
+
+# Go tests
+go test ./...
+```
+
+### Building Projects
+
+Build your projects inside the container:
+
+```bash
+# Node.js
+npm run build
+
+# Python
+python setup.py build
+
+# Go
+go build
+```
+
+### Using Amazon Q for Code Assistance
+
+Amazon Q is particularly helpful for coding tasks:
+
+```
+# Ask for code examples
+How do I implement a REST API in Express.js?
+
+# Get help with errors
+I'm getting this error: TypeError: Cannot read property 'map' of undefined
+
+# Request code reviews
+Can you review this function and suggest improvements?
+```
+
+## Adding Context
+
+Once inside the Q chat session, you can add context from your project:
+
+```
+# Add a single file
+/context add README.md
+
+# Add a directory and all its contents
+/context add src/
+
+# Add multiple specific files
+/context add package.json tsconfig.json
+
+# Clear all context
+/context clear
+```
+
+Remember that Amazon Q can only access files in the current directory that's mounted in the container. Files outside this directory are not accessible to Amazon Q.
+
+## Limitations
+
+When using Amazon Q in Docker, be aware of these limitations:
+
+1. **File Access**: Only files in the current directory (and subdirectories) are accessible
+2. **System Context**: The container has its own Linux environment, separate from your host OS
+3. **Persistence**: Changes to the container's file system (outside mounted volumes) are lost when the container stops
+4. **Performance**: Running in Docker may be slightly slower than running natively
+5. **GUI Applications**: The container doesn't support GUI applications
+6. **Host Tools**: Tools installed on your host machine aren't available unless they're also installed in the container
+7. **Network Services**: Services running on your host (like local databases) need to be accessed via special Docker networking
+
+### Accessing Host Services
+
+If you need to access services running on your host machine (like a local database or web server):
+
+```bash
+# On macOS/Linux, use host.docker.internal to reference the host
+q-dev --entrypoint bash
+curl http://host.docker.internal:3000
+
+# For databases, use host.docker.internal instead of localhost
+mysql -h host.docker.internal -u user -p
 ```
 
 ## Troubleshooting
 
-If you encounter database errors like:
+If you encounter issues:
 
-```
-Failed to open database: timed out waiting for connection: unable to open database file: /home/dev/.local/share/amazon-q/data.sqlite3
-```
+1. **Rebuild the Docker image**:
+   ```bash
+   source ./setup-q-dev-alias.sh --rebuild
+   ```
 
-Try these solutions:
-
-1. **Reset the Docker volumes**:
+2. **Reset data volumes** if you have database errors:
    ```bash
    docker volume rm amazon-q-data amazon-q-cache
    docker volume create amazon-q-data
    docker volume create amazon-q-cache
    ```
 
-2. **Check permissions inside the container**:
+3. **Check Docker logs**:
    ```bash
-   q-dev --entrypoint bash
-   ls -la ~/.local/share/amazon-q/
+   docker logs $(docker ps -q --filter ancestor=amazon-q-dev)
    ```
 
-3. **Initialize the database manually**:
+4. **Verify file access** by checking what's mounted:
    ```bash
    q-dev --entrypoint bash
-   touch ~/.local/share/amazon-q/data.sqlite3
-   chmod 644 ~/.local/share/amazon-q/data.sqlite3
+   ls -la /home/dev/src
    ```
 
-4. **Verify SQLite is installed**:
-   ```bash
-   q-dev --entrypoint bash
-   sqlite3 --version
-   ```
+## Advanced Configuration
 
-## Running with Bash Instead of Q Chat
-
-To start a bash shell instead of Q chat:
-
-```bash
-q-dev --entrypoint bash
-```
+For advanced configuration options and customization details, see [customizing-docker-setup.md](customizing-docker-setup.md).
