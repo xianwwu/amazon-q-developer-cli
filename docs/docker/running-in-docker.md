@@ -86,7 +86,7 @@ When using Amazon Q in Docker, it's important to understand what context is avai
    q-dev --entrypoint bash
    pip install some-package
    ```
-   Note: These changes will persist only until the container is stopped
+   Note: These changes will persist between container sessions thanks to the persistent home volume
 
 ### Working with Different Languages
 
@@ -206,17 +206,48 @@ Once inside the Q chat session, you can add context from your project:
 
 Remember that Amazon Q can only access files in the current directory that's mounted in the container. Files outside this directory are not accessible to Amazon Q.
 
+## Persistent Environment
+
+The Docker container is configured with three types of persistence:
+
+1. **Project Files**: Your current directory is mounted at `/home/dev/src` in the container
+2. **Amazon Q Data**: Stored in Docker volumes (`amazon-q-data` and `amazon-q-cache`)
+3. **Home Directory**: All user customizations are stored in the `amazon-q-home` volume
+
+This means:
+
+- **Installed packages** (via pip, npm, etc.) will persist between sessions
+- **Shell history** and customizations will be saved
+- **Configuration files** in your home directory will be preserved
+- **Global tools** you install will be available in future sessions
+
+For example, you can customize your environment once and have it available every time:
+
+```bash
+# First session
+q-dev --entrypoint bash
+pip install pandas matplotlib
+npm install -g typescript
+echo 'alias ll="ls -la"' >> ~/.bashrc
+exit
+
+# Later session - all customizations are still available
+q-dev --entrypoint bash
+python -c "import pandas; print(pandas.__version__)"
+tsc --version
+ll
+```
+
 ## Limitations
 
 When using Amazon Q in Docker, be aware of these limitations:
 
 1. **File Access**: Only files in the current directory (and subdirectories) are accessible
 2. **System Context**: The container has its own Linux environment, separate from your host OS
-3. **Persistence**: Changes to the container's file system (outside mounted volumes) are lost when the container stops
-4. **Performance**: Running in Docker may be slightly slower than running natively
-5. **GUI Applications**: The container doesn't support GUI applications
-6. **Host Tools**: Tools installed on your host machine aren't available unless they're also installed in the container
-7. **Network Services**: Services running on your host (like local databases) need to be accessed via special Docker networking
+3. **Performance**: Running in Docker may be slightly slower than running natively
+4. **GUI Applications**: The container doesn't support GUI applications
+5. **Host Tools**: Tools installed on your host machine aren't available unless they're also installed in the container
+6. **Network Services**: Services running on your host (like local databases) need to be accessed via special Docker networking
 
 ### Accessing Host Services
 
@@ -247,12 +278,18 @@ If you encounter issues:
    docker volume create amazon-q-cache
    ```
 
-3. **Check Docker logs**:
+3. **Reset home directory** if your environment becomes corrupted:
+   ```bash
+   docker volume rm amazon-q-home
+   docker volume create amazon-q-home
+   ```
+
+4. **Check Docker logs**:
    ```bash
    docker logs $(docker ps -q --filter ancestor=amazon-q-dev)
    ```
 
-4. **Verify file access** by checking what's mounted:
+5. **Verify file access** by checking what's mounted:
    ```bash
    q-dev --entrypoint bash
    ls -la /home/dev/src

@@ -146,28 +146,51 @@ The `setup-q-dev-alias.sh` script can be modified to:
      amazon-q-dev'"
    ```
 
-## Advanced Troubleshooting
+## Persistent Home Directory
 
-### Database Issues
+The Docker setup now includes a persistent home directory volume (`amazon-q-home`) that allows:
 
-If you encounter database errors:
+1. **Package installations** to persist between sessions
+2. **Shell customizations** like aliases and environment variables
+3. **User configuration files** in the home directory
+4. **Global tool installations** that are available in all sessions
 
-1. **Inspect the volume contents**:
-   ```bash
-   docker run --rm -it -v amazon-q-data:/data ubuntu ls -la /data
-   ```
+### How It Works
 
-2. **Check database permissions**:
-   ```bash
-   q-dev --entrypoint bash
-   ls -la ~/.local/share/amazon-q/
-   ```
+The persistent home directory is implemented as a Docker volume that's mounted at `/home/dev` in the container:
 
-3. **Manually initialize the database**:
-   ```bash
-   q-dev --entrypoint bash
-   sqlite3 ~/.local/share/amazon-q/data.sqlite3 "CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY);"
-   ```
+```bash
+docker run -it --rm \
+  # Other mounts...
+  -v amazon-q-home:/home/dev \
+  # More options...
+  amazon-q-dev
+```
+
+This approach has some important considerations:
+
+1. **Mount Order**: The home directory volume is mounted first, then specific directories like `/home/dev/src` are mounted on top of it
+2. **Conflict Resolution**: If there's a conflict between the home volume and a specific mount, the specific mount takes precedence
+3. **Initial Setup**: On first use, the volume is initialized with the default home directory from the Docker image
+
+### Managing the Home Volume
+
+You can manage the persistent home volume with these commands:
+
+```bash
+# View the contents of the home volume
+docker run --rm -it -v amazon-q-home:/data ubuntu ls -la /data
+
+# Reset the home volume (removes all customizations)
+docker volume rm amazon-q-home
+docker volume create amazon-q-home
+
+# Backup the home volume
+docker run --rm -v amazon-q-home:/data -v $(pwd):/backup ubuntu tar czf /backup/amazon-q-home-backup.tar.gz -C /data .
+
+# Restore from backup
+docker run --rm -v amazon-q-home:/data -v $(pwd):/backup ubuntu bash -c "rm -rf /data/* && tar xzf /backup/amazon-q-home-backup.tar.gz -C /data"
+```
 
 ### Container Networking
 
