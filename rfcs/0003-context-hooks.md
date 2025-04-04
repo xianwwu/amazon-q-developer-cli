@@ -142,6 +142,20 @@ This simplified syntax makes it easier to read and write hook configurations, es
 
 ## Hook Types
 
+### Inline Hooks
+
+Inline hooks execute a shell command directly:
+
+```
+env | grep AWS_
+
+# Output:
+AWS_PROFILE=development
+AWS_REGION=us-west-2
+```
+
+> **Note**: Inline hooks will be implemented first, and we will evaluate whether the other hook types (Script and HTTP) are required based on user feedback and use cases.
+
 ### Script Hooks
 
 Script hooks execute a local script that outputs context information:
@@ -171,13 +185,6 @@ Response:
 - Implement least privilege access
 ```
 
-### Inline Hooks
-
-Inline hooks execute a shell command directly:
-
-```
-env | grep AWS_
-
 # Output:
 AWS_PROFILE=development
 AWS_REGION=us-west-2
@@ -190,27 +197,54 @@ Once configured, context hooks run automatically:
 1. When starting a new conversation with `q chat`, conversation start hooks run
 2. When sending a prompt, per-prompt hooks run
 
-Users can see which hooks are active with the `/hooks` command:
+Users can see which hooks are active with the `/context hooks` command:
 
 ```
-> /hooks
+> /context hooks
 Active context hooks:
 - project-info (conversation start)
 - git-status (per prompt)
 ```
 
-Users can temporarily disable hooks with the `/hooks disable` command:
+Users can add inline hooks directly from the chat interface:
 
 ```
-> /hooks disable git-status
+> /context hooks add git-status --type=per-prompt --command="git status --short"
+Added hook: git-status (per-prompt)
+
+> /context hooks add project-info --type=conversation-start --command="echo 'Project: $(basename $(pwd))'"
+Added hook: project-info (conversation-start)
+```
+
+Users can temporarily disable hooks with the `/context hooks disable` command:
+
+```
+> /context hooks disable git-status
 Disabled hook: git-status
 ```
 
-And re-enable them with `/hooks enable`:
+And re-enable them with `/context hooks enable`:
 
 ```
-> /hooks enable git-status
+> /context hooks enable git-status
 Enabled hook: git-status
+```
+
+Users can also enable or disable all hooks at once:
+
+```
+> /context hooks disable-all
+Disabled all hooks
+
+> /context hooks enable-all
+Enabled all hooks
+```
+
+When hooks are running, the UI shows feedback about their execution:
+
+```
+> Running hook: git-status...
+> Hook git-status completed in 0.03s
 ```
 
 ### Context Visibility
@@ -247,6 +281,13 @@ Additional context visibility commands include:
 
 This visibility helps users understand what context is being provided to the LLM, making the system more transparent and easier to debug.
 
+### Hook Persistence and Behavior
+
+- **Conversation Start Hooks**: Evaluated once at the beginning of a conversation. Their context persists at the top of the conversation, ahead of the first prompt, even if earlier messages are compacted or cleared away.
+- **Per-Prompt Hooks**: Evaluated on every user prompt and attached immediately before the human text.
+- **Hook Disabling**: When hooks are disabled, they remain in the config file with a disabled flag and stay disabled until explicitly re-enabled.
+- **Clear Command**: Running `/clear` will re-evaluate conversation start hooks, refreshing their context.
+
 # Reference-level explanation
 
 [reference-level-explanation]: #reference-level-explanation
@@ -272,6 +313,8 @@ pub struct HookConfig {
     // Common fields
     pub timeout_ms: Option<u64>,
     pub max_output_size: Option<usize>,
+    pub criticality: Criticality,
+    pub cache_ttl_seconds: Option<u64>,
     // Type-specific fields
     pub path: Option<String>,        // For script hooks
     pub command: Option<String>,     // For inline hooks
@@ -285,8 +328,71 @@ pub enum HookType {
     Inline,
 }
 
+pub enum Criticality {
+    Fail,    // Hook failure will prevent prompt from being sent
+    Warn,    // Hook failure will log a warning but allow prompt to be sent
+    Ignore,  // Hook failure will be silently ignored
+}
+
 pub struct HookConfigManager {
     config_path: PathBuf,
+    conversation_start_hooks: Vec<HookConfig>,
+    per_prompt_hooks: Vec<HookConfig>,
+}
+
+impl HookConfigManager {
+    pub fn new() -> Result<Self> {
+        // Find and load config file
+        // Parse YAML into HookConfig structs
+        // Validate configurations
+    }
+    
+    pub fn get_conversation_start_hooks(&self) -> &[HookConfig] {
+        &self.conversation_start_hooks
+    }
+    
+    pub fn get_per_prompt_hooks(&self) -> &[HookConfig] {
+        &self.per_prompt_hooks
+    }
+    
+    pub fn add_inline_hook(&self, name: &str, hook_type: &str, command: &str) -> Result<()> {
+        // Create a new HookConfig for an inline hook
+        let hook_type = match hook_type {
+            "conversation-start" => HookType::Inline,
+            "per-prompt" => HookType::Inline,
+            _ => return Err(anyhow!("Invalid hook type: {}", hook_type)),
+        };
+        
+        let hook = HookConfig {
+            name: name.to_string(),
+            hook_type,
+            enabled: true,
+            timeout_ms: Some(5000), // 5 second default timeout
+            max_output_size: Some(10240), // 10KB default max output
+            criticality: Criticality::Warn, // Default to warn on failure
+            cache_ttl_seconds: Some(60), // Default 1 minute cache
+            path: None,
+            command: Some(command.to_string()),
+            url: None,
+            headers: None,
+        };
+        
+        // Add to appropriate list based on type
+        if hook_type == "conversation-start" {
+            self.conversation_start_hooks.push(hook);
+        } else {
+            self.per_prompt_hooks.push(hook);
+        }
+        
+        // Save configuration to file
+        self.save_config()
+    }
+    
+    fn save_config(&self) -> Result<()> {
+        // Save configuration to file
+        // This will be called after adding, enabling, or disabling hooks
+    }
+}
     conversation_start_hooks: Vec<HookConfig>,
     per_prompt_hooks: Vec<HookConfig>,
 }
@@ -313,9 +419,15 @@ impl HookConfigManager {
 The Hook Executor runs hooks and captures their output:
 
 ```rust
+struct CachedResult {
+    output: String,
+    timestamp: Instant,
+}
+
 pub struct HookExecutor {
     config_manager: Arc<HookConfigManager>,
     hook_registry: Arc<HookRegistry>,
+    cache: DashMap<String, CachedResult>,
 }
 
 impl HookExecutor {
@@ -326,19 +438,124 @@ impl HookExecutor {
         Self {
             config_manager,
             hook_registry,
+            cache: DashMap::new(),
         }
     }
     
     pub async fn execute_conversation_start_hooks(&self) -> Result<Vec<ContextEntry>> {
         // Get enabled conversation start hooks
-        // Execute each hook
-        // Format output as context entries
+        let hooks = self.config_manager.get_conversation_start_hooks();
+        let mut context_entries = Vec::new();
+        
+        // Create futures for all hooks to run in parallel
+        let mut futures = Vec::new();
+        for hook in hooks {
+            if !self.hook_registry.is_hook_enabled(&hook.name) {
+                continue;
+            }
+            
+            let hook_clone = hook.clone();
+            let self_clone = self.clone();
+            futures.push(async move {
+                (hook_clone.name.clone(), self_clone.execute_hook(&hook_clone).await)
+            });
+        }
+        
+        // Wait for all hooks to complete
+        let results = futures::future::join_all(futures).await;
+        
+        // Process results
+        for (name, result) in results {
+            match result {
+                Ok(output) => {
+                    // Format output as context entry
+                    let entry = ContextEntry::new(
+                        format!("hook:{}", name),
+                        output,
+                        ContextSource::Hook(name),
+                    );
+                    context_entries.push(entry);
+                }
+                Err(e) => {
+                    println!("Hook {} failed: {}", name, e);
+                }
+            }
+        }
+        
+        Ok(context_entries)
+    }
+    
+    pub async fn execute_per_prompt_hooks(&self) -> Result<Vec<ContextEntry>> {
+        // Similar to execute_conversation_start_hooks but for per-prompt hooks
+        // Get enabled per-prompt hooks
+        let hooks = self.config_manager.get_per_prompt_hooks();
+        let mut context_entries = Vec::new();
+        
+        // Create futures for all hooks to run in parallel
+        let mut futures = Vec::new();
+        for hook in hooks {
+            if !self.hook_registry.is_hook_enabled(&hook.name) {
+                continue;
+            }
+            
+            println!("Running hook: {}...", hook.name);
+            let start_time = Instant::now();
+            
+            match self.execute_hook(hook).await {
+                Ok(output) => {
+                    let elapsed = start_time.elapsed();
+                    println!("Hook {} completed in {:?}", hook.name, elapsed);
+                    
+                    // Format output as context entry
+                    let entry = ContextEntry::new(
+                        format!("hook:{}", hook.name),
+                        output,
+                        ContextSource::Hook(hook.name.clone()),
+                    );
+                    context_entries.push(entry);
+                }
+                Err(e) => {
+                    println!("Hook {} failed: {}", hook.name, e);
+                }
+            }
+        }
+        
+        Ok(context_entries)
     }
     
     pub async fn execute_per_prompt_hooks(&self) -> Result<Vec<ContextEntry>> {
         // Get enabled per-prompt hooks
-        // Execute each hook
-        // Format output as context entries
+        let hooks = self.config_manager.get_per_prompt_hooks();
+        let mut context_entries = Vec::new();
+        
+        for hook in hooks {
+            if !self.hook_registry.is_hook_enabled(&hook.name) {
+                continue;
+            }
+            
+            println!("Running hook: {}...", hook.name);
+            let start_time = Instant::now();
+            
+            match self.execute_hook(hook).await {
+                Ok(output) => {
+                    let elapsed = start_time.elapsed();
+                    println!("Hook {} completed in {:?}", hook.name, elapsed);
+                    
+                    // Format output as context entry
+                    let entry = ContextEntry::new(
+                        format!("hook:{}", hook.name),
+                        output,
+                        ContextSource::Hook(hook.name.clone()),
+                    );
+                    context_entries.push(entry);
+                }
+                Err(e) => {
+                    println!("Hook {} failed: {}", hook.name, e);
+                }
+            }
+        }
+        
+        Ok(context_entries)
     }
     
     async fn execute_hook(&self, hook: &HookConfig) -> Result<String> {
@@ -362,8 +579,77 @@ impl HookExecutor {
     }
     
     async fn execute_inline_hook(&self, hook: &HookConfig) -> Result<String> {
-        // Execute hook.command in shell
-        // Capture stdout
+        // Check cache first if TTL is set
+        if let Some(ttl) = hook.cache_ttl_seconds {
+            if let Some(cached_result) = self.cache.get(&hook.name) {
+                if cached_result.timestamp.elapsed().as_secs() < ttl {
+                    return Ok(cached_result.output.clone());
+                }
+            }
+        }
+        
+        // Execute hook.command in shell using tokio::process::Command
+        let start = Instant::now();
+        
+        // Create a future with timeout
+        let timeout_duration = Duration::from_millis(hook.timeout_ms.unwrap_or(5000));
+        let command_future = async {
+            Command::new("sh")
+                .arg("-c")
+                .arg(&hook.command.as_ref().unwrap())
+                .output()
+                .await
+        };
+        
+        // Run with timeout
+        let output = match tokio::time::timeout(timeout_duration, command_future).await {
+            Ok(result) => result?,
+            Err(_) => {
+                // Handle timeout based on criticality
+                match hook.criticality {
+                    Criticality::Fail => {
+                        return Err(anyhow!("Hook timed out after {:?}", timeout_duration));
+                    },
+                    Criticality::Warn => {
+                        println!("Warning: Hook '{}' timed out after {:?}", hook.name, timeout_duration);
+                        return Ok(format!("# Warning: Hook '{}' timed out", hook.name));
+                    },
+                    Criticality::Ignore => {
+                        return Ok(String::new());
+                    }
+                }
+            }
+        };
+            
+        if !output.status.success() {
+            // Handle command failure based on criticality
+            match hook.criticality {
+                Criticality::Fail => {
+                    return Err(anyhow!("Command failed with status: {}", output.status));
+                },
+                Criticality::Warn => {
+                    println!("Warning: Hook '{}' failed with status: {}", hook.name, output.status);
+                    return Ok(format!("# Warning: Hook '{}' failed with status: {}", 
+                        hook.name, output.status));
+                },
+                Criticality::Ignore => {
+                    return Ok(String::new());
+                }
+            }
+        }
+        
+        // Capture stdout and handle errors
+        let stdout = String::from_utf8(output.stdout)?;
+        
+        // Apply size limits if configured
+        if let Some(max_size) = hook.max_output_size {
+            if stdout.len() > max_size {
+                return Ok(format!("{}\n... (output truncated, exceeded {} bytes)", 
+                    &stdout[..max_size], max_size));
+            }
+        }
+        
+        Ok(stdout)
         // Handle errors and timeouts
     }
 }
@@ -436,6 +722,28 @@ impl HookRegistry {
         Ok(())
     }
     
+    pub fn disable_all_hooks(&self, config_manager: &HookConfigManager) -> Result<()> {
+        let mut disabled_hooks = self.disabled_hooks.write().unwrap();
+        
+        // Disable all conversation start hooks
+        for hook in config_manager.get_conversation_start_hooks() {
+            disabled_hooks.insert(hook.name.clone());
+        }
+        
+        // Disable all per-prompt hooks
+        for hook in config_manager.get_per_prompt_hooks() {
+            disabled_hooks.insert(hook.name.clone());
+        }
+        
+        Ok(())
+    }
+    
+    pub fn enable_all_hooks(&self) -> Result<()> {
+        let mut disabled_hooks = self.disabled_hooks.write().unwrap();
+        disabled_hooks.clear();
+        Ok(())
+    }
+    
     pub fn is_hook_enabled(&self, name: &str) -> bool {
         let disabled_hooks = self.disabled_hooks.read().unwrap();
         !disabled_hooks.contains(name)
@@ -457,7 +765,10 @@ impl ChatCommand {
         let context_integration = ContextManagerIntegration::new(hook_executor.clone(), self.context_manager.clone());
         
         // Apply conversation start hooks
+        println!("Running conversation start hooks...");
+        let start_time = Instant::now();
         context_integration.apply_conversation_start_hooks().await?;
+        println!("Conversation start hooks completed in {:?}", start_time.elapsed());
         
         // Start chat loop
         loop {
@@ -465,13 +776,16 @@ impl ChatCommand {
             let input = self.get_user_input().await?;
             
             // Check for hook commands
-            if input.starts_with("/hooks") {
+            if input.starts_with("/context hooks") {
                 self.handle_hook_command(input, &hook_registry).await?;
                 continue;
             }
             
             // Apply per-prompt hooks before sending prompt
+            println!("Running per-prompt hooks...");
+            let start_time = Instant::now();
             context_integration.apply_per_prompt_hooks().await?;
+            println!("Per-prompt hooks completed in {:?}", start_time.elapsed());
             
             // Send prompt to LLM
             // ...
@@ -499,10 +813,45 @@ Context hooks can impact performance in several ways:
 
 1. **Startup Time**: Conversation start hooks run before the first prompt, potentially increasing startup time
 2. **Prompt Latency**: Per-prompt hooks run before each prompt, potentially increasing response time
-3. **Background Execution**: To mitigate performance impact, hooks can run in the background:
-   - Conversation start hooks run asynchronously during chat initialization
-   - Per-prompt hooks run in parallel with a configurable timeout
+3. **Execution Model**: For both conversation start and per-prompt hooks:
+   - Hooks run asynchronously but the prompt will not be sent to the server until all hooks have completed (either successfully or with error/timeout)
+   - Hooks run in parallel with configurable timeouts
+   - Each hook has individual configuration for:
+     - Criticality (fail on error, warn on error, ignore errors)
+     - Cache TTL (time to live for cached results)
+     - Timeout duration
 4. **Caching**: Hook outputs can be cached with configurable TTL to avoid redundant executions
+
+### Hook Configuration Example
+
+```json
+{
+  "hooks": {
+    "conversation_start": [
+      {
+        "name": "project-info",
+        "type": "inline",
+        "command": "echo 'Project: $(basename $(pwd))'",
+        "enabled": true,
+        "criticality": "warn",  // Options: fail, warn, ignore
+        "cache_ttl_seconds": 300,  // 5 minutes
+        "timeout_ms": 2000  // 2 seconds
+      }
+    ],
+    "per_prompt": [
+      {
+        "name": "git-status",
+        "type": "inline",
+        "command": "git status --short",
+        "enabled": true,
+        "criticality": "ignore",
+        "cache_ttl_seconds": 10,
+        "timeout_ms": 1000  // 1 second
+      }
+    ]
+  }
+}
+```
 
 ## MCP Integration
 
@@ -585,7 +934,9 @@ Without context hooks:
 
 [unresolved-questions]: #unresolved-questions
 
-1. **Hook Ordering**: Should hooks run in a specific order? Should users be able to specify priority?
+1. **Hook Ordering**: Hooks are evaluated in the following order:
+   - Per-Conversation hooks are evaluated once at the start of a conversation, in the order they appear in the configuration file
+   - Per-Prompt hooks are evaluated with every prompt, in the order they appear in the configuration file
 2. **Error Handling**: How should errors in hook execution be presented to users?
 3. **Context Deduplication**: How should duplicate context from different hooks be handled?
 4. **Hook Dependencies**: Should hooks be able to depend on other hooks?
