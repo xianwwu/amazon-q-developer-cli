@@ -94,9 +94,213 @@ The tool will be implemented in the `q_cli` crate under `src/cli/chat/tools/use_
 
 1. Parse the incoming request into the appropriate internal command format
 2. Validate the command and arguments
-3. Execute the command using the existing command infrastructure
+3. Execute the command using the command registry infrastructure
 4. Capture the output/results
 5. Return the results to the AI assistant
+
+### Project Structure Changes
+
+To improve organization and maintainability, we will restructure the command-related code:
+
+```
+src/cli/chat/
+├── commands/           # New directory for all command-related code
+│   ├── mod.rs          # Exports the CommandRegistry and CommandHandler trait
+│   ├── registry.rs     # CommandRegistry implementation
+│   ├── handler.rs      # CommandHandler trait definition
+│   ├── quit.rs         # QuitCommand implementation
+│   ├── clear.rs        # ClearCommand implementation
+│   ├── help.rs         # HelpCommand implementation
+│   ├── context/        # Context command and subcommands
+│   ├── profile/        # Profile command and subcommands
+│   └── tools/          # Tools command and subcommands
+├── tools/              # Existing directory for tools
+│   ├── mod.rs
+│   ├── execute_bash.rs
+│   ├── fs_read.rs
+│   ├── fs_write.rs
+│   ├── gh_issue.rs
+│   ├── use_aws.rs
+│   └── use_q_command/  # New tool that uses the command registry
+└── mod.rs
+```
+
+This structure parallels the existing `tools/` directory, creating a clear separation between tools (which are used by the AI) and commands (which are used by both users and the AI via the `use_q_command` tool).
+
+### Command Registry Pattern
+
+To improve maintainability and reduce the reliance on match statements, we will introduce a new command registry pattern that directly integrates with the existing `ChatState` enum:
+
+```rust
+/// A registry of available commands that can be executed
+pub struct CommandRegistry {
+    /// Map of command names to their handlers
+    commands: HashMap<String, Box<dyn CommandHandler>>,
+}
+
+impl CommandRegistry {
+    /// Create a new command registry with all built-in commands
+    pub fn new() -> Self {
+        let mut registry = Self {
+            commands: HashMap::new(),
+        };
+        
+        // Register built-in commands
+        registry.register("quit", Box::new(QuitCommand::new()));
+        registry.register("clear", Box::new(ClearCommand::new()));
+        registry.register("help", Box::new(HelpCommand::new()));
+        registry.register("context", Box::new(ContextCommand::new()));
+        registry.register("profile", Box::new(ProfileCommand::new()));
+        registry.register("tools", Box::new(ToolsCommand::new()));
+        
+        registry
+    }
+    
+    /// Register a new command handler
+    pub fn register(&mut self, name: &str, handler: Box<dyn CommandHandler>) {
+        self.commands.insert(name.to_string(), handler);
+    }
+    
+    /// Get a command handler by name
+    pub fn get(&self, name: &str) -> Option<&dyn CommandHandler> {
+        self.commands.get(name).map(|h| h.as_ref())
+    }
+    
+    /// Parse and execute a command string
+    pub fn parse_and_execute(
+        &self, 
+        input: &str, 
+        ctx: &Context,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Result<ChatState> {
+        let (name, args) = self.parse_command(input)?;
+        
+        if let Some(handler) = self.get(name) {
+            handler.execute(args, ctx, tool_uses, pending_tool_index)
+        } else {
+            // If not a registered command, treat as a question to the AI
+            Ok(ChatState::HandleInput {
+                input: input.to_string(),
+                tool_uses,
+                pending_tool_index,
+            })
+        }
+    }
+}
+
+/// Trait for command handlers
+pub trait CommandHandler: Send + Sync {
+    /// Returns the name of the command
+    fn name(&self) -> &'static str;
+    
+    /// Returns a description of the command
+    fn description(&self) -> &'static str;
+    
+    /// Returns usage information for the command
+    fn usage(&self) -> &'static str;
+    
+    /// Returns detailed help text for the command
+    fn help(&self) -> String;
+    
+    /// Execute the command with the given arguments
+    fn execute(
+        &self, 
+        args: Vec<&str>, 
+        ctx: &Context,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Result<ChatState>;
+    
+    /// Check if this command requires confirmation before execution
+    fn requires_confirmation(&self, args: &[&str]) -> bool {
+        false // Most commands don't require confirmation by default
+    }
+}
+```
+
+Example implementation of a command:
+
+```rust
+/// Handler for the quit command
+pub struct QuitCommand;
+
+impl QuitCommand {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl CommandHandler for QuitCommand {
+    fn name(&self) -> &'static str {
+        "quit"
+    }
+    
+    fn description(&self) -> &'static str {
+        "Exit the application"
+    }
+    
+    fn usage(&self) -> &'static str {
+        "/quit"
+    }
+    
+    fn help(&self) -> String {
+        "Exits the Amazon Q CLI application.".to_string()
+    }
+    
+    fn execute(
+        &self, 
+        _args: Vec<&str>, 
+        _ctx: &Context,
+        _tool_uses: Option<Vec<QueuedTool>>,
+        _pending_tool_index: Option<usize>,
+    ) -> Result<ChatState> {
+        // Return Exit state directly
+        Ok(ChatState::Exit)
+    }
+    
+    fn requires_confirmation(&self, _args: &[&str]) -> bool {
+        true // Quitting should require confirmation
+    }
+}
+```
+
+Integration with the `UseQCommand` tool:
+
+```rust
+impl UseQCommand {
+    pub async fn invoke(&self, context: &Context, updates: &mut impl Write) -> Result<InvokeOutput> {
+        // Get the command registry
+        let registry = CommandRegistry::new();
+        
+        // Parse the command string
+        let cmd_str = if !self.command.starts_with('/') {
+            format!("/{}", self.command)
+        } else {
+            self.command.clone()
+        };
+        
+        // Execute the command
+        match registry.parse_and_execute(&cmd_str, context, None, None) {
+            Ok(ChatState::Exit) => {
+                Ok(InvokeOutput {
+                    output: OutputKind::Text("Application will exit after this response.".to_string()),
+                })
+            },
+            Ok(ChatState::PromptUser { .. }) => {
+                Ok(InvokeOutput {
+                    output: OutputKind::Text("Command executed successfully.".to_string()),
+                })
+            },
+            // Handle other ChatState variants...
+            _ => {
+                Ok(InvokeOutput {
+                    output: OutputKind::Text("Command executed.".to_string()),
+                })
+            }
+        }
+    }
+}
 
 ## Command Categories
 
