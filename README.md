@@ -153,6 +153,29 @@ pnpm install --ignore-scripts
 </details>
 
 
+### 3. Start Local Development
+To compile and view changes made to `q chat`:
+```shell
+cargo run --bin q_cli -- chat
+```
+
+> If you are working on other q commands, just replace `chat` with the command name 
+
+To run tests for the Q CLI crate:
+```shell
+cargo test -p q_cli
+```
+
+To format Rust files:
+```shell
+cargo +nightly fmt
+```
+
+To run clippy:
+```shell
+cargo clippy --locked --workspace --color always -- -D warnings
+```
+
 
 
 ### 💡 Quick Tip for Onboarding
@@ -189,7 +212,7 @@ Great for speeding up your ramp-up and navigating the repo more effectively.
 Several projects live here:
 
 - [`autocomplete`](packages/autocomplete/) - The autocomplete react app
-- [`dashboard`](packages/dashboard/) - The dashboard react app
+- [`dashboard`](packages/dashboard-app/) - The dashboard react app
 - [`figterm`](crates/figterm/) - figterm, our headless terminal/pseudoterminal that
   intercepts the user’s terminal edit buffer.
 - [`q_cli`](crates/q_cli/) - the `q` CLI, allows users to interface with Amazon Q Developer from

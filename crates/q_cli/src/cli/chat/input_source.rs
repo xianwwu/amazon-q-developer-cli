@@ -36,38 +36,30 @@ impl InputSource {
     pub fn read_line(&mut self, prompt: Option<&str>) -> Result<Option<String>, ReadlineError> {
         match &mut self.0 {
             inner::Inner::Readline(rl) => {
-                let mut prompt = prompt.unwrap_or_default();
-                let mut line = String::new();
-                loop {
-                    let curr_line = rl.readline(prompt);
-                    match curr_line {
-                        Ok(l) => {
-                            if l.trim().is_empty() {
-                                continue;
-                            } else if l.ends_with("\\") {
-                                line.push_str(&l);
-                                line.pop();
-                                prompt = ">> ";
-                                continue;
-                            } else {
-                                line.push_str(&l);
-                                let _ = rl.add_history_entry(line.as_str());
-                                return Ok(Some(line));
-                            }
-                        },
-                        Err(ReadlineError::Interrupted | ReadlineError::Eof) => {
-                            return Ok(None);
-                        },
-                        Err(err) => {
-                            return Err(err);
-                        },
-                    }
+                let prompt = prompt.unwrap_or_default();
+                let curr_line = rl.readline(prompt);
+                match curr_line {
+                    Ok(line) => {
+                        let _ = rl.add_history_entry(line.as_str());
+                        Ok(Some(line))
+                    },
+                    Err(ReadlineError::Interrupted | ReadlineError::Eof) => Ok(None),
+                    Err(err) => Err(err),
                 }
             },
             inner::Inner::Mock { index, lines } => {
                 *index += 1;
                 Ok(lines.get(*index - 1).cloned())
             },
+        }
+    }
+
+    // We're keeping this method for potential future use
+    #[allow(dead_code)]
+    pub fn set_buffer(&mut self, content: &str) {
+        if let inner::Inner::Readline(rl) = &mut self.0 {
+            // Add to history so user can access it with up arrow
+            let _ = rl.add_history_entry(content);
         }
     }
 }
