@@ -129,7 +129,7 @@ This structure parallels the existing `tools/` directory, creating a clear separ
 
 ### Command Registry Pattern
 
-To improve maintainability and reduce the reliance on match statements, we will introduce a new command registry pattern that directly integrates with the existing `ChatState` enum:
+To improve maintainability and reduce the reliance on match statements, we will introduce a new command registry pattern that directly integrates with the existing `ChatState` enum. The registry will be implemented as a singleton to avoid redundant initialization:
 
 ```rust
 /// A registry of available commands that can be executed
@@ -156,6 +156,12 @@ impl CommandRegistry {
         registry
     }
     
+    /// Get the global instance of the command registry
+    pub fn global() -> &'static CommandRegistry {
+        static INSTANCE: OnceCell<CommandRegistry> = OnceCell::new();
+        INSTANCE.get_or_init(CommandRegistry::new)
+    }
+    
     /// Register a new command handler
     pub fn register(&mut self, name: &str, handler: Box<dyn CommandHandler>) {
         self.commands.insert(name.to_string(), handler);
@@ -164,6 +170,16 @@ impl CommandRegistry {
     /// Get a command handler by name
     pub fn get(&self, name: &str) -> Option<&dyn CommandHandler> {
         self.commands.get(name).map(|h| h.as_ref())
+    }
+    
+    /// Check if a command exists
+    pub fn command_exists(&self, name: &str) -> bool {
+        self.commands.contains_key(name)
+    }
+    
+    /// Get all command names
+    pub fn command_names(&self) -> Vec<&String> {
+        self.commands.keys().collect()
     }
     
     /// Parse and execute a command string
@@ -268,10 +284,32 @@ impl CommandHandler for QuitCommand {
 Integration with the `UseQCommand` tool:
 
 ```rust
+impl Tool for UseQCommand {
+    fn validate(&self, ctx: &Context) -> Result<(), ToolResult> {
+        // Validate command exists and is allowed
+        let registry = CommandRegistry::global();
+        if !registry.command_exists(&self.command) {
+            return Err(ToolResult::error(
+                self.tool_use_id.clone(),
+                format!("Unknown command: {}", self.command),
+            ));
+        }
+        Ok(())
+    }
+    
+    fn requires_acceptance(&self, _ctx: &Context) -> bool {
+        // All commands executed through use_q_command require user acceptance by default
+        // This provides a security boundary between the AI and command execution
+        true
+    }
+    
+    // Other trait implementations...
+}
+
 impl UseQCommand {
     pub async fn invoke(&self, context: &Context, updates: &mut impl Write) -> Result<InvokeOutput> {
         // Get the command registry
-        let registry = CommandRegistry::new();
+        let registry = CommandRegistry::global();
         
         // Parse the command string
         let cmd_str = if !self.command.starts_with('/') {
@@ -300,7 +338,37 @@ impl UseQCommand {
             }
         }
     }
+    
+    pub fn get_usage_description(&self) -> String {
+        let registry = CommandRegistry::global();
+        let mut description = String::from("Execute internal commands within the q chat system.\n\n");
+        description.push_str("Available commands:\n");
+        
+        for command_name in registry.command_names() {
+            if let Some(handler) = registry.get(command_name) {
+                description.push_str(&format!(
+                    "- {} - {}\n  Usage: {}\n\n",
+                    command_name,
+                    handler.description(),
+                    handler.usage()
+                ));
+            }
+        }
+        
+        description
+    }
 }
+
+## Enhanced Security Considerations
+
+To ensure security when allowing AI to execute commands:
+
+1. **Default to Requiring Confirmation**: All commands executed through `use_q_command` will require user confirmation by default
+2. **Permission Persistence**: Users can choose to trust specific commands using the existing permission system
+3. **Command Auditing**: All commands executed by the AI will be logged for audit purposes
+4. **Scope Limitation**: Commands will only have access to the same resources as when executed directly by the user
+5. **Input Sanitization**: All command arguments will be sanitized to prevent injection attacks
+6. **Execution Context**: Commands will run in the same security context as the application
 
 ## Command Categories
 
