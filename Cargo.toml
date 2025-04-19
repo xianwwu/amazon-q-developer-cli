@@ -55,7 +55,7 @@ core-foundation = "0.10.0"
 core-foundation-sys = "0.8.7"
 core-graphics = "0.24.0"
 crossterm = "0.28.1"
-dashmap = "6.0.1"
+dashmap = "6.1.0"
 dirs = "5.0.0"
 fig_api_client = { path = "crates/fig_api_client" }
 fig_auth = { path = "crates/fig_auth" }
