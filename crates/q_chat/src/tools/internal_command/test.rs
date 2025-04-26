@@ -5,12 +5,12 @@ mod tests {
     use eyre::Result;
     use fig_os_shim::Context;
 
-    use crate::tools::internal_command::schema::InternalCommand;
     use crate::tools::Tool;
+    use crate::tools::internal_command::schema::InternalCommand;
 
     #[tokio::test]
     async fn test_internal_command_help() -> Result<()> {
-        let ctx = Context::default();
+        let ctx = Context::new_fake();
         let mut output = Cursor::new(Vec::new());
 
         let command = InternalCommand {
@@ -37,7 +37,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_internal_command_quit() -> Result<()> {
-        let ctx = Context::default();
+        let ctx = Context::new_fake();
         let mut output = Cursor::new(Vec::new());
 
         let command = InternalCommand {
@@ -64,7 +64,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_internal_command_context_add() -> Result<()> {
-        let ctx = Context::default();
+        let ctx = Context::new_fake();
         let mut output = Cursor::new(Vec::new());
 
         let command = InternalCommand {
@@ -92,7 +92,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_internal_command_invalid() -> Result<()> {
-        let ctx = Context::default();
+        let ctx = Context::new_fake();
         let mut output = Cursor::new(Vec::new());
 
         let command = InternalCommand {

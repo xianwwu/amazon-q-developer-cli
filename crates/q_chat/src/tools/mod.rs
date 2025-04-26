@@ -2,6 +2,7 @@ pub mod execute_bash;
 pub mod fs_read;
 pub mod fs_write;
 pub mod gh_issue;
+pub mod internal_command;
 pub mod use_aws;
 
 use std::collections::HashMap;
@@ -23,11 +24,13 @@ use fig_os_shim::Context;
 use fs_read::FsRead;
 use fs_write::FsWrite;
 use gh_issue::GhIssue;
+use internal_command::InternalCommand;
 use serde::Deserialize;
+use tracing::warn;
 use use_aws::UseAws;
 
-use super::consts::MAX_TOOL_RESPONSE_SIZE;
-use super::message::{
+use crate::consts::MAX_TOOL_RESPONSE_SIZE;
+use crate::message::{
     AssistantToolUse,
     ToolUseResult,
     ToolUseResultBlock,
@@ -41,6 +44,7 @@ pub enum Tool {
     ExecuteBash(ExecuteBash),
     UseAws(UseAws),
     GhIssue(GhIssue),
+    InternalCommand(InternalCommand),
 }
 
 impl Tool {
@@ -52,6 +56,7 @@ impl Tool {
             Tool::ExecuteBash(_) => "execute_bash",
             Tool::UseAws(_) => "use_aws",
             Tool::GhIssue(_) => "gh_issue",
+            Tool::InternalCommand(_) => "internal_command",
         }
     }
 
@@ -63,6 +68,7 @@ impl Tool {
             Tool::ExecuteBash(execute_bash) => execute_bash.requires_acceptance(),
             Tool::UseAws(use_aws) => use_aws.requires_acceptance(),
             Tool::GhIssue(_) => false,
+            Tool::InternalCommand(internal_command) => internal_command.requires_acceptance_simple(),
         }
     }
 
@@ -74,6 +80,7 @@ impl Tool {
             Tool::ExecuteBash(execute_bash) => execute_bash.invoke(updates).await,
             Tool::UseAws(use_aws) => use_aws.invoke(context, updates).await,
             Tool::GhIssue(gh_issue) => gh_issue.invoke(updates).await,
+            Tool::InternalCommand(internal_command) => internal_command.invoke(context, updates).await,
         }
     }
 
@@ -85,6 +92,7 @@ impl Tool {
             Tool::ExecuteBash(execute_bash) => execute_bash.queue_description(updates),
             Tool::UseAws(use_aws) => use_aws.queue_description(updates),
             Tool::GhIssue(gh_issue) => gh_issue.queue_description(updates),
+            Tool::InternalCommand(internal_command) => internal_command.queue_description(updates),
         }
     }
 
@@ -96,6 +104,9 @@ impl Tool {
             Tool::ExecuteBash(execute_bash) => execute_bash.validate(ctx).await,
             Tool::UseAws(use_aws) => use_aws.validate(ctx).await,
             Tool::GhIssue(gh_issue) => gh_issue.validate(ctx).await,
+            Tool::InternalCommand(internal_command) => internal_command
+                .validate_simple()
+                .map_err(|e| eyre::eyre!("Tool validation failed: {:?}", e)),
         }
     }
 }
@@ -118,6 +129,9 @@ impl TryFrom<AssistantToolUse> for Tool {
             "execute_bash" => Self::ExecuteBash(serde_json::from_value::<ExecuteBash>(value.args).map_err(map_err)?),
             "use_aws" => Self::UseAws(serde_json::from_value::<UseAws>(value.args).map_err(map_err)?),
             "report_issue" => Self::GhIssue(serde_json::from_value::<GhIssue>(value.args).map_err(map_err)?),
+            "internal_command" => {
+                Self::InternalCommand(serde_json::from_value::<InternalCommand>(value.args).map_err(map_err)?)
+            },
             unknown => {
                 return Err(ToolUseResult {
                     tool_use_id: value.id,
@@ -183,6 +197,10 @@ impl ToolPermissions {
     }
 
     pub fn reset_tool(&mut self, tool_name: &str) {
+        if !self.permissions.contains_key(tool_name) {
+            warn!("No custom permissions set for tool '{tool_name}' to reset");
+            return;
+        }
         self.permissions.remove(tool_name);
     }
 
@@ -200,6 +218,7 @@ impl ToolPermissions {
             "execute_bash" => "trust read-only commands".dark_grey(),
             "use_aws" => "trust read-only commands".dark_grey(),
             "report_issue" => "trusted".dark_green().bold(),
+            "internal_command" => "trust read-only commands".dark_grey(),
             _ => "not trusted".dark_grey(),
         };
 
@@ -231,7 +250,12 @@ pub struct InputSchema(pub serde_json::Value);
 /// The output received from invoking a [Tool].
 #[derive(Debug, Default)]
 pub struct InvokeOutput {
-    pub output: OutputKind,
+    /// The output content from the tool execution
+    pub(crate) output: OutputKind,
+    /// Optional next state to transition to, overriding the default flow
+    /// If set, tool_use_execute will return this state instead of proceeding to
+    /// HandleResponseStream
+    pub(crate) next_state: Option<crate::ChatState>,
 }
 
 #[non_exhaustive]
@@ -244,6 +268,15 @@ pub enum OutputKind {
 impl Default for OutputKind {
     fn default() -> Self {
         Self::Text(String::new())
+    }
+}
+
+impl std::fmt::Display for OutputKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Text(text) => write!(f, "{}", text),
+            Self::Json(json) => write!(f, "{}", json),
+        }
     }
 }
 
@@ -341,15 +374,15 @@ fn absolute_to_relative(cwd: impl AsRef<Path>, path: impl AsRef<Path>) -> Result
     }
 
     // ".." for any uncommon parts, then just append the rest of the path.
-    let mut relative = PathBuf::new();
+    let mut result = PathBuf::new();
     for _ in cwd_parts {
-        relative.push("..");
+        result.push("..");
     }
     for part in path_parts {
-        relative.push(part);
+        result.push(part);
     }
 
-    Ok(relative)
+    Ok(result)
 }
 
 /// Small helper for formatting the path as a relative path, if able.
@@ -423,5 +456,14 @@ mod tests {
             "/Volumes/projects/MyProject/src",
         )
         .await;
+    }
+}
+
+impl From<ToolUseResultBlock> for OutputKind {
+    fn from(block: ToolUseResultBlock) -> Self {
+        match block {
+            ToolUseResultBlock::Text(text) => OutputKind::Text(text),
+            ToolUseResultBlock::Json(json) => OutputKind::Json(json),
+        }
     }
 }

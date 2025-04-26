@@ -103,6 +103,7 @@ impl ExecuteBash {
 
         Ok(InvokeOutput {
             output: OutputKind::Json(result),
+            next_state: None,
         })
     }
 

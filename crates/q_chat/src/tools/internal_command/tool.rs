@@ -7,20 +7,17 @@ use crossterm::style::{
 };
 use eyre::Result;
 use fig_os_shim::Context;
-use tracing::{
-    debug,
-    info,
-};
+use tracing::debug;
 
-use crate::tools::InvokeOutput;
-use crate::tools::internal_command::schema::InternalCommand;
+use crate::ChatState;
 use crate::command::{
     Command,
     ContextSubcommand,
     ProfileSubcommand,
     ToolsSubcommand,
 };
-use crate::ChatState;
+use crate::tools::InvokeOutput;
+use crate::tools::internal_command::schema::InternalCommand;
 
 impl InternalCommand {
     /// Validate that the command exists
@@ -152,7 +149,7 @@ impl InternalCommand {
     /// Invoke the internal command tool
     ///
     /// This method executes the internal command and returns an InvokeOutput with the result.
-    /// It parses the command into a Command enum and returns a ChatState::ExecuteParsedCommand
+    /// It parses the command into a Command enum and returns a ChatState::ExecuteCommand
     /// state that will be handled by the chat loop.
     ///
     /// # Arguments
@@ -168,18 +165,8 @@ impl InternalCommand {
         let command_str = self.format_command_string();
         let description = self.get_command_description();
 
-        // Log the command being executed
-        info!("internal_command tool executing command: {}", command_str);
-        debug!(
-            "Command details - command: {}, subcommand: {:?}, args: {:?}, flags: {:?}",
-            self.command, self.subcommand, self.args, self.flags
-        );
-
-        // Create a response with the suggested command and description
-        let response = format!(
-            "I suggest using the command: `{}` - {}\n\nExecuting this command for you.",
-            command_str, description
-        );
+        // Create a response with the command and description
+        let response = format!("Executing command for you: `{}` - {}", command_str, description);
 
         // Parse the command into a Command enum
         use std::collections::HashSet;
@@ -437,16 +424,14 @@ impl InternalCommand {
         // Log the parsed command
         debug!("Parsed command: {:?}", parsed_command);
 
-        // Log the next state being returned
-        debug!(
-            "internal_command tool returning ChatState::ExecuteParsedCommand with command: {:?}",
-            parsed_command
-        );
-
         // Return an InvokeOutput with the response and next state
         Ok(InvokeOutput {
             output: crate::tools::OutputKind::Text(response),
-            next_state: Some(ChatState::ExecuteParsedCommand(parsed_command)),
+            next_state: Some(ChatState::ExecuteCommand {
+                command: parsed_command,
+                tool_uses: None,
+                pending_tool_index: None,
+            }),
         })
     }
 }

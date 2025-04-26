@@ -66,8 +66,6 @@ mod tests {
         assert_eq!(command.usage(), "/quit");
         assert!(command.requires_confirmation(&[]));
 
-        // We'll need to implement test_utils later
-        // let ctx = create_test_context();
         let ctx = Context::default();
         let result = command.execute(vec![], &ctx, None, None).await;
         assert!(result.is_ok());

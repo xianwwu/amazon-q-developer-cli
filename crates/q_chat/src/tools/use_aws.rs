@@ -97,6 +97,7 @@ impl UseAws {
                     "stdout": stdout,
                     "stderr": stderr.clone()
                 })),
+                next_state: None,
             })
         } else {
             Err(eyre::eyre!(stderr))

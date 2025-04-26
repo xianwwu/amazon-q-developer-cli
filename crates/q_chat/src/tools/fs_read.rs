@@ -177,6 +177,7 @@ time. You tried to read {byte_count} bytes. Try executing with fewer lines speci
 
         Ok(InvokeOutput {
             output: OutputKind::Text(file_contents),
+            next_state: None,
         })
     }
 
@@ -282,6 +283,7 @@ impl FsSearch {
 
         Ok(InvokeOutput {
             output: OutputKind::Text(serde_json::to_string(&results)?),
+            next_state: None,
         })
     }
 
@@ -395,6 +397,7 @@ impl FsDirectory {
 
         Ok(InvokeOutput {
             output: OutputKind::Text(result),
+            next_state: None,
         })
     }
 

@@ -7,6 +7,7 @@ use fig_os_shim::Context;
 use crate::commands::{
     ClearCommand,
     CommandHandler,
+    CompactCommand,
     ContextCommand,
     HelpCommand,
     ProfileCommand,
@@ -14,6 +15,7 @@ use crate::commands::{
     ToolsCommand,
 };
 use crate::{
+    ChatContext,
     ChatState,
     QueuedTool,
 };
@@ -38,7 +40,7 @@ impl CommandRegistry {
         registry.register("context", Box::new(ContextCommand::new()));
         registry.register("profile", Box::new(ProfileCommand::new()));
         registry.register("tools", Box::new(ToolsCommand::new()));
-        // registry.register("compact", Box::new(CompactCommand::new()));
+        registry.register("compact", Box::new(CompactCommand::new()));
 
         registry
     }

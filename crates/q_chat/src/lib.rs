@@ -527,6 +527,12 @@ enum ChatState {
     ExecuteTools(Vec<QueuedTool>),
     /// Consume the response stream and display to the user.
     HandleResponseStream(SendMessageOutput),
+    /// Execute a parsed command.
+    ExecuteCommand {
+        command: Command,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    },
     /// Compact the chat history.
     CompactHistory {
         tool_uses: Option<Vec<QueuedTool>>,
@@ -827,7 +833,20 @@ impl ChatContext {
                     res = self.handle_response(response) => res,
                     Some(_) = ctrl_c_stream.recv() => Err(ChatError::Interrupted { tool_uses: None })
                 },
-                ChatState::Exit => return Ok(()),
+                ChatState::ExecuteCommand {
+                    command,
+                    tool_uses,
+                    pending_tool_index,
+                } => {
+                    let tool_uses_clone = tool_uses.clone();
+                    tokio::select! {
+                        res = self.execute_command(command, tool_uses, pending_tool_index) => res,
+                        Some(_) = ctrl_c_stream.recv() => Err(ChatError::Interrupted { tool_uses: tool_uses_clone })
+                    }
+                },
+                ChatState::Exit => {
+                    return Ok(());
+                },
             };
 
             next_state = Some(self.handle_state_execution_result(result).await?);
@@ -1258,10 +1277,10 @@ impl ChatContext {
         }
 
         let command = command_result.unwrap();
-        let mut tool_uses: Vec<QueuedTool> = tool_uses.unwrap_or_default();
-
         Ok(match command {
             Command::Ask { prompt } => {
+                let mut tool_uses = tool_uses.unwrap_or_default();
+
                 // Check for a pending tool approval
                 if let Some(index) = pending_tool_index {
                     let tool_use = &mut tool_uses[index];
@@ -1299,6 +1318,27 @@ impl ChatContext {
                 self.send_tool_use_telemetry().await;
 
                 ChatState::HandleResponseStream(self.client.send_message(conv_state).await?)
+            },
+            _ => ChatState::ExecuteCommand {
+                command,
+                tool_uses,
+                pending_tool_index,
+            },
+        })
+    }
+
+    async fn execute_command(
+        &mut self,
+        command: Command,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Result<ChatState, ChatError> {
+        let tool_uses = tool_uses.unwrap_or_default();
+        Ok(match command {
+            Command::Ask { prompt: _ } => {
+                // We should never get here.
+                // Ask is handle in handle_input
+                return Err(ChatError::Custom("Command state is not in a valid state.".into()));
             },
             Command::Execute { command } => {
                 queue!(self.output, style::Print('\n'))?;
@@ -2462,6 +2502,12 @@ impl ChatContext {
             match invoke_result {
                 Ok(result) => {
                     debug!("tool result output: {:#?}", result);
+
+                    if result.next_state.is_some() {
+                        let chat_state = result.next_state.unwrap_or_default();
+                        return Ok(chat_state);
+                    }
+
                     execute!(
                         self.output,
                         style::Print(CONTINUATION_LINE),
@@ -3119,7 +3165,12 @@ fn create_stream(model_responses: serde_json::Value) -> StreamingClient {
 
 /// Returns all tools supported by Q chat.
 pub fn load_tools() -> Result<HashMap<String, ToolSpec>> {
-    Ok(serde_json::from_str(include_str!("tools/tool_index.json"))?)
+    let mut tools: HashMap<String, ToolSpec> = serde_json::from_str(include_str!("tools/tool_index.json"))?;
+
+    // Add internal_command tool dynamically using the get_tool_spec function
+    tools.insert("internal_command".to_string(), tools::internal_command::get_tool_spec());
+
+    Ok(tools)
 }
 
 #[cfg(test)]

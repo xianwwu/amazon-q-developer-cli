@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 /// Schema for the internal_command tool
 ///
@@ -34,18 +37,17 @@ pub struct InternalCommand {
     /// Optional arguments for the command
     ///
     /// Examples:
-    /// - For context add: ["file.txt"] - The file to add as context 
-    ///   Example: When user says "add README.md to context", use args=["README.md"]
-    ///   Example: When user says "add these files to context: file1.txt and file2.txt", 
-    ///            use args=["file1.txt", "file2.txt"]
+    /// - For context add: ["file.txt"] - The file to add as context Example: When user says "add
+    ///   README.md to context", use args=["README.md"] Example: When user says "add these files to
+    ///   context: file1.txt and file2.txt", use args=["file1.txt", "file2.txt"]
     ///
-    /// - For context rm: ["file.txt"] or ["1"] - The file to remove or its index
-    ///   Example: When user says "remove README.md from context", use args=["README.md"]
-    ///   Example: When user says "remove the first context file", use args=["1"]
+    /// - For context rm: ["file.txt"] or ["1"] - The file to remove or its index Example: When user
+    ///   says "remove README.md from context", use args=["README.md"] Example: When user says
+    ///   "remove the first context file", use args=["1"]
     ///
-    /// - For profile create: ["my-profile"] - The name of the profile to create
-    ///   Example: When user says "create a profile called work", use args=["work"]
-    ///   Example: When user says "make a new profile for my personal projects", use args=["personal"]
+    /// - For profile create: ["my-profile"] - The name of the profile to create Example: When user
+    ///   says "create a profile called work", use args=["work"] Example: When user says "make a new
+    ///   profile for my personal projects", use args=["personal"]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<Vec<String>>,
 
