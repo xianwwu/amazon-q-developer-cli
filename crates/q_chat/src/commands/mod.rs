@@ -1,6 +1,6 @@
 mod clear;
 // mod compact;
-// pub mod context;
+pub mod context;
 pub mod handler;
 mod help;
 // pub mod profile;
@@ -12,7 +12,7 @@ pub mod registry;
 
 pub use clear::ClearCommand;
 // pub use compact::CompactCommand;
-// pub use context::ContextCommand;
+pub use context::ContextCommand;
 pub use handler::CommandHandler;
 pub use help::HelpCommand;
 // pub use profile::ProfileCommand;
