@@ -40,7 +40,10 @@ use command::{
     Command,
     ToolsSubcommand,
 };
-use consts::{CONTEXT_WINDOW_SIZE, QCHAT_PROCESS_ID};
+use consts::{
+    CONTEXT_WINDOW_SIZE,
+    QCHAT_PROCESS_ID,
+};
 use context::ContextManager;
 use conversation_state::{
     ConversationState,
