@@ -1,5 +1,4 @@
-#!/bin/bash
-. "$(dirname "$0")/_/husky.sh"
+
 
 # Check if Amazon Q chat is active
 if [ -n "$QCHAT_PROCESS_ID" ]; then
