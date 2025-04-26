@@ -9,7 +9,9 @@ use crate::commands::{
     CommandHandler,
     ContextCommand,
     HelpCommand,
+    ProfileCommand,
     QuitCommand,
+    ToolsCommand,
 };
 use crate::{
     ChatState,
@@ -34,9 +36,9 @@ impl CommandRegistry {
         registry.register("clear", Box::new(ClearCommand::new()));
         registry.register("help", Box::new(HelpCommand::new()));
         registry.register("context", Box::new(ContextCommand::new()));
+        registry.register("profile", Box::new(ProfileCommand::new()));
+        registry.register("tools", Box::new(ToolsCommand::new()));
         // registry.register("compact", Box::new(CompactCommand::new()));
-        // registry.register("profile", Box::new(ProfileCommand::new()));
-        // registry.register("tools", Box::new(ToolsCommand::new()));
 
         registry
     }
