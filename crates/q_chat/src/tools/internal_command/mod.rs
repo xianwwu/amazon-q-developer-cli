@@ -18,16 +18,36 @@ pub fn get_tool_spec() -> ToolSpec {
     description.push_str("when a user's natural language query indicates they want to perform a specific action.\n\n");
     description.push_str("Available commands:\n");
 
-    // Add each command to the description
-    description.push_str("- help: Show help information\n");
-    description.push_str("- quit: Exit the chat session\n");
-    description.push_str("- clear: Clear the conversation history\n");
-    description.push_str("- context: Manage conversation context files\n");
-    description.push_str("- profile: Manage profiles\n");
-    description.push_str("- tools: Manage tool permissions and settings\n");
-    description.push_str("- issue: Create a GitHub issue for reporting bugs or feature requests\n");
-    description.push_str("- compact: Summarize and compact the conversation history\n");
-    description.push_str("- editor: Open an external editor to compose a prompt\n");
+    // Get detailed command descriptions from the command registry
+    let command_registry = crate::commands::registry::CommandRegistry::global();
+    let llm_descriptions = command_registry.generate_llm_descriptions();
+
+    // Add each command to the description with its LLM description
+    if let Some(commands) = llm_descriptions.as_object() {
+        for (name, cmd_info) in commands {
+            if let Some(cmd_desc) = cmd_info.get("description").and_then(|d| d.as_str()) {
+                // Add a summary line for each command
+                description.push_str(&format!("- {}: {}\n", name, cmd_desc.lines().next().unwrap_or("")));
+            }
+        }
+    }
+
+    // Add detailed command information
+    description.push_str("\nDetailed command information:\n");
+    if let Some(commands) = llm_descriptions.as_object() {
+        for (name, cmd_info) in commands {
+            if let Some(cmd_desc) = cmd_info.get("description").and_then(|d| d.as_str()) {
+                description.push_str(&format!("\n## {}\n{}\n", name, cmd_desc));
+            }
+        }
+    }
+
+    // Add information about how to access list data for commands that manage lists
+    description.push_str("\nList data access commands:\n");
+    description.push_str("- For context files: Use '/context show' to see all current context files\n");
+    description.push_str("- For profiles: Use '/profile list' to see all available profiles\n");
+    description.push_str("- For tools: Use '/tools list' to see all available tools and their status\n");
+    description.push_str("These commands can be used to dynamically retrieve the current state of lists.\n");
 
     // Add examples of natural language that should trigger this tool
     description.push_str("\nExamples of natural language that should trigger this tool:\n");

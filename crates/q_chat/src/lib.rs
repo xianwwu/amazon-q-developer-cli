@@ -1,5 +1,8 @@
 pub mod cli;
 mod command;
+#[cfg(test)]
+mod command_execution_tests;
+pub mod commands;
 mod consts;
 mod context;
 mod conversation_state;
@@ -14,7 +17,6 @@ mod skim_integration;
 mod token_counter;
 mod tools;
 pub mod util;
-
 use std::borrow::Cow;
 use std::collections::{
     HashMap,
@@ -40,6 +42,7 @@ use command::{
     Command,
     ToolsSubcommand,
 };
+// CommandContextAdapter is used in other files
 use consts::CONTEXT_WINDOW_SIZE;
 use context::ContextManager;
 use conversation_state::{
@@ -504,7 +507,7 @@ impl Drop for ChatContext {
 /// Intended to provide more robust handling around state transitions while dealing with, e.g.,
 /// tool validation, execution, response stream handling, etc.
 #[derive(Debug)]
-enum ChatState {
+pub enum ChatState {
     /// Prompt the user with `tool_uses`, if available.
     PromptUser {
         /// Tool uses to present to the user.
@@ -1404,8 +1407,13 @@ impl ChatContext {
                 self.compact_history(Some(tool_uses), pending_tool_index, prompt, show_summary, help)
                     .await?
             },
-            Command::Help => {
-                execute!(self.output, style::Print(HELP_TEXT))?;
+            Command::Help { help_text } => {
+                if let Some(help_text) = help_text {
+                    execute!(self.output, style::Print(help_text))?;
+                } else {
+                    execute!(self.output, style::Print(HELP_TEXT))?;
+                }
+
                 ChatState::PromptUser {
                     tool_uses: Some(tool_uses),
                     pending_tool_index,

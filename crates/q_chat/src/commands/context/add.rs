@@ -11,12 +11,10 @@ use eyre::{
     Result,
     eyre,
 };
-use fig_os_shim::Context;
 
 use crate::commands::CommandHandler;
 use crate::{
-    ChatState,
-    QueuedTool,
+    ChatContext, ChatState, QueuedTool
 };
 
 /// Handler for the context add command
@@ -56,7 +54,7 @@ impl CommandHandler for AddContextCommand {
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,
-        ctx: &'a Context,
+        ctx: &'a ChatContext,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
@@ -66,19 +64,15 @@ impl CommandHandler for AddContextCommand {
                 return Err(eyre!("No paths specified. Usage: {}", self.usage()));
             }
 
-            // Get the conversation state from the context
-            let mut stdout = ctx.stdout();
-            let conversation_state = ctx.get_conversation_state()?;
-
             // Get the context manager
-            let Some(context_manager) = &mut conversation_state.context_manager else {
+            let Some(context_manager) = &mut ctx.conversation_state.context_manager else {
                 queue!(
-                    stdout,
+                    ctx.output,
                     style::SetForegroundColor(Color::Red),
                     style::Print("Error: Context manager not initialized\n"),
                     style::ResetColor
                 )?;
-                stdout.flush()?;
+                ctx.output.flush()?;
                 return Ok(ChatState::PromptUser {
                     tool_uses,
                     pending_tool_index,
@@ -95,22 +89,22 @@ impl CommandHandler for AddContextCommand {
                     // Success message
                     let scope = if self.global { "global" } else { "profile" };
                     queue!(
-                        stdout,
+                        ctx.output,
                         style::SetForegroundColor(Color::Green),
                         style::Print(format!("Added {} file(s) to {} context\n", self.paths.len(), scope)),
                         style::ResetColor
                     )?;
-                    stdout.flush()?;
+                    ctx.output.flush()?;
                 },
                 Err(e) => {
                     // Error message
                     queue!(
-                        stdout,
+                        ctx.output,
                         style::SetForegroundColor(Color::Red),
                         style::Print(format!("Error: {}\n", e)),
                         style::ResetColor
                     )?;
-                    stdout.flush()?;
+                    ctx.output.flush()?;
                 },
             }
 
@@ -137,7 +131,7 @@ mod tests {
         let command = AddContextCommand::new(false, false, vec![]);
         // We'll need to implement test_utils later
         // let ctx = create_test_context();
-        let ctx = Context::default();
+        let ctx = ChatContext::default();
         let result = command.execute(vec![], &ctx, None, None).await;
         assert!(result.is_err());
     }

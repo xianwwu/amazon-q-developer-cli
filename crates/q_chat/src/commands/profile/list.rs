@@ -8,12 +8,10 @@ use crossterm::style::{
     Color,
 };
 use eyre::Result;
-use fig_os_shim::Context;
 
 use crate::commands::CommandHandler;
 use crate::{
-    ChatState,
-    QueuedTool,
+    ChatContext, ChatState, QueuedTool
 };
 
 /// Handler for the profile list command
@@ -45,24 +43,20 @@ impl CommandHandler for ListProfilesCommand {
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,
-        ctx: &'a Context,
+        ctx: &'a ChatContext,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Get the conversation state from the context
-            let mut stdout = ctx.stdout();
-            let conversation_state = ctx.get_conversation_state()?;
-
             // Get the context manager
-            let Some(context_manager) = &conversation_state.context_manager else {
+            let Some(context_manager) = &ctx.conversation_state.context_manager else {
                 queue!(
-                    stdout,
+                    ctx.output,
                     style::SetForegroundColor(Color::Red),
                     style::Print("Error: Context manager not initialized\n"),
                     style::ResetColor
                 )?;
-                stdout.flush()?;
+                ctx.output.flush()?;
                 return Ok(ChatState::PromptUser {
                     tool_uses,
                     pending_tool_index,
@@ -75,12 +69,12 @@ impl CommandHandler for ListProfilesCommand {
                 Ok(profiles) => profiles,
                 Err(e) => {
                     queue!(
-                        stdout,
+                        ctx.output,
                         style::SetForegroundColor(Color::Red),
                         style::Print(format!("Error listing profiles: {}\n", e)),
                         style::ResetColor
                     )?;
-                    stdout.flush()?;
+                    ctx.output.flush()?;
                     return Ok(ChatState::PromptUser {
                         tool_uses,
                         pending_tool_index,
@@ -91,7 +85,7 @@ impl CommandHandler for ListProfilesCommand {
 
             // Display the profiles
             queue!(
-                stdout,
+                ctx.output,
                 style::SetForegroundColor(Color::Yellow),
                 style::Print("\nAvailable profiles:\n"),
                 style::ResetColor
@@ -100,7 +94,7 @@ impl CommandHandler for ListProfilesCommand {
             for profile in profiles {
                 if profile == context_manager.current_profile {
                     queue!(
-                        stdout,
+                        ctx.output,
                         style::SetForegroundColor(Color::Green),
                         style::Print("* "),
                         style::Print(&profile),
@@ -108,12 +102,12 @@ impl CommandHandler for ListProfilesCommand {
                         style::Print(" (current)\n")
                     )?;
                 } else {
-                    queue!(stdout, style::Print("  "), style::Print(&profile), style::Print("\n"))?;
+                    queue!(ctx.output, style::Print("  "), style::Print(&profile), style::Print("\n"))?;
                 }
             }
 
-            queue!(stdout, style::Print("\n"))?;
-            stdout.flush()?;
+            queue!(ctx.output, style::Print("\n"))?;
+            stdctx.outputout.flush()?;
 
             Ok(ChatState::PromptUser {
                 tool_uses,

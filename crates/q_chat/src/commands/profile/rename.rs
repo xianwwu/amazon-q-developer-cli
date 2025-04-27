@@ -8,12 +8,10 @@ use crossterm::style::{
     Color,
 };
 use eyre::Result;
-use fig_os_shim::Context;
 
 use crate::commands::CommandHandler;
 use crate::{
-    ChatState,
-    QueuedTool,
+    ChatContext, ChatState, QueuedTool
 };
 
 /// Handler for the profile rename command
@@ -51,24 +49,20 @@ impl CommandHandler for RenameProfileCommand {
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,
-        ctx: &'a Context,
+        ctx: &'a ChatContext,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Get the conversation state from the context
-            let mut stdout = ctx.stdout();
-            let conversation_state = ctx.get_conversation_state()?;
-
             // Get the context manager
-            let Some(context_manager) = &mut conversation_state.context_manager else {
+            let Some(context_manager) = ctx.conversation_state.context_manager.as_mut() else {
                 queue!(
-                    stdout,
+                    ctx.output,
                     style::SetForegroundColor(Color::Red),
                     style::Print("Error: Context manager not initialized\n"),
                     style::ResetColor
                 )?;
-                stdout.flush()?;
+                ctx.output.flush()?;
                 return Ok(ChatState::PromptUser {
                     tool_uses,
                     pending_tool_index,
@@ -81,7 +75,7 @@ impl CommandHandler for RenameProfileCommand {
                 Ok(_) => {
                     // Success message
                     queue!(
-                        stdout,
+                        ctx.output,
                         style::SetForegroundColor(Color::Green),
                         style::Print(format!("\nRenamed profile: {} -> {}\n\n", self.old_name, self.new_name)),
                         style::ResetColor
@@ -90,7 +84,7 @@ impl CommandHandler for RenameProfileCommand {
                 Err(e) => {
                     // Error message
                     queue!(
-                        stdout,
+                        ctx.output,
                         style::SetForegroundColor(Color::Red),
                         style::Print(format!("\nError renaming profile: {}\n\n", e)),
                         style::ResetColor
@@ -98,7 +92,7 @@ impl CommandHandler for RenameProfileCommand {
                 },
             }
 
-            stdout.flush()?;
+            ctx.output.flush()?;
 
             Ok(ChatState::PromptUser {
                 tool_uses,

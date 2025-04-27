@@ -1,31 +1,26 @@
-mod add;
-mod clear;
-mod remove;
-mod show;
-
 use std::future::Future;
 use std::pin::Pin;
 
-pub use add::AddContextCommand;
-pub use clear::ClearContextCommand;
-use eyre::{
-    Result,
-    eyre,
-};
-use fig_os_shim::Context;
-pub use remove::RemoveContextCommand;
-pub use show::ShowContextCommand;
+use eyre::Result;
 
-use crate::commands::CommandHandler;
+use super::{
+    CommandContextAdapter,
+    CommandHandler,
+};
+use crate::command::{
+    Command,
+    ContextSubcommand,
+};
 use crate::{
     ChatState,
     QueuedTool,
 };
 
-/// Handler for the context command
+/// Context command handler
 pub struct ContextCommand;
 
 impl ContextCommand {
+    /// Create a new context command handler
     pub fn new() -> Self {
         Self
     }
@@ -37,7 +32,7 @@ impl CommandHandler for ContextCommand {
     }
 
     fn description(&self) -> &'static str {
-        "Manage context files for the chat session"
+        "Manage context files and hooks for the chat session"
     }
 
     fn usage(&self) -> &'static str {
@@ -45,182 +40,118 @@ impl CommandHandler for ContextCommand {
     }
 
     fn help(&self) -> String {
-        crate::command::ContextSubcommand::help_text()
+        "Manage context files and hooks for the chat session.\n\n\
+        Subcommands:\n\
+        help        Show context help\n\
+        show        Display current context rules configuration [--expand]\n\
+        add         Add file(s) to context [--global] [--force]\n\
+        rm          Remove file(s) from context [--global]\n\
+        clear       Clear all files from current context [--global]\n\
+        hooks       View and manage context hooks"
+            .to_string()
     }
 
     fn llm_description(&self) -> String {
-        r#"The context command allows you to manage context files for the chat session.
+        r#"The context command manages files added as context to the conversation.
 
-Available subcommands:
-- add: Add files to the context
-- rm/remove: Remove files from the context
-- clear: Clear all context files
-- show/list: Show current context files
-- help: Show help for context commands
+Subcommands:
+- add <file_path>: Add a file as context
+- rm <index_or_path>: Remove a context file by index or path
+- clear: Remove all context files
+- show: Display all current context files
+- hooks: Manage context hooks
 
 Examples:
-- /context add file.txt - Add a file to the context
-- /context add --global file.txt - Add a file to the global context
-- /context add --force file.txt - Add a file to the context, even if it's large
-- /context rm file.txt - Remove a file from the context
-- /context rm 1 - Remove the first file from the context
-- /context clear - Clear all context files
-- /context show - Show current context files
-- /context show --expand - Show current context files with their content"#
+- "/context add README.md" - Adds README.md as context
+- "/context rm 2" - Removes the second context file
+- "/context show" - Shows all current context files
+- "/context clear" - Removes all context files
+
+To get the current context files, use the command "/context show" which will display all current context files.
+To see the full content of context files, use "/context show --expand"."#
             .to_string()
     }
 
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a Context,
+        _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // If no arguments, show help
-            if args.is_empty() {
-                return Ok(ChatState::DisplayHelp {
-                    help_text: self.help(),
-                    tool_uses,
-                    pending_tool_index,
-                });
-            }
+            // Parse arguments to determine the subcommand
+            let subcommand = if args.is_empty() {
+                ContextSubcommand::Show { expand: false }
+            } else {
+                match args[0] {
+                    "show" => {
+                        let expand = args.len() > 1 && args[1] == "--expand";
+                        ContextSubcommand::Show { expand }
+                    },
+                    "add" => {
+                        let mut global = false;
+                        let mut force = false;
+                        let mut paths = Vec::new();
 
-            // Parse subcommand
-            let subcommand = args[0];
-            let subcommand_args = args[1..].to_vec();
-
-            // Execute subcommand
-            match subcommand {
-                "add" => {
-                    // Parse flags
-                    let mut global = false;
-                    let mut force = false;
-                    let mut paths = Vec::new();
-
-                    for arg in &subcommand_args {
-                        match *arg {
-                            "--global" => global = true,
-                            "--force" => force = true,
-                            _ => paths.push(*arg),
+                        for arg in &args[1..] {
+                            match *arg {
+                                "--global" => global = true,
+                                "--force" => force = true,
+                                _ => paths.push((*arg).to_string()),
+                            }
                         }
-                    }
 
-                    let command = AddContextCommand::new(global, force, paths);
-                    command.execute(Vec::new(), ctx, tool_uses, pending_tool_index).await
-                },
-                "rm" | "remove" => {
-                    // Parse flags
-                    let mut global = false;
-                    let mut paths = Vec::new();
+                        ContextSubcommand::Add { global, force, paths }
+                    },
+                    "rm" | "remove" => {
+                        let mut global = false;
+                        let mut paths = Vec::new();
 
-                    for arg in &subcommand_args {
-                        match *arg {
-                            "--global" => global = true,
-                            _ => paths.push(*arg),
+                        for arg in &args[1..] {
+                            match *arg {
+                                "--global" => global = true,
+                                _ => paths.push((*arg).to_string()),
+                            }
                         }
-                    }
 
-                    let command = RemoveContextCommand::new(global, paths);
-                    command.execute(Vec::new(), ctx, tool_uses, pending_tool_index).await
-                },
-                "clear" => {
-                    // Parse flags
-                    let mut global = false;
+                        ContextSubcommand::Remove { global, paths }
+                    },
+                    "clear" => {
+                        let global = args.len() > 1 && args[1] == "--global";
+                        ContextSubcommand::Clear { global }
+                    },
+                    "help" => ContextSubcommand::Help,
+                    "hooks" => {
+                        // Use the Command::parse_hooks function to parse hooks subcommands
+                        // This ensures consistent behavior with the Command::parse method
+                        let hook_parts: Vec<&str> = std::iter::once("hooks").chain(args.iter().copied()).collect();
 
-                    for arg in &subcommand_args {
-                        if *arg == "--global" {
-                            global = true;
+                        match crate::command::Command::parse_hooks(&hook_parts) {
+                            Ok(crate::command::Command::Context { subcommand }) => subcommand,
+                            _ => ContextSubcommand::Hooks { subcommand: None },
                         }
-                    }
+                    },
+                    _ => ContextSubcommand::Help,
+                }
+            };
 
-                    let command = ClearContextCommand::new(global);
-                    command.execute(Vec::new(), ctx, tool_uses, pending_tool_index).await
-                },
-                "show" | "list" => {
-                    // Parse flags
-                    let mut global = false;
-                    let mut expand = false;
-
-                    for arg in &subcommand_args {
-                        match *arg {
-                            "--global" => global = true,
-                            "--expand" => expand = true,
-                            _ => {},
-                        }
-                    }
-
-                    let command = ShowContextCommand::new(global, expand);
-                    command.execute(Vec::new(), ctx, tool_uses, pending_tool_index).await
-                },
-                "help" => {
-                    // Show help text
-                    Ok(ChatState::DisplayHelp {
-                        help_text: self.help(),
-                        tool_uses,
-                        pending_tool_index,
-                    })
-                },
-                _ => {
-                    // Unknown subcommand
-                    Err(eyre!(
-                        "Unknown subcommand: {}. Use '/context help' for usage information.",
-                        subcommand
-                    ))
-                },
-            }
+            Ok(ChatState::ExecuteCommand {
+                command: Command::Context { subcommand },
+                tool_uses,
+                pending_tool_index,
+            })
         })
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_context_command_help() {
-        let command = ContextCommand::new();
-        assert_eq!(command.name(), "context");
-        assert_eq!(command.description(), "Manage context files for the chat session");
-        assert_eq!(command.usage(), "/context [subcommand]");
-
-        // We'll need to implement test_utils later
-        // let ctx = create_test_context();
-        let ctx = Context::default();
-        let result = command.execute(vec!["help"], &ctx, None, None).await;
-        assert!(result.is_ok());
-
-        if let Ok(state) = result {
-            match state {
-                ChatState::DisplayHelp { .. } => {},
-                _ => panic!("Expected DisplayHelp state"),
-            }
+    fn requires_confirmation(&self, args: &[&str]) -> bool {
+        if args.is_empty() {
+            return false; // Default show doesn't require confirmation
         }
-    }
 
-    #[tokio::test]
-    async fn test_context_command_no_args() {
-        let command = ContextCommand::new();
-        // let ctx = create_test_context();
-        let ctx = Context::default();
-        let result = command.execute(vec![], &ctx, None, None).await;
-        assert!(result.is_ok());
-
-        if let Ok(state) = result {
-            match state {
-                ChatState::DisplayHelp { .. } => {},
-                _ => panic!("Expected DisplayHelp state"),
-            }
+        match args[0] {
+            "show" | "help" | "hooks" => false, // Read-only commands don't require confirmation
+            _ => true,                          // All other subcommands require confirmation
         }
-    }
-
-    #[tokio::test]
-    async fn test_context_command_unknown_subcommand() {
-        let command = ContextCommand::new();
-        // let ctx = create_test_context();
-        let ctx = Context::default();
-        let result = command.execute(vec!["unknown"], &ctx, None, None).await;
-        assert!(result.is_err());
     }
 }

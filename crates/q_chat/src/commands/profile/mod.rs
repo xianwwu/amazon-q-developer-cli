@@ -1,36 +1,26 @@
-mod create;
-mod delete;
-mod list;
-mod rename;
-mod set;
-
 use std::future::Future;
-use std::io::Write;
 use std::pin::Pin;
 
-pub use create::CreateProfileCommand;
-use crossterm::queue;
-use crossterm::style::{
-    self,
-    Color,
-};
-pub use delete::DeleteProfileCommand;
 use eyre::Result;
-use fig_os_shim::Context;
-pub use list::ListProfilesCommand;
-pub use rename::RenameProfileCommand;
-pub use set::SetProfileCommand;
 
-use crate::commands::CommandHandler;
+use super::{
+    CommandContextAdapter,
+    CommandHandler,
+};
+use crate::command::{
+    Command,
+    ProfileSubcommand,
+};
 use crate::{
     ChatState,
     QueuedTool,
 };
 
-/// Handler for the profile command
+/// Profile command handler
 pub struct ProfileCommand;
 
 impl ProfileCommand {
+    /// Create a new profile command handler
     pub fn new() -> Self {
         Self
     }
@@ -42,7 +32,7 @@ impl CommandHandler for ProfileCommand {
     }
 
     fn description(&self) -> &'static str {
-        "Manage profiles for the chat session"
+        "Manage profiles"
     }
 
     fn usage(&self) -> &'static str {
@@ -50,230 +40,105 @@ impl CommandHandler for ProfileCommand {
     }
 
     fn help(&self) -> String {
-        "Manage profiles for the chat session. Use subcommands to list, create, delete, or switch profiles.".to_string()
+        "Manage profiles for the chat session.\n\n\
+        Subcommands:\n\
+        help        Show profile help\n\
+        list        List profiles\n\
+        set         Set the current profile\n\
+        create      Create a new profile\n\
+        delete      Delete a profile\n\
+        rename      Rename a profile"
+            .to_string()
     }
 
     fn llm_description(&self) -> String {
-        "Manage profiles for the chat session. Profiles allow you to maintain separate context configurations."
-            .to_string()
+        r#"The profile command manages Amazon Q profiles.
+
+Subcommands:
+- list: List all available profiles
+- create <name>: Create a new profile
+- delete <name>: Delete an existing profile
+- set <name>: Switch to a different profile
+- rename <old_name> <new_name>: Rename an existing profile
+
+Examples:
+- "/profile list" - Lists all available profiles
+- "/profile create work" - Creates a new profile named "work"
+- "/profile set personal" - Switches to the "personal" profile
+- "/profile delete test" - Deletes the "test" profile
+
+To get the current profiles, use the command "/profile list" which will display all available profiles with the current one marked."#.to_string()
     }
 
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a Context,
+        _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            let mut stdout = ctx.stdout();
+            // Parse arguments to determine the subcommand
+            let subcommand = if args.is_empty() {
+                ProfileSubcommand::List
+            } else {
+                match args[0] {
+                    "list" => ProfileSubcommand::List,
+                    "set" => {
+                        if args.len() < 2 {
+                            return Err(eyre::eyre!("Missing profile name for set command"));
+                        }
+                        ProfileSubcommand::Set {
+                            name: args[1].to_string(),
+                        }
+                    },
+                    "create" => {
+                        if args.len() < 2 {
+                            return Err(eyre::eyre!("Missing profile name for create command"));
+                        }
+                        ProfileSubcommand::Create {
+                            name: args[1].to_string(),
+                        }
+                    },
+                    "delete" => {
+                        if args.len() < 2 {
+                            return Err(eyre::eyre!("Missing profile name for delete command"));
+                        }
+                        ProfileSubcommand::Delete {
+                            name: args[1].to_string(),
+                        }
+                    },
+                    "rename" => {
+                        if args.len() < 3 {
+                            return Err(eyre::eyre!("Missing old or new profile name for rename command"));
+                        }
+                        ProfileSubcommand::Rename {
+                            old_name: args[1].to_string(),
+                            new_name: args[2].to_string(),
+                        }
+                    },
+                    "help" => ProfileSubcommand::Help,
+                    _ => ProfileSubcommand::Help,
+                }
+            };
 
-            // If no subcommand is provided, show help
-            if args.is_empty() {
-                queue!(
-                    stdout,
-                    style::SetForegroundColor(Color::Yellow),
-                    style::Print("\nProfile Command\n\n"),
-                    style::SetForegroundColor(Color::Reset),
-                    style::Print("Usage: /profile [subcommand]\n\n"),
-                    style::Print("Available subcommands:\n"),
-                    style::Print("  list    - List available profiles\n"),
-                    style::Print("  set     - Switch to a profile\n"),
-                    style::Print("  create  - Create a new profile\n"),
-                    style::Print("  delete  - Delete a profile\n"),
-                    style::Print("  rename  - Rename a profile\n"),
-                    style::Print("  help    - Show this help message\n\n"),
-                )?;
-                stdout.flush()?;
-                return Ok(ChatState::PromptUser {
-                    tool_uses,
-                    pending_tool_index,
-                    skip_printing_tools: true,
-                });
-            }
-
-            // Parse subcommand
-            let subcommand = args[0];
-            let subcommand_args = if args.len() > 1 { &args[1..] } else { &[] };
-
-            // Dispatch to appropriate subcommand handler
-            match subcommand {
-                "list" => {
-                    let command = ListProfilesCommand::new();
-                    command
-                        .execute(subcommand_args.to_vec(), ctx, tool_uses, pending_tool_index)
-                        .await
-                },
-                "set" => {
-                    if subcommand_args.is_empty() {
-                        queue!(
-                            stdout,
-                            style::SetForegroundColor(Color::Red),
-                            style::Print("\nError: Missing profile name\n"),
-                            style::Print("Usage: /profile set <n>\n\n"),
-                            style::ResetColor
-                        )?;
-                        stdout.flush()?;
-                        return Ok(ChatState::PromptUser {
-                            tool_uses,
-                            pending_tool_index,
-                            skip_printing_tools: true,
-                        });
-                    }
-                    let command = SetProfileCommand::new(subcommand_args[0]);
-                    command
-                        .execute(subcommand_args[1..].to_vec(), ctx, tool_uses, pending_tool_index)
-                        .await
-                },
-                "create" => {
-                    if subcommand_args.is_empty() {
-                        queue!(
-                            stdout,
-                            style::SetForegroundColor(Color::Red),
-                            style::Print("\nError: Missing profile name\n"),
-                            style::Print("Usage: /profile create <n>\n\n"),
-                            style::ResetColor
-                        )?;
-                        stdout.flush()?;
-                        return Ok(ChatState::PromptUser {
-                            tool_uses,
-                            pending_tool_index,
-                            skip_printing_tools: true,
-                        });
-                    }
-                    let command = CreateProfileCommand::new(subcommand_args[0]);
-                    command
-                        .execute(subcommand_args[1..].to_vec(), ctx, tool_uses, pending_tool_index)
-                        .await
-                },
-                "delete" => {
-                    if subcommand_args.is_empty() {
-                        queue!(
-                            stdout,
-                            style::SetForegroundColor(Color::Red),
-                            style::Print("\nError: Missing profile name\n"),
-                            style::Print("Usage: /profile delete <n>\n\n"),
-                            style::ResetColor
-                        )?;
-                        stdout.flush()?;
-                        return Ok(ChatState::PromptUser {
-                            tool_uses,
-                            pending_tool_index,
-                            skip_printing_tools: true,
-                        });
-                    }
-                    let command = DeleteProfileCommand::new(subcommand_args[0]);
-                    command
-                        .execute(subcommand_args[1..].to_vec(), ctx, tool_uses, pending_tool_index)
-                        .await
-                },
-                "rename" => {
-                    if subcommand_args.len() < 2 {
-                        queue!(
-                            stdout,
-                            style::SetForegroundColor(Color::Red),
-                            style::Print("\nError: Missing profile names\n"),
-                            style::Print("Usage: /profile rename <old-name> <new-name>\n\n"),
-                            style::ResetColor
-                        )?;
-                        stdout.flush()?;
-                        return Ok(ChatState::PromptUser {
-                            tool_uses,
-                            pending_tool_index,
-                            skip_printing_tools: true,
-                        });
-                    }
-                    let command = RenameProfileCommand::new(subcommand_args[0], subcommand_args[1]);
-                    command
-                        .execute(subcommand_args[2..].to_vec(), ctx, tool_uses, pending_tool_index)
-                        .await
-                },
-                "help" => {
-                    // Show help text
-                    queue!(
-                        stdout,
-                        style::SetForegroundColor(Color::Yellow),
-                        style::Print("\nProfile Command Help\n\n"),
-                        style::SetForegroundColor(Color::Reset),
-                        style::Print("Usage: /profile [subcommand]\n\n"),
-                        style::Print("Available subcommands:\n"),
-                        style::Print("  list                - List available profiles\n"),
-                        style::Print("  set <profile>       - Switch to a profile\n"),
-                        style::Print("  create <profile>    - Create a new profile\n"),
-                        style::Print("  delete <profile>    - Delete a profile\n"),
-                        style::Print("  rename <old> <new>  - Rename a profile\n"),
-                        style::Print("  help                - Show this help message\n\n"),
-                        style::Print("Examples:\n"),
-                        style::Print("  /profile list\n"),
-                        style::Print("  /profile set work\n"),
-                        style::Print("  /profile create personal\n"),
-                        style::Print("  /profile delete test\n"),
-                        style::Print("  /profile rename old-name new-name\n\n"),
-                    )?;
-                    stdout.flush()?;
-                    Ok(ChatState::PromptUser {
-                        tool_uses,
-                        pending_tool_index,
-                        skip_printing_tools: true,
-                    })
-                },
-                _ => {
-                    // Unknown subcommand
-                    queue!(
-                        stdout,
-                        style::SetForegroundColor(Color::Red),
-                        style::Print(format!("\nUnknown subcommand: {}\n\n", subcommand)),
-                        style::SetForegroundColor(Color::Reset),
-                        style::Print("Available subcommands: list, set, create, delete, rename, help\n\n"),
-                    )?;
-                    stdout.flush()?;
-                    Ok(ChatState::PromptUser {
-                        tool_uses,
-                        pending_tool_index,
-                        skip_printing_tools: true,
-                    })
-                },
-            }
+            Ok(ChatState::ExecuteCommand {
+                command: Command::Profile { subcommand },
+                tool_uses,
+                pending_tool_index,
+            })
         })
     }
 
-    fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Profile command doesn't require confirmation
-    }
+    fn requires_confirmation(&self, args: &[&str]) -> bool {
+        if args.is_empty() {
+            return false; // Default list doesn't require confirmation
+        }
 
-    fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>> {
-        Ok(args)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_profile_command_help() {
-        let command = ProfileCommand::new();
-        assert_eq!(command.name(), "profile");
-        assert_eq!(command.description(), "Manage profiles for the chat session");
-        assert_eq!(command.usage(), "/profile [subcommand]");
-    }
-
-    #[tokio::test]
-    async fn test_profile_command_no_args() {
-        let command = ProfileCommand::new();
-        // We'll need to implement test_utils later
-        // let ctx = create_test_context();
-        let ctx = Context::default();
-        let result = command.execute(vec![], &ctx, None, None).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_profile_command_unknown_subcommand() {
-        let command = ProfileCommand::new();
-        // let ctx = create_test_context();
-        let ctx = Context::default();
-        let result = command.execute(vec!["unknown"], &ctx, None, None).await;
-        assert!(result.is_ok());
+        match args[0] {
+            "list" | "help" => false, // Read-only commands don't require confirmation
+            "delete" => true,         // Delete always requires confirmation
+            _ => false,               // Other commands don't require confirmation
+        }
     }
 }

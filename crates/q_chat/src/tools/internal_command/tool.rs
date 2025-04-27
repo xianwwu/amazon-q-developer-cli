@@ -10,12 +10,8 @@ use fig_os_shim::Context;
 use tracing::debug;
 
 use crate::ChatState;
-use crate::command::{
-    Command,
-    ContextSubcommand,
-    ProfileSubcommand,
-    ToolsSubcommand,
-};
+use crate::command::Command;
+use crate::commands::registry::CommandRegistry;
 use crate::tools::InvokeOutput;
 use crate::tools::internal_command::schema::InternalCommand;
 
@@ -25,33 +21,31 @@ impl InternalCommand {
         // Validate that the command is one of the known commands
         let cmd = self.command.trim_start_matches('/');
 
-        // Check if the command is one of the known commands
-        match cmd {
-            "quit" | "clear" | "help" | "context" | "profile" | "tools" | "issue" | "compact" | "editor" | "usage" => {
-                Ok(())
-            },
-            _ => Err(eyre::eyre!("Unknown command: {}", self.command)),
+        // Check if the command exists in the command registry
+        if CommandRegistry::global().command_exists(cmd) {
+            return Ok(());
         }
+
+        // For commands not in the registry, return an error
+        Err(eyre::eyre!("Unknown command: {}", self.command))
     }
 
     /// Check if the command requires user acceptance
     pub fn requires_acceptance_simple(&self) -> bool {
-        // For read-only commands, don't require confirmation
         let cmd = self.command.trim_start_matches('/');
-        match cmd {
-            "help" | "usage" => return false,
-            _ => {},
+
+        // Try to get the handler from the registry
+        if let Some(handler) = CommandRegistry::global().get(cmd) {
+            // Convert args to string slices for the handler
+            let args: Vec<&str> = match &self.subcommand {
+                Some(subcommand) => vec![subcommand.as_str()],
+                None => vec![],
+            };
+
+            return handler.requires_confirmation(&args);
         }
 
-        // For context show and profile list, don't require confirmation
-        if cmd == "context" && self.subcommand.as_deref() == Some("show") {
-            return false;
-        }
-        if cmd == "profile" && self.subcommand.as_deref() == Some("list") {
-            return false;
-        }
-
-        // For all other commands, require acceptance
+        // For commands not in the registry, default to requiring confirmation
         true
     }
 
@@ -94,39 +88,13 @@ impl InternalCommand {
     pub fn get_command_description(&self) -> String {
         let cmd = self.command.trim_start_matches('/');
 
-        match cmd {
-            "quit" => "Exit the chat session".to_string(),
-            "clear" => "Clear the current conversation history".to_string(),
-            "help" => "Show help information about available commands".to_string(),
-            "context" => match self.subcommand.as_deref() {
-                Some("add") => "Add a file to the conversation context".to_string(),
-                Some("rm" | "remove") => "Remove a file from the conversation context".to_string(),
-                Some("clear") => "Clear all files from the conversation context".to_string(),
-                Some("show") => "Show all files in the conversation context".to_string(),
-                _ => "Manage conversation context files".to_string(),
-            },
-            "profile" => match self.subcommand.as_deref() {
-                Some("list") => "List all available profiles".to_string(),
-                Some("create") => "Create a new profile".to_string(),
-                Some("delete") => "Delete an existing profile".to_string(),
-                Some("set") => "Switch to a different profile".to_string(),
-                Some("rename") => "Rename an existing profile".to_string(),
-                _ => "Manage conversation profiles".to_string(),
-            },
-            "tools" => match self.subcommand.as_deref() {
-                Some("list") => "List all available tools".to_string(),
-                Some("enable") => "Enable a specific tool".to_string(),
-                Some("disable") => "Disable a specific tool".to_string(),
-                Some("trust") => "Trust a specific tool for this session".to_string(),
-                Some("untrust") => "Remove trust for a specific tool".to_string(),
-                _ => "Manage tool permissions and settings".to_string(),
-            },
-            "issue" => "Create a GitHub issue for reporting bugs or feature requests".to_string(),
-            "compact" => "Summarize and compact the conversation history".to_string(),
-            "editor" => "Open an external editor to compose a prompt".to_string(),
-            "usage" => "Show current session's context window usage".to_string(),
-            _ => "Execute a command in the Q chat system".to_string(),
+        // Try to get the description from the command registry
+        if let Some(handler) = CommandRegistry::global().get(cmd) {
+            return handler.description().to_string();
         }
+
+        // For commands not in the registry, return a generic description
+        "Execute a command in the Q chat system".to_string()
     }
 
     /// Queue description for the command execution
@@ -149,8 +117,8 @@ impl InternalCommand {
     /// Invoke the internal command tool
     ///
     /// This method executes the internal command and returns an InvokeOutput with the result.
-    /// It parses the command into a Command enum and returns a ChatState::ExecuteCommand
-    /// state that will be handled by the chat loop.
+    /// It formats the command string and returns a ChatState::ExecuteCommand state that will
+    /// be handled by the chat loop.
     ///
     /// # Arguments
     ///
@@ -168,267 +136,14 @@ impl InternalCommand {
         // Create a response with the command and description
         let response = format!("Executing command for you: `{}` - {}", command_str, description);
 
-        // Parse the command into a Command enum
-        use std::collections::HashSet;
-
-        // Convert the command to a Command enum
-        let parsed_command = match self.command.trim_start_matches('/') {
-            "quit" => Command::Quit,
-            "clear" => Command::Clear,
-            "help" => Command::Help,
-            "context" => {
-                // Handle context subcommands
-                match self.subcommand.as_deref() {
-                    Some("add") => {
-                        if let Some(args) = &self.args {
-                            if !args.is_empty() {
-                                let mut global = false;
-                                let mut force = false;
-
-                                // Check for flags
-                                if let Some(flags) = &self.flags {
-                                    if flags.contains_key("global") {
-                                        global = true;
-                                    }
-                                    if flags.contains_key("force") {
-                                        force = true;
-                                    }
-                                }
-
-                                Command::Context {
-                                    subcommand: ContextSubcommand::Add {
-                                        global,
-                                        force,
-                                        paths: args.clone(),
-                                    },
-                                }
-                            } else {
-                                return Err(eyre::eyre!("Missing file path for context add command"));
-                            }
-                        } else {
-                            return Err(eyre::eyre!("Missing file path for context add command"));
-                        }
-                    },
-                    Some("rm" | "remove") => {
-                        if let Some(args) = &self.args {
-                            if !args.is_empty() {
-                                let mut global = false;
-
-                                // Check for flags
-                                if let Some(flags) = &self.flags {
-                                    if flags.contains_key("global") {
-                                        global = true;
-                                    }
-                                }
-
-                                Command::Context {
-                                    subcommand: ContextSubcommand::Remove {
-                                        global,
-                                        paths: args.clone(),
-                                    },
-                                }
-                            } else {
-                                return Err(eyre::eyre!("Missing file path or index for context remove command"));
-                            }
-                        } else {
-                            return Err(eyre::eyre!("Missing file path or index for context remove command"));
-                        }
-                    },
-                    Some("clear") => {
-                        let mut global = false;
-
-                        // Check for flags
-                        if let Some(flags) = &self.flags {
-                            if flags.contains_key("global") {
-                                global = true;
-                            }
-                        }
-
-                        Command::Context {
-                            subcommand: ContextSubcommand::Clear { global },
-                        }
-                    },
-                    Some("show") => {
-                        let mut expand = false;
-
-                        // Check for flags
-                        if let Some(flags) = &self.flags {
-                            if flags.contains_key("expand") {
-                                expand = true;
-                            }
-                        }
-
-                        Command::Context {
-                            subcommand: ContextSubcommand::Show { expand },
-                        }
-                    },
-                    _ => return Err(eyre::eyre!("Unknown context subcommand: {:?}", self.subcommand)),
-                }
-            },
-            "profile" => {
-                // Handle profile subcommands
-                match self.subcommand.as_deref() {
-                    Some("list") => Command::Profile {
-                        subcommand: ProfileSubcommand::List,
-                    },
-                    Some("create") => {
-                        if let Some(args) = &self.args {
-                            if !args.is_empty() {
-                                Command::Profile {
-                                    subcommand: ProfileSubcommand::Create { name: args[0].clone() },
-                                }
-                            } else {
-                                return Err(eyre::eyre!("Missing profile name for profile create command"));
-                            }
-                        } else {
-                            return Err(eyre::eyre!("Missing profile name for profile create command"));
-                        }
-                    },
-                    Some("delete") => {
-                        if let Some(args) = &self.args {
-                            if !args.is_empty() {
-                                Command::Profile {
-                                    subcommand: ProfileSubcommand::Delete { name: args[0].clone() },
-                                }
-                            } else {
-                                return Err(eyre::eyre!("Missing profile name for profile delete command"));
-                            }
-                        } else {
-                            return Err(eyre::eyre!("Missing profile name for profile delete command"));
-                        }
-                    },
-                    Some("set") => {
-                        if let Some(args) = &self.args {
-                            if !args.is_empty() {
-                                Command::Profile {
-                                    subcommand: ProfileSubcommand::Set { name: args[0].clone() },
-                                }
-                            } else {
-                                return Err(eyre::eyre!("Missing profile name for profile set command"));
-                            }
-                        } else {
-                            return Err(eyre::eyre!("Missing profile name for profile set command"));
-                        }
-                    },
-                    Some("rename") => {
-                        if let Some(args) = &self.args {
-                            if args.len() >= 2 {
-                                Command::Profile {
-                                    subcommand: ProfileSubcommand::Rename {
-                                        old_name: args[0].clone(),
-                                        new_name: args[1].clone(),
-                                    },
-                                }
-                            } else {
-                                return Err(eyre::eyre!(
-                                    "Missing old or new profile name for profile rename command"
-                                ));
-                            }
-                        } else {
-                            return Err(eyre::eyre!("Missing profile names for profile rename command"));
-                        }
-                    },
-                    _ => return Err(eyre::eyre!("Unknown profile subcommand: {:?}", self.subcommand)),
-                }
-            },
-            "tools" => {
-                // Handle tools subcommands
-                match self.subcommand.as_deref() {
-                    Some("list") => Command::Tools {
-                        subcommand: Some(ToolsSubcommand::Help),
-                    },
-                    Some("trust") => {
-                        if let Some(args) = &self.args {
-                            if !args.is_empty() {
-                                let mut tool_names = HashSet::new();
-                                tool_names.insert(args[0].clone());
-                                Command::Tools {
-                                    subcommand: Some(ToolsSubcommand::Trust { tool_names }),
-                                }
-                            } else {
-                                return Err(eyre::eyre!("Missing tool name for tools trust command"));
-                            }
-                        } else {
-                            return Err(eyre::eyre!("Missing tool name for tools trust command"));
-                        }
-                    },
-                    Some("untrust") => {
-                        if let Some(args) = &self.args {
-                            if !args.is_empty() {
-                                let mut tool_names = HashSet::new();
-                                tool_names.insert(args[0].clone());
-                                Command::Tools {
-                                    subcommand: Some(ToolsSubcommand::Untrust { tool_names }),
-                                }
-                            } else {
-                                return Err(eyre::eyre!("Missing tool name for tools untrust command"));
-                            }
-                        } else {
-                            return Err(eyre::eyre!("Missing tool name for tools untrust command"));
-                        }
-                    },
-                    Some("reset") => Command::Tools {
-                        subcommand: Some(ToolsSubcommand::Reset),
-                    },
-                    _ => return Err(eyre::eyre!("Unknown tools subcommand: {:?}", self.subcommand)),
-                }
-            },
-            "issue" => {
-                let prompt = if let Some(args) = &self.args {
-                    if !args.is_empty() { Some(args.join(" ")) } else { None }
-                } else {
-                    None
-                };
-                Command::Issue { prompt }
-            },
-            "compact" => {
-                let mut show_summary = false;
-                let mut help = false;
-                let mut prompt = None;
-
-                // Check for flags
-                if let Some(flags) = &self.flags {
-                    if flags.contains_key("summary") {
-                        show_summary = true;
-                    }
-                    if flags.contains_key("help") {
-                        help = true;
-                    }
-                }
-
-                // Check for prompt
-                if let Some(args) = &self.args {
-                    if !args.is_empty() {
-                        prompt = Some(args.join(" "));
-                    }
-                }
-
-                Command::Compact {
-                    prompt,
-                    show_summary,
-                    help,
-                }
-            },
-            "editor" => {
-                let initial_text = if let Some(args) = &self.args {
-                    if !args.is_empty() { Some(args.join(" ")) } else { None }
-                } else {
-                    None
-                };
-                Command::PromptEditor { initial_text }
-            },
-            "usage" => Command::Usage,
-            _ => return Err(eyre::eyre!("Unknown command: {}", self.command)),
-        };
-
-        // Log the parsed command
-        debug!("Parsed command: {:?}", parsed_command);
+        // Log the command string
+        debug!("Executing command: {}", command_str);
 
         // Return an InvokeOutput with the response and next state
         Ok(InvokeOutput {
             output: crate::tools::OutputKind::Text(response),
             next_state: Some(ChatState::ExecuteCommand {
-                command: parsed_command,
+                command: Command::parse(&command_str, &mut std::io::stdout()).map_err(|e| eyre::eyre!("{}", e))?,
                 tool_uses: None,
                 pending_tool_index: None,
             }),

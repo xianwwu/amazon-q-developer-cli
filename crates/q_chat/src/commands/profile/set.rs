@@ -12,8 +12,7 @@ use fig_os_shim::Context;
 
 use crate::commands::CommandHandler;
 use crate::{
-    ChatState,
-    QueuedTool,
+    ChatContext, ChatState, QueuedTool
 };
 
 /// Handler for the profile set command
@@ -47,24 +46,23 @@ impl CommandHandler for SetProfileCommand {
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,
-        ctx: &'a Context,
+        ctx: &'a ChatContext,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
             // Get the conversation state from the context
-            let mut stdout = ctx.stdout();
             let conversation_state = ctx.get_conversation_state()?;
 
             // Get the context manager
             let Some(context_manager) = &mut conversation_state.context_manager else {
                 queue!(
-                    stdout,
+                    ctx.output,
                     style::SetForegroundColor(Color::Red),
                     style::Print("Error: Context manager not initialized\n"),
                     style::ResetColor
                 )?;
-                stdout.flush()?;
+                ctx.output.flush()?;
                 return Ok(ChatState::PromptUser {
                     tool_uses,
                     pending_tool_index,
@@ -75,12 +73,12 @@ impl CommandHandler for SetProfileCommand {
             // Check if we're already on the requested profile
             if context_manager.current_profile == self.name {
                 queue!(
-                    stdout,
+                    ctx.output,
                     style::SetForegroundColor(Color::Yellow),
                     style::Print(format!("\nAlready on profile: {}\n\n", self.name)),
                     style::ResetColor
                 )?;
-                stdout.flush()?;
+                ctx.output.flush()?;
                 return Ok(ChatState::PromptUser {
                     tool_uses,
                     pending_tool_index,
@@ -93,7 +91,7 @@ impl CommandHandler for SetProfileCommand {
                 Ok(_) => {
                     // Success message
                     queue!(
-                        stdout,
+                        ctx.output,
                         style::SetForegroundColor(Color::Green),
                         style::Print(format!("\nSwitched to profile: {}\n\n", self.name)),
                         style::ResetColor
@@ -102,7 +100,7 @@ impl CommandHandler for SetProfileCommand {
                 Err(e) => {
                     // Error message
                     queue!(
-                        stdout,
+                        ctx.output,
                         style::SetForegroundColor(Color::Red),
                         style::Print(format!("\nError switching to profile: {}\n\n", e)),
                         style::ResetColor
@@ -110,7 +108,7 @@ impl CommandHandler for SetProfileCommand {
                 },
             }
 
-            stdout.flush()?;
+            ctx.output.flush()?;
 
             Ok(ChatState::PromptUser {
                 tool_uses,

@@ -1,21 +1,20 @@
-mod list;
-mod enable;
-mod disable;
-
 use std::future::Future;
-use std::io::Write;
 use std::pin::Pin;
 
 use eyre::Result;
-use fig_os_shim::Context;
 
-use crate::commands::CommandHandler;
-use crate::ChatState;
-use crate::QueuedTool;
-
-pub use list::ListToolsCommand;
-pub use enable::EnableToolCommand;
-pub use disable::DisableToolCommand;
+use crate::command::{
+    Command,
+    ToolsSubcommand,
+};
+use crate::commands::{
+    CommandContextAdapter,
+    CommandHandler,
+};
+use crate::{
+    ChatState,
+    QueuedTool,
+};
 
 /// Handler for the tools command
 pub struct ToolsCommand;
@@ -30,98 +29,140 @@ impl CommandHandler for ToolsCommand {
     fn name(&self) -> &'static str {
         "tools"
     }
-    
+
     fn description(&self) -> &'static str {
         "View and manage tools and permissions"
     }
-    
+
     fn usage(&self) -> &'static str {
         "/tools [subcommand]"
     }
-    
+
     fn help(&self) -> String {
         color_print::cformat!(
             r#"
 <magenta,em>Tools Management</magenta,em>
 
 Tools allow Amazon Q to perform actions on your system, such as executing commands or modifying files.
-You can view, enable, or disable tools using the following commands:
+You can view and manage tool permissions using the following commands:
 
 <cyan!>Available commands</cyan!>
   <em>list</em>                <black!>List all available tools and their status</black!>
-  <em>enable <<tool>></em>     <black!>Enable a specific tool</black!>
-  <em>disable <<tool>></em>    <black!>Disable a specific tool</black!>
+  <em>trust <<tool>></em>      <black!>Trust a specific tool for the session</black!>
+  <em>untrust <<tool>></em>    <black!>Revert a tool to per-request confirmation</black!>
+  <em>trustall</em>            <black!>Trust all tools for the session</black!>
+  <em>reset</em>               <black!>Reset all tools to default permission levels</black!>
 
 <cyan!>Notes</cyan!>
-• Disabled tools cannot be used by Amazon Q
 • You will be prompted for permission before any tool is used
 • You can trust tools for the duration of a session
+• Trusted tools will not require confirmation each time they're used
 "#
         )
     }
-    
+
+    fn llm_description(&self) -> String {
+        r#"The tools command manages tool permissions and settings.
+
+Subcommands:
+- list: List all available tools and their trust status
+- trust <tool_name>: Trust a specific tool (don't ask for confirmation)
+- untrust <tool_name>: Untrust a specific tool (ask for confirmation)
+- trustall: Trust all tools
+- reset: Reset all tool permissions to default
+
+Examples:
+- "/tools list" - Lists all available tools
+- "/tools trust fs_write" - Trusts the fs_write tool
+- "/tools untrust execute_bash" - Untrusts the execute_bash tool
+- "/tools trustall" - Trusts all tools
+- "/tools reset" - Resets all tool permissions to default
+
+To get the current tool status, use the command "/tools list" which will display all available tools with their current permission status."#.to_string()
+    }
+
     fn execute<'a>(
-        &'a self, 
-        args: Vec<&'a str>, 
-        ctx: &'a Context,
+        &'a self,
+        args: Vec<&'a str>,
+        _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
             if args.is_empty() {
-                return Ok(ChatState::DisplayHelp {
-                    help_text: self.help(),
+                // Default to showing help when no subcommand is provided
+                return Ok(ChatState::ExecuteCommand {
+                    command: Command::Help {
+                        help_text: Some(self.help()),
+                    },
                     tool_uses,
                     pending_tool_index,
                 });
             }
-            
+
+            // Parse arguments to determine the subcommand
             let subcommand = match args[0] {
-                "list" => ListToolsCommand::new(),
-                "enable" => {
-                    if args.len() < 2 {
-                        return Ok(ChatState::DisplayHelp {
-                            help_text: format!("Usage: /tools enable <tool_name>"),
-                            tool_uses,
-                            pending_tool_index,
-                        });
-                    }
-                    EnableToolCommand::new(args[1])
+                "list" => None, // Default is to list tools
+                "trust" => {
+                    let tool_names = args[1..].iter().map(|s| s.to_string()).collect();
+                    Some(ToolsSubcommand::Trust { tool_names })
                 },
-                "disable" => {
-                    if args.len() < 2 {
-                        return Ok(ChatState::DisplayHelp {
-                            help_text: format!("Usage: /tools disable <tool_name>"),
-                            tool_uses,
-                            pending_tool_index,
-                        });
+                "untrust" => {
+                    let tool_names = args[1..].iter().map(|s| s.to_string()).collect();
+                    Some(ToolsSubcommand::Untrust { tool_names })
+                },
+                "trustall" => Some(ToolsSubcommand::TrustAll),
+                "reset" => {
+                    if args.len() > 1 {
+                        Some(ToolsSubcommand::ResetSingle {
+                            tool_name: args[1].to_string(),
+                        })
+                    } else {
+                        Some(ToolsSubcommand::Reset)
                     }
-                    DisableToolCommand::new(args[1])
                 },
                 "help" => {
-                    return Ok(ChatState::DisplayHelp {
-                        help_text: self.help(),
+                    // Return help command with the help text
+                    return Ok(ChatState::ExecuteCommand {
+                        command: Command::Help {
+                            help_text: Some(self.help()),
+                        },
                         tool_uses,
                         pending_tool_index,
                     });
                 },
                 _ => {
-                    return Ok(ChatState::DisplayHelp {
-                        help_text: self.help(),
+                    // For unknown subcommands, show help
+                    return Ok(ChatState::ExecuteCommand {
+                        command: Command::Help {
+                            help_text: Some(self.help()),
+                        },
                         tool_uses,
                         pending_tool_index,
                     });
-                }
+                },
             };
-            
-            subcommand.execute(args, ctx, tool_uses, pending_tool_index).await
+
+            Ok(ChatState::ExecuteCommand {
+                command: Command::Tools { subcommand },
+                tool_uses,
+                pending_tool_index,
+            })
         })
     }
-    
-    fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Tools command doesn't require confirmation
+
+    fn requires_confirmation(&self, args: &[&str]) -> bool {
+        if args.is_empty() {
+            return false; // Default list doesn't require confirmation
+        }
+
+        match args[0] {
+            "help" | "list" => false, // Help and list don't require confirmation
+            "trustall" => true,       // Trustall requires confirmation
+            _ => false,               // Other commands don't require confirmation
+        }
     }
-    
+
     fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>> {
         Ok(args)
     }

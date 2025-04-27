@@ -48,7 +48,6 @@ impl CommandHandler for ListToolsCommand {
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
             // Get the conversation state from the context
-            let mut stdout = ctx.stdout();
             let conversation_state = ctx.get_conversation_state()?;
             
             // Get the tool registry
@@ -59,7 +58,7 @@ impl CommandHandler for ListToolsCommand {
             
             // Display header
             queue!(
-                stdout,
+                ctx.output,
                 style::SetForegroundColor(Color::Blue),
                 style::Print("Available tools:\n"),
                 style::ResetColor
@@ -72,7 +71,7 @@ impl CommandHandler for ListToolsCommand {
                 let status_text = if is_enabled { "enabled" } else { "disabled" };
                 
                 queue!(
-                    stdout,
+                    ctx.output,
                     style::Print("  "),
                     style::Print(tool_name),
                     style::Print(" - "),
@@ -83,7 +82,7 @@ impl CommandHandler for ListToolsCommand {
                 )?;
             }
             
-            stdout.flush()?;
+            ctx.output.flush()?;
             
             Ok(ChatState::PromptUser {
                 tool_uses,

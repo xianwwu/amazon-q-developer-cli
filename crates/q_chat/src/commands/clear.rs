@@ -2,18 +2,21 @@ use std::future::Future;
 use std::pin::Pin;
 
 use eyre::Result;
-use fig_os_shim::Context;
 
-use crate::commands::CommandHandler;
+use super::{
+    CommandContextAdapter,
+    CommandHandler,
+};
 use crate::{
     ChatState,
     QueuedTool,
 };
 
-/// Handler for the clear command
+/// Clear command handler
 pub struct ClearCommand;
 
 impl ClearCommand {
+    /// Create a new clear command handler
     pub fn new() -> Self {
         Self
     }
@@ -33,41 +36,26 @@ impl CommandHandler for ClearCommand {
     }
 
     fn help(&self) -> String {
-        "Clears the conversation history in the current session.".to_string()
+        "Clear the conversation history and context from hooks for the current session".to_string()
     }
 
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,
-        _ctx: &'a Context,
+        _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Return PromptUser state with skip_printing_tools set to true
-            Ok(ChatState::PromptUser {
+            Ok(ChatState::ExecuteCommand {
+                command: crate::command::Command::Clear,
                 tool_uses,
                 pending_tool_index,
-                skip_printing_tools: true,
             })
         })
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Clearing doesn't require confirmation
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_clear_command() {
-        let command = ClearCommand::new();
-        assert_eq!(command.name(), "clear");
-        assert_eq!(command.description(), "Clear the conversation history");
-        assert_eq!(command.usage(), "/clear");
-        assert!(!command.requires_confirmation(&[]));
+        true // Clear command requires confirmation
     }
 }

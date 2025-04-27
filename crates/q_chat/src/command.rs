@@ -21,7 +21,9 @@ pub enum Command {
         command: String,
     },
     Clear,
-    Help,
+    Help {
+        help_text: Option<String>,
+    },
     Issue {
         prompt: Option<String>,
     },
@@ -347,7 +349,7 @@ impl Command {
 
             return Ok(match parts[0].to_lowercase().as_str() {
                 "clear" => Self::Clear,
-                "help" => Self::Help,
+                "help" => Self::Help { help_text: None },
                 "compact" => {
                     let mut prompt = None;
                     let mut show_summary = false;
@@ -708,7 +710,8 @@ impl Command {
     // like the rest of the file.
     // Since the hooks subcommand has a lot of options, this makes more sense.
     // Ideally, we parse everything with clap instead of trying to do it manually.
-    fn parse_hooks(parts: &[&str]) -> Result<Self, String> {
+    // TODO: Move this to the Context commands parse function for better encapsulation
+    pub fn parse_hooks(parts: &[&str]) -> Result<Self, String> {
         // Skip the first two parts ("/context" and "hooks")
         let args = match shlex::split(&parts[1..].join(" ")) {
             Some(args) => args,

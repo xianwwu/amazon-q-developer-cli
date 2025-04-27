@@ -1,11 +1,44 @@
+/// Command Registry
+///
+/// The CommandRegistry is a central repository for all commands available in the Q chat system.
+/// It provides a unified interface for registering, discovering, and executing commands.
+///
+/// # Design Philosophy
+///
+/// The CommandRegistry follows these key principles:
+///
+/// 1. **Single Source of Truth**: Each command should be defined in exactly one place. The
+///    CommandHandler for a command is the authoritative source for all information about that
+///    command.
+///
+/// 2. **Bidirectional Mapping**: The registry should support bidirectional mapping between:
+///    - Command names (strings) and CommandHandlers
+///    - Command enum variants and CommandHandlers
+///
+/// 3. **DRY (Don't Repeat Yourself)**: Command parsing, validation, and execution logic should be
+///    defined once in the CommandHandler and reused everywhere, including in tools like
+///    internal_command.
+///
+/// # Future Enhancements
+///
+/// In future iterations, the CommandRegistry should be enhanced to:
+///
+/// 1. Add a `to_command` method to the CommandHandler trait that converts arguments to a Command
+///    enum
+/// 2. Add a `from_command` function that converts a Command enum to its corresponding
+///    CommandHandler
+/// 3. Merge the Command enum and CommandRegistry for a more cohesive command system
+///
+/// This will enable tools like internal_command to leverage the existing command infrastructure
+/// without duplicating logic.
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use eyre::Result;
-use fig_os_shim::Context;
 
 use crate::commands::{
     ClearCommand,
+    CommandContextAdapter,
     CommandHandler,
     CompactCommand,
     ContextCommand,
@@ -111,15 +144,29 @@ impl CommandRegistry {
     pub async fn parse_and_execute(
         &self,
         input: &str,
-        ctx: &Context,
+        chat_context: &mut ChatContext,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Result<ChatState> {
-        let (name, args) = Self::parse_command(input)?;
+        let (name, args) = Self::parse_command_string(input)?;
 
         if let Some(handler) = self.get(name) {
             let parsed_args = handler.parse_args(args)?;
-            handler.execute(parsed_args, ctx, tool_uses, pending_tool_index).await
+
+            // Create a CommandContextAdapter from the ChatContext
+            let mut adapter = CommandContextAdapter::new(
+                &chat_context.ctx,
+                &mut chat_context.output,
+                &mut chat_context.conversation_state,
+                &mut chat_context.tool_permissions,
+                chat_context.interactive,
+                &mut chat_context.input_source,
+                &chat_context.settings,
+            );
+
+            handler
+                .execute(parsed_args, &mut adapter, tool_uses, pending_tool_index)
+                .await
         } else {
             // If not a registered command, treat as a question to the AI
             Ok(ChatState::HandleInput {
@@ -131,7 +178,7 @@ impl CommandRegistry {
     }
 
     /// Parse a command string into name and arguments
-    fn parse_command(input: &str) -> Result<(&str, Vec<&str>)> {
+    pub fn parse_command_string(input: &str) -> Result<(&str, Vec<&str>)> {
         let input = input.trim();
 
         // Handle slash commands
@@ -154,9 +201,10 @@ impl CommandRegistry {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::future::Future;
     use std::pin::Pin;
+
+    use super::*;
 
     #[test]
     fn test_command_registry_register_and_get() {
@@ -184,52 +232,41 @@ mod tests {
             fn execute<'a>(
                 &'a self,
                 _args: Vec<&'a str>,
-                _ctx: &'a Context,
+                _ctx: &'a mut CommandContextAdapter<'a>,
                 _tool_uses: Option<Vec<QueuedTool>>,
                 _pending_tool_index: Option<usize>,
             ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
-                Box::pin(async { Ok(ChatState::Exit) })
-            }
-
-            fn requires_confirmation(&self, _args: &[&str]) -> bool {
-                false
-            }
-
-            fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>> {
-                Ok(args)
+                Box::pin(async move { Ok(ChatState::Exit) })
             }
         }
 
+        // Register the test command
         registry.register("test", Box::new(TestCommand));
 
+        // Verify the command exists
         assert!(registry.command_exists("test"));
-        assert!(!registry.command_exists("nonexistent"));
 
-        let handler = registry.get("test");
-        assert!(handler.is_some());
-        assert_eq!(handler.unwrap().name(), "test");
+        // Verify we can get the command
+        let handler = registry.get("test").unwrap();
+        assert_eq!(handler.name(), "test");
+        assert_eq!(handler.description(), "Test command");
+        assert_eq!(handler.usage(), "/test");
+        assert_eq!(handler.help(), "Test command help");
     }
 
     #[test]
-    fn test_parse_command() {
-        let _registry = CommandRegistry::new();
+    fn test_parse_command_string() {
+        // Test basic command
+        let (name, args) = CommandRegistry::parse_command_string("/test").unwrap();
+        assert_eq!(name, "test");
+        assert!(args.is_empty());
 
-        // Test valid command
-        let result = CommandRegistry::parse_command("/test arg1 arg2");
-        assert!(result.is_ok());
-        let (name, args) = result.unwrap();
+        // Test command with arguments
+        let (name, args) = CommandRegistry::parse_command_string("/test arg1 arg2").unwrap();
         assert_eq!(name, "test");
         assert_eq!(args, vec!["arg1", "arg2"]);
 
-        // Test command with no args
-        let result = CommandRegistry::parse_command("/test");
-        assert!(result.is_ok());
-        let (name, args) = result.unwrap();
-        assert_eq!(name, "test");
-        assert_eq!(args, Vec::<&str>::new());
-
-        // Test invalid command (no slash)
-        let result = CommandRegistry::parse_command("test arg1 arg2");
-        assert!(result.is_err());
+        // Test non-command
+        assert!(CommandRegistry::parse_command_string("test").is_err());
     }
 }

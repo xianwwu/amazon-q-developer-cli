@@ -1,11 +1,37 @@
+/// CommandHandler Trait
+///
+/// The CommandHandler trait defines the interface for all command handlers in the Q chat system.
+/// Each command handler is responsible for parsing, validating, and executing a specific command.
+///
+/// # Design Philosophy
+///
+/// The CommandHandler trait follows these key principles:
+///
+/// 1. **Encapsulation**: Each handler encapsulates all knowledge about a specific command,
+///    including its name, description, usage, parsing logic, and execution behavior.
+///
+/// 2. **Single Responsibility**: Each handler is responsible for one command and does it well.
+///
+/// 3. **Extensibility**: The trait is designed to be extended with new methods as needed, such as
+///    `to_command` for converting arguments to a Command enum.
+///
+/// # Future Enhancements
+///
+/// In future iterations, the CommandHandler trait should be enhanced to:
+///
+/// 1. Add a `to_command` method that converts arguments to a Command enum
+/// 2. Support bidirectional mapping between Command enums and CommandHandlers
+/// 3. Provide more sophisticated argument parsing capabilities
+///
+/// These enhancements will enable tools like internal_command to leverage the existing
+/// command infrastructure without duplicating logic.
 use std::future::Future;
 use std::pin::Pin;
 
 use eyre::Result;
-use fig_os_shim::Context;
 
+use super::context_adapter::CommandContextAdapter;
 use crate::{
-    ChatContext,
     ChatState,
     QueuedTool,
 };
@@ -41,7 +67,7 @@ pub trait CommandHandler: Send + Sync {
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a Context,
+        ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>>;

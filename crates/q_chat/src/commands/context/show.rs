@@ -8,12 +8,10 @@ use crossterm::style::{
     Color,
 };
 use eyre::Result;
-use fig_os_shim::Context;
 
 use crate::commands::CommandHandler;
 use crate::{
-    ChatState,
-    QueuedTool,
+    ChatContext, ChatState, QueuedTool
 };
 
 /// Handler for the context show command
@@ -48,24 +46,23 @@ impl CommandHandler for ShowContextCommand {
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,
-        ctx: &'a Context,
+        ctx: &'a ChatContext,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
             // Get the conversation state from the context
-            let mut stdout = ctx.stdout();
             let conversation_state = ctx.get_conversation_state()?;
 
             // Get the context manager
             let Some(context_manager) = &conversation_state.context_manager else {
                 queue!(
-                    stdout,
+                    ctx.output,
                     style::SetForegroundColor(Color::Red),
                     style::Print("Error: Context manager not initialized\n"),
                     style::ResetColor
                 )?;
-                stdout.flush()?;
+                ctx.output.flush()?;
                 return Ok(ChatState::PromptUser {
                     tool_uses,
                     pending_tool_index,
@@ -75,7 +72,7 @@ impl CommandHandler for ShowContextCommand {
 
             // Display current profile
             queue!(
-                stdout,
+                ctx.output,
                 style::SetForegroundColor(Color::Blue),
                 style::Print(format!("Current profile: {}\n", context_manager.current_profile)),
                 style::ResetColor
@@ -83,34 +80,34 @@ impl CommandHandler for ShowContextCommand {
 
             // Always show global context paths
             queue!(
-                stdout,
+                ctx.output,
                 style::SetForegroundColor(Color::Yellow),
                 style::Print("\nGlobal context paths:\n"),
                 style::ResetColor
             )?;
 
             if context_manager.global_config.paths.is_empty() {
-                queue!(stdout, style::Print("  (none)\n"))?;
+                queue!(ctx.output, style::Print("  (none)\n"))?;
             } else {
                 for path in &context_manager.global_config.paths {
-                    queue!(stdout, style::Print(format!("  {}\n", path)))?;
+                    queue!(ctx.output, style::Print(format!("  {}\n", path)))?;
                 }
 
                 // If expand is requested, show the expanded files
                 if self.expand {
                     let expanded_files = context_manager.get_global_context_files(true).await?;
                     queue!(
-                        stdout,
+                        ctx.output,
                         style::SetForegroundColor(Color::Yellow),
                         style::Print("\nExpanded global context files:\n"),
                         style::ResetColor
                     )?;
 
                     if expanded_files.is_empty() {
-                        queue!(stdout, style::Print("  (none)\n"))?;
+                        queue!(ctx.output, style::Print("  (none)\n"))?;
                     } else {
                         for (path, _) in expanded_files {
-                            queue!(stdout, style::Print(format!("  {}\n", path)))?;
+                            queue!(ctx.output, style::Print(format!("  {}\n", path)))?;
                         }
                     }
                 }
@@ -119,7 +116,7 @@ impl CommandHandler for ShowContextCommand {
             // Display profile-specific context paths if not showing only global
             if !self.global {
                 queue!(
-                    stdout,
+                    ctx.output,
                     style::SetForegroundColor(Color::Yellow),
                     style::Print(format!(
                         "\nProfile '{}' context paths:\n",
@@ -129,17 +126,17 @@ impl CommandHandler for ShowContextCommand {
                 )?;
 
                 if context_manager.profile_config.paths.is_empty() {
-                    queue!(stdout, style::Print("  (none)\n"))?;
+                    queue!(ctx.output, style::Print("  (none)\n"))?;
                 } else {
                     for path in &context_manager.profile_config.paths {
-                        queue!(stdout, style::Print(format!("  {}\n", path)))?;
+                        queue!(ctx.output, style::Print(format!("  {}\n", path)))?;
                     }
 
                     // If expand is requested, show the expanded files
                     if self.expand {
                         let expanded_files = context_manager.get_current_profile_context_files(true).await?;
                         queue!(
-                            stdout,
+                            ctx.output,
                             style::SetForegroundColor(Color::Yellow),
                             style::Print(format!(
                                 "\nExpanded profile '{}' context files:\n",
@@ -149,17 +146,17 @@ impl CommandHandler for ShowContextCommand {
                         )?;
 
                         if expanded_files.is_empty() {
-                            queue!(stdout, style::Print("  (none)\n"))?;
+                            queue!(ctx.output, style::Print("  (none)\n"))?;
                         } else {
                             for (path, _) in expanded_files {
-                                queue!(stdout, style::Print(format!("  {}\n", path)))?;
+                                queue!(ctx.output, style::Print(format!("  {}\n", path)))?;
                             }
                         }
                     }
                 }
             }
 
-            stdout.flush()?;
+            ctx.output.flush()?;
 
             Ok(ChatState::PromptUser {
                 tool_uses,
