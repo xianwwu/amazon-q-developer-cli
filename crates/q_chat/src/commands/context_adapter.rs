@@ -1,9 +1,7 @@
-use eyre::Result;
 use fig_os_shim::Context;
 use fig_settings::Settings;
 
 use crate::{
-    ChatState,
     ConversationState,
     InputSource,
     SharedWriter,
@@ -57,12 +55,5 @@ impl<'a> CommandContextAdapter<'a> {
             input_source,
             settings,
         }
-    }
-
-    /// Helper method to execute a command string
-    pub fn execute_command(&mut self, _command_str: &str) -> Result<ChatState> {
-        // This will be implemented to delegate to the appropriate command handler
-        // For now, return a placeholder
-        unimplemented!("execute_command not yet implemented")
     }
 }

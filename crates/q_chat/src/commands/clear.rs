@@ -22,6 +22,12 @@ impl ClearCommand {
     }
 }
 
+impl Default for ClearCommand {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandHandler for ClearCommand {
     fn name(&self) -> &'static str {
         "clear"
@@ -37,6 +43,28 @@ impl CommandHandler for ClearCommand {
 
     fn help(&self) -> String {
         "Clear the conversation history and context from hooks for the current session".to_string()
+    }
+
+    fn llm_description(&self) -> String {
+        r#"The clear command erases the conversation history and context from hooks for the current session.
+
+Usage:
+- /clear                     Clear the conversation history
+
+This command will prompt for confirmation before clearing the history.
+
+Examples of statements that may trigger this command:
+- "Clear the conversation"
+- "Start fresh"
+- "Reset our chat"
+- "Clear the chat history"
+- "I want to start over"
+- "Erase our conversation"
+- "Let's start with a clean slate"
+- "Clear everything"
+- "Reset the context"
+- "Wipe the conversation history""#
+            .to_string()
     }
 
     fn execute<'a>(

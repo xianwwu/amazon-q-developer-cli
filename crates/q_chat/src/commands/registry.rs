@@ -199,6 +199,12 @@ impl CommandRegistry {
     }
 }
 
+impl Default for CommandRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::future::Future;

@@ -26,6 +26,12 @@ impl ContextCommand {
     }
 }
 
+impl Default for ContextCommand {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandHandler for ContextCommand {
     fn name(&self) -> &'static str {
         "context"
@@ -83,8 +89,8 @@ To see the full content of context files, use "/context show --expand"."#
             // Parse arguments to determine the subcommand
             let subcommand = if args.is_empty() {
                 ContextSubcommand::Show { expand: false }
-            } else {
-                match args[0] {
+            } else if let Some(first_arg) = args.first() {
+                match *first_arg {
                     "show" => {
                         let expand = args.len() > 1 && args[1] == "--expand";
                         ContextSubcommand::Show { expand }
@@ -134,6 +140,8 @@ To see the full content of context files, use "/context show --expand"."#
                     },
                     _ => ContextSubcommand::Help,
                 }
+            } else {
+                ContextSubcommand::Show { expand: false } // Fallback, should not happen
             };
 
             Ok(ChatState::ExecuteCommand {

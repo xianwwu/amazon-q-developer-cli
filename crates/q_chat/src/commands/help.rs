@@ -26,6 +26,12 @@ impl HelpCommand {
     }
 }
 
+impl Default for HelpCommand {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandHandler for HelpCommand {
     fn name(&self) -> &'static str {
         "help"
@@ -41,6 +47,17 @@ impl CommandHandler for HelpCommand {
 
     fn help(&self) -> String {
         "Show help information for all commands".to_string()
+    }
+
+    fn llm_description(&self) -> String {
+        r#"The help command displays information about available commands.
+
+Usage:
+- /help                      Show general help information
+
+Examples:
+- "/help" - Shows general help information with a list of all available commands"#
+            .to_string()
     }
 
     fn execute<'a>(

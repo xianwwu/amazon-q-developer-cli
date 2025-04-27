@@ -25,6 +25,12 @@ impl ToolsCommand {
     }
 }
 
+impl Default for ToolsCommand {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandHandler for ToolsCommand {
     fn name(&self) -> &'static str {
         "tools"
@@ -101,46 +107,50 @@ To get the current tool status, use the command "/tools list" which will display
             }
 
             // Parse arguments to determine the subcommand
-            let subcommand = match args[0] {
-                "list" => None, // Default is to list tools
-                "trust" => {
-                    let tool_names = args[1..].iter().map(|s| s.to_string()).collect();
-                    Some(ToolsSubcommand::Trust { tool_names })
-                },
-                "untrust" => {
-                    let tool_names = args[1..].iter().map(|s| s.to_string()).collect();
-                    Some(ToolsSubcommand::Untrust { tool_names })
-                },
-                "trustall" => Some(ToolsSubcommand::TrustAll),
-                "reset" => {
-                    if args.len() > 1 {
-                        Some(ToolsSubcommand::ResetSingle {
-                            tool_name: args[1].to_string(),
-                        })
-                    } else {
-                        Some(ToolsSubcommand::Reset)
-                    }
-                },
-                "help" => {
-                    // Return help command with the help text
-                    return Ok(ChatState::ExecuteCommand {
-                        command: Command::Help {
-                            help_text: Some(self.help()),
-                        },
-                        tool_uses,
-                        pending_tool_index,
-                    });
-                },
-                _ => {
-                    // For unknown subcommands, show help
-                    return Ok(ChatState::ExecuteCommand {
-                        command: Command::Help {
-                            help_text: Some(self.help()),
-                        },
-                        tool_uses,
-                        pending_tool_index,
-                    });
-                },
+            let subcommand = if let Some(first_arg) = args.first() {
+                match *first_arg {
+                    "list" => None, // Default is to list tools
+                    "trust" => {
+                        let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
+                        Some(ToolsSubcommand::Trust { tool_names })
+                    },
+                    "untrust" => {
+                        let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
+                        Some(ToolsSubcommand::Untrust { tool_names })
+                    },
+                    "trustall" => Some(ToolsSubcommand::TrustAll),
+                    "reset" => {
+                        if args.len() > 1 {
+                            Some(ToolsSubcommand::ResetSingle {
+                                tool_name: args[1].to_string(),
+                            })
+                        } else {
+                            Some(ToolsSubcommand::Reset)
+                        }
+                    },
+                    "help" => {
+                        // Return help command with the help text
+                        return Ok(ChatState::ExecuteCommand {
+                            command: Command::Help {
+                                help_text: Some(self.help()),
+                            },
+                            tool_uses,
+                            pending_tool_index,
+                        });
+                    },
+                    _ => {
+                        // For unknown subcommands, show help
+                        return Ok(ChatState::ExecuteCommand {
+                            command: Command::Help {
+                                help_text: Some(self.help()),
+                            },
+                            tool_uses,
+                            pending_tool_index,
+                        });
+                    },
+                }
+            } else {
+                None // Default to list if no arguments (should not happen due to earlier check)
             };
 
             Ok(ChatState::ExecuteCommand {

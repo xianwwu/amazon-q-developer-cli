@@ -22,6 +22,12 @@ impl QuitCommand {
     }
 }
 
+impl Default for QuitCommand {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandHandler for QuitCommand {
     fn name(&self) -> &'static str {
         "quit"
@@ -37,6 +43,33 @@ impl CommandHandler for QuitCommand {
 
     fn help(&self) -> String {
         "Exit the Amazon Q chat application".to_string()
+    }
+
+    fn llm_description(&self) -> String {
+        r#"The quit command exits the Amazon Q chat application.
+
+Usage:
+- /quit                      Exit the application
+
+This command will prompt for confirmation before exiting.
+
+Examples of statements that may trigger this command:
+- "Bye!"
+- "Let's quit the application"
+- "Exit"
+- "I want to exit"
+- "Close the chat"
+- "End this session"
+
+Common quit commands from other tools that users might try:
+- ":q" (vi/vim)
+- "exit" (shell, Python REPL)
+- "quit" (many REPLs)
+- "Ctrl+D" (Unix shells, Python REPL)
+- "Ctrl+C" (many command-line applications)
+- "logout" (shells)
+- "bye" (some interactive tools)"#
+            .to_string()
     }
 
     fn execute<'a>(

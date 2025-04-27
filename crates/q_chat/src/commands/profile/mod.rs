@@ -26,6 +26,12 @@ impl ProfileCommand {
     }
 }
 
+impl Default for ProfileCommand {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandHandler for ProfileCommand {
     fn name(&self) -> &'static str {
         "profile"
@@ -81,8 +87,8 @@ To get the current profiles, use the command "/profile list" which will display 
             // Parse arguments to determine the subcommand
             let subcommand = if args.is_empty() {
                 ProfileSubcommand::List
-            } else {
-                match args[0] {
+            } else if let Some(first_arg) = args.first() {
+                match *first_arg {
                     "list" => ProfileSubcommand::List,
                     "set" => {
                         if args.len() < 2 {
@@ -120,6 +126,8 @@ To get the current profiles, use the command "/profile list" which will display 
                     "help" => ProfileSubcommand::Help,
                     _ => ProfileSubcommand::Help,
                 }
+            } else {
+                ProfileSubcommand::List // Fallback, should not happen
             };
 
             Ok(ChatState::ExecuteCommand {

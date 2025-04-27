@@ -22,6 +22,12 @@ impl CompactCommand {
     }
 }
 
+impl Default for CompactCommand {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandHandler for CompactCommand {
     fn name(&self) -> &'static str {
         "compact"
