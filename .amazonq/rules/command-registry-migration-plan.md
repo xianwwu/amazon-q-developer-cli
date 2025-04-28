@@ -108,16 +108,19 @@ For each command, we will follow this process:
 |         | clear       | ✅                  | ✅            | ✅                | - |
 |         | show        | ✅                  | ✅            | ✅                | - |
 |         | hooks       | ✅                  | ✅            | ✅                | - |
-| profile | list        | ✅                  | ✅            | 🟡                | In progress |
-|         | create      | ✅                  | ✅            | 🟡                | In progress |
-|         | delete      | ✅                  | ✅            | 🟡                | Requires confirmation |
-|         | set         | ✅                  | ✅            | 🟡                | In progress |
-|         | rename      | ✅                  | ✅            | 🟡                | In progress |
-| tools   | list        | ✅                  | ✅            | 🟡                | In progress |
-|         | trust       | ✅                  | ✅            | 🟡                | In progress |
-|         | untrust     | ✅                  | ✅            | 🟡                | In progress |
-|         | trustall    | ✅                  | ✅            | 🟡                | In progress |
-|         | reset       | ✅                  | ✅            | 🟡                | In progress |
+| profile | list        | ✅                  | ✅            | ✅                | Refactored with dedicated handler |
+|         | create      | ✅                  | ✅            | ✅                | Refactored with dedicated handler |
+|         | delete      | ✅                  | ✅            | ✅                | Requires confirmation |
+|         | set         | ✅                  | ✅            | ✅                | Refactored with dedicated handler |
+|         | rename      | ✅                  | ✅            | ✅                | Refactored with dedicated handler |
+|         | help        | ✅                  | ✅            | ✅                | Added new subcommand |
+| tools   | list        | ✅                  | ✅            | ✅                | Refactored with dedicated handler |
+|         | trust       | ✅                  | ✅            | ✅                | Refactored with dedicated handler |
+|         | untrust     | ✅                  | ✅            | ✅                | Refactored with dedicated handler |
+|         | trustall    | ✅                  | ✅            | ✅                | Requires confirmation |
+|         | reset       | ✅                  | ✅            | ✅                | Refactored with dedicated handler |
+|         | reset_single| ✅                  | ✅            | ✅                | Added new subcommand |
+|         | help        | ✅                  | ✅            | ✅                | Added new subcommand |
 | issue   | -           | ✅                  | ✅            | ✅                | Using existing report_issue tool |
 | compact | -           | ✅                  | ✅            | ✅                | Implemented with summarization support |
 | editor  | -           | ✅                  | ✅            | ✅                | Implemented with external editor support |

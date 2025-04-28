@@ -12,22 +12,18 @@ The `internal_command` tool enables the AI assistant to directly execute interna
 - **Phase 2: internal_command Tool Implementation** - Created tool structure, implemented schema and logic, and added security measures
 - **Phase 3: Command Implementation** - Implemented handlers for basic commands and many complex commands
 - **Phase 4: Integration and Security** - Added confirmation prompts, permission persistence, and AI integration features
+- **Phase 6: Complete Command Registry Migration** - Migrated all commands to the new registry system with proper handlers
 
 ### Current Phase 🟡
 
-- **Phase 6: Complete Command Registry Migration**
-  - Basic commands (help, quit, clear) ✅
-  - Issue command (using existing report_issue tool) ✅
-  - Compact command ✅
-  - Usage command ✅
-  - Context command ✅
-  - Profile command (in progress) 🟡
-  - Tools command (in progress) 🟡
-  - Editor command ✅
+- **Phase 5: Documentation and Refinement**
+  - Update command documentation
+  - Refine error messages
+  - Improve help text
+  - Add examples to documentation
 
 ### Future Phases ⚪
 
-- **Phase 5: Documentation and Refinement**
 - **Phase 7: Code Quality and Architecture Refinement**
 
 ## Command Migration Status
@@ -38,8 +34,8 @@ The `internal_command` tool enables the AI assistant to directly execute interna
 | quit | N/A | 🟢 Completed | Simple command with confirmation requirement |
 | clear | N/A | 🟢 Completed | Simple command without confirmation |
 | context | add, rm, clear, show, hooks | 🟢 Completed | Complex command with file operations |
-| profile | list, create, delete, set, rename | 🟡 In Progress | Complex command with state management |
-| tools | list, trust, untrust, trustall, reset | 🟡 In Progress | Complex command with permission management |
+| profile | list, create, delete, set, rename, help | 🟢 Completed | Refactored with dedicated handlers for each subcommand |
+| tools | list, trust, untrust, trustall, reset, reset_single, help | 🟢 Completed | Refactored with dedicated handlers for each subcommand |
 | issue | N/A | 🟢 Completed | Using existing report_issue tool instead of implementing a separate command handler |
 | compact | N/A | 🟢 Completed | Command for summarizing conversation history |
 | editor | N/A | 🟢 Completed | Command for opening external editor for composing prompts |
