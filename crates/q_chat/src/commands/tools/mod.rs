@@ -16,6 +16,9 @@ use crate::{
     QueuedTool,
 };
 
+mod handler;
+pub use handler::ToolsCommandHandler;
+
 /// Handler for the tools command
 pub struct ToolsCommand;
 
@@ -90,20 +93,15 @@ To get the current tool status, use the command "/tools list" which will display
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        _ctx: &'a mut CommandContextAdapter<'a>,
+        ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
             if args.is_empty() {
-                // Default to showing help when no subcommand is provided
-                return Ok(ChatState::ExecuteCommand {
-                    command: Command::Help {
-                        help_text: Some(self.help()),
-                    },
-                    tool_uses,
-                    pending_tool_index,
-                });
+                // Default to showing the list when no subcommand is provided
+                let handler = ToolsCommandHandler::new();
+                return handler.execute(args, ctx, tool_uses, pending_tool_index, &None).await;
             }
 
             // Parse arguments to determine the subcommand
@@ -128,36 +126,21 @@ To get the current tool status, use the command "/tools list" which will display
                             Some(ToolsSubcommand::Reset)
                         }
                     },
-                    "help" => {
-                        // Return help command with the help text
-                        return Ok(ChatState::ExecuteCommand {
-                            command: Command::Help {
-                                help_text: Some(self.help()),
-                            },
-                            tool_uses,
-                            pending_tool_index,
-                        });
-                    },
+                    "help" => Some(ToolsSubcommand::Help),
                     _ => {
                         // For unknown subcommands, show help
-                        return Ok(ChatState::ExecuteCommand {
-                            command: Command::Help {
-                                help_text: Some(self.help()),
-                            },
-                            tool_uses,
-                            pending_tool_index,
-                        });
+                        Some(ToolsSubcommand::Help)
                     },
                 }
             } else {
                 None // Default to list if no arguments (should not happen due to earlier check)
             };
 
-            Ok(ChatState::ExecuteCommand {
-                command: Command::Tools { subcommand },
-                tool_uses,
-                pending_tool_index,
-            })
+            // Create the handler and execute the command
+            let handler = ToolsCommandHandler::new();
+            handler
+                .execute(args, ctx, tool_uses, pending_tool_index, &subcommand)
+                .await
         })
     }
 

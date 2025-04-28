@@ -16,6 +16,9 @@ use crate::{
     QueuedTool,
 };
 
+mod handler;
+pub use handler::ProfileCommandHandler;
+
 /// Profile command handler
 pub struct ProfileCommand;
 
@@ -62,9 +65,9 @@ impl CommandHandler for ProfileCommand {
 
 Subcommands:
 - list: List all available profiles
-- create <name>: Create a new profile
-- delete <name>: Delete an existing profile
-- set <name>: Switch to a different profile
+- create <n>: Create a new profile
+- delete <n>: Delete an existing profile
+- set <n>: Switch to a different profile
 - rename <old_name> <new_name>: Rename an existing profile
 
 Examples:
@@ -79,7 +82,7 @@ To get the current profiles, use the command "/profile list" which will display 
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        _ctx: &'a mut CommandContextAdapter<'a>,
+        ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
@@ -130,11 +133,11 @@ To get the current profiles, use the command "/profile list" which will display 
                 ProfileSubcommand::List // Fallback, should not happen
             };
 
-            Ok(ChatState::ExecuteCommand {
-                command: Command::Profile { subcommand },
-                tool_uses,
-                pending_tool_index,
-            })
+            // Create the handler and execute the command
+            let handler = ProfileCommandHandler::new();
+            handler
+                .execute(args, ctx, tool_uses, pending_tool_index, &subcommand)
+                .await
         })
     }
 
