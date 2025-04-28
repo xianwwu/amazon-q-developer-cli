@@ -42,6 +42,7 @@ use crate::commands::{
     CommandHandler,
     CompactCommand,
     ContextCommand,
+    EditorCommand,
     HelpCommand,
     ProfileCommand,
     QuitCommand,
@@ -76,6 +77,7 @@ impl CommandRegistry {
         registry.register("tools", Box::new(ToolsCommand::new()));
         registry.register("compact", Box::new(CompactCommand::new()));
         registry.register("usage", Box::new(UsageCommand::new()));
+        registry.register("editor", Box::new(EditorCommand::new()));
 
         registry
     }
