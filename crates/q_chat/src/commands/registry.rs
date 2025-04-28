@@ -46,6 +46,7 @@ use crate::commands::{
     ProfileCommand,
     QuitCommand,
     ToolsCommand,
+    UsageCommand,
 };
 use crate::{
     ChatContext,
@@ -74,6 +75,7 @@ impl CommandRegistry {
         registry.register("profile", Box::new(ProfileCommand::new()));
         registry.register("tools", Box::new(ToolsCommand::new()));
         registry.register("compact", Box::new(CompactCommand::new()));
+        registry.register("usage", Box::new(UsageCommand::new()));
 
         registry
     }

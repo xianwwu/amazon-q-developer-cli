@@ -42,7 +42,6 @@ use command::{
     Command,
     ToolsSubcommand,
 };
-// CommandContextAdapter is used in other files
 use consts::CONTEXT_WINDOW_SIZE;
 use context::ContextManager;
 use conversation_state::{

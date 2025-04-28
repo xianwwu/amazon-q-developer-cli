@@ -115,9 +115,10 @@ For each command, we will follow this process:
 | tools   | list        | ✅                  | ✅            | ❌                | - |
 |         | enable      | ✅                  | ✅            | ❌                | - |
 |         | disable     | ✅                  | ✅            | ❌                | - |
-| issue   | -           | ✅                  | ✅            | ❌                | GitHub integration |
-| compact | -           | ❌                  | ❌            | ❌                | Needs implementation |
+| issue   | -           | ✅                  | ✅            | ✅                | Using existing report_issue tool |
+| compact | -           | ✅                  | ✅            | ✅                | Implemented with summarization support |
 | editor  | -           | ❌                  | ❌            | ❌                | Needs implementation |
+| usage   | -           | ✅                  | ✅            | ✅                | Implemented with token statistics display |
 
 ## Migration Schedule
 
@@ -134,6 +135,8 @@ For each command, we will follow this process:
 - Implement and migrate remaining commands (compact, editor)
 - Run comprehensive test suite
 - Create final migration report
+- Create user-facing documentation for all commands in docs/commands/
+- Update SUMMARY.md with links to command documentation
 
 ## Test Case Template
 
@@ -188,6 +191,46 @@ For each migrated command, we will create documentation that includes:
 Summary of the migration results and any follow-up tasks
 ```
 
+## User Documentation
+
+For each command, we will also create user-facing documentation in the `docs/commands/` directory:
+
+```markdown
+# [Command Name]
+
+## Overview
+Brief description of what the command does and its purpose.
+
+## Command Details
+- **Name**: `command_name`
+- **Description**: Short description
+- **Usage**: `/command [arguments]`
+- **Requires Confirmation**: Yes/No
+
+## Functionality
+Detailed explanation of what the command does.
+
+## Example Usage
+```
+/command argument
+```
+
+Output:
+```
+Expected output
+```
+
+## Related Commands
+- `/related_command`: Brief description of relationship
+
+## Use Cases
+- Common use case 1
+- Common use case 2
+
+## Notes
+Additional information and tips
+```
+
 ## Success Metrics
 
 We will consider the migration successful when:
@@ -197,3 +240,7 @@ We will consider the migration successful when:
 3. All commands have comprehensive test coverage
 4. All direct command implementations have been removed
 5. Documentation is updated to reflect the new implementation
+   - Each command has a dedicated documentation page in docs/commands/
+   - SUMMARY.md includes links to all command documentation
+   - Documentation follows a consistent format
+   - Examples and use cases are included for each command

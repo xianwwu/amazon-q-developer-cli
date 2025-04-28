@@ -26,10 +26,9 @@ mod tests {
 
         // Check that the output contains the help text
         let output_str = String::from_utf8(output.into_inner())?;
-        assert!(output_str.contains("Suggested command"));
-        assert!(output_str.contains("help"));
+        assert!(output_str.contains("/help"));
 
-        // Check that the next state is ExecuteParsedCommand
+        // Check that the next state is ExecuteCommand
         assert!(result.next_state.is_some());
 
         Ok(())
@@ -53,10 +52,9 @@ mod tests {
 
         // Check that the output contains the quit command
         let output_str = String::from_utf8(output.into_inner())?;
-        assert!(output_str.contains("Suggested command"));
-        assert!(output_str.contains("quit"));
+        assert!(output_str.contains("/quit"));
 
-        // Check that the next state is ExecuteParsedCommand
+        // Check that the next state is ExecuteCommand
         assert!(result.next_state.is_some());
 
         Ok(())
@@ -80,11 +78,10 @@ mod tests {
 
         // Check that the output contains the context add command
         let output_str = String::from_utf8(output.into_inner())?;
-        assert!(output_str.contains("Suggested command"));
-        assert!(output_str.contains("context add"));
+        assert!(output_str.contains("/context add"));
         assert!(output_str.contains("file.txt"));
 
-        // Check that the next state is ExecuteParsedCommand
+        // Check that the next state is ExecuteCommand
         assert!(result.next_state.is_some());
 
         Ok(())
@@ -104,10 +101,12 @@ mod tests {
         };
 
         let tool = Tool::InternalCommand(command);
-        let result = tool.invoke(&ctx, &mut output).await;
+        let result = tool.invoke(&ctx, &mut output).await?;
 
-        // Check that the command fails with an error
-        assert!(result.is_err());
+        // Check that the output contains an error message
+        let output_str = String::from_utf8(output.into_inner())?;
+        assert!(output_str.contains("Unknown command"));
+        assert!(result.next_state.is_none());
 
         Ok(())
     }

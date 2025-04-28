@@ -123,15 +123,18 @@ impl InternalCommand {
     /// # Arguments
     ///
     /// * `_context` - The context for the command execution
-    /// * `_updates` - A writer for outputting status updates
+    /// * `updates` - A writer for outputting status updates
     ///
     /// # Returns
     ///
     /// * `Result<InvokeOutput>` - The result of the command execution
-    pub async fn invoke(&self, _context: &Context, _updates: &mut impl Write) -> Result<InvokeOutput> {
+    pub async fn invoke(&self, _context: &Context, updates: &mut impl Write) -> Result<InvokeOutput> {
         // Format the command string for execution
         let command_str = self.format_command_string();
         let description = self.get_command_description();
+
+        // Write the command to the output
+        writeln!(updates, "{}", command_str)?;
 
         // Create a response with the command and description
         let response = format!("Executing command for you: `{}` - {}", command_str, description);
@@ -139,14 +142,26 @@ impl InternalCommand {
         // Log the command string
         debug!("Executing command: {}", command_str);
 
-        // Return an InvokeOutput with the response and next state
-        Ok(InvokeOutput {
-            output: crate::tools::OutputKind::Text(response),
-            next_state: Some(ChatState::ExecuteCommand {
-                command: Command::parse(&command_str, &mut std::io::stdout()).map_err(|e| eyre::eyre!("{}", e))?,
-                tool_uses: None,
-                pending_tool_index: None,
-            }),
-        })
+        // Try to parse the command
+        match Command::parse(&command_str, &mut std::io::stdout()) {
+            Ok(command) => {
+                // Return an InvokeOutput with the response and next state
+                Ok(InvokeOutput {
+                    output: crate::tools::OutputKind::Text(response),
+                    next_state: Some(ChatState::ExecuteCommand {
+                        command,
+                        tool_uses: None,
+                        pending_tool_index: None,
+                    }),
+                })
+            },
+            Err(e) => {
+                // Return an InvokeOutput with the error message and no next state
+                Ok(InvokeOutput {
+                    output: crate::tools::OutputKind::Text(e),
+                    next_state: None,
+                })
+            },
+        }
     }
 }

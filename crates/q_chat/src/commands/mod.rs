@@ -8,6 +8,7 @@ pub mod profile;
 mod quit;
 pub mod registry;
 pub mod tools;
+mod usage;
 
 pub use clear::ClearCommand;
 pub use compact::CompactCommand;
@@ -19,3 +20,4 @@ pub use profile::ProfileCommand;
 pub use quit::QuitCommand;
 pub use registry::CommandRegistry;
 pub use tools::ToolsCommand;
+pub use usage::UsageCommand;

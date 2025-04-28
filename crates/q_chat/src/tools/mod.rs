@@ -60,6 +60,18 @@ impl Tool {
         }
     }
 
+    /// Get all tool names
+    pub fn all_tool_names() -> Vec<&'static str> {
+        vec![
+            "fs_read",
+            "fs_write",
+            "execute_bash",
+            "use_aws",
+            "gh_issue",
+            "internal_command",
+        ]
+    }
+
     /// Whether or not the tool should prompt the user to accept before [Self::invoke] is called.
     pub fn requires_acceptance(&self, _ctx: &Context) -> bool {
         match self {
@@ -185,6 +197,12 @@ impl ToolPermissions {
     pub fn trust_tool(&mut self, tool_name: &str) {
         self.permissions
             .insert(tool_name.to_string(), ToolPermission { trusted: true });
+    }
+
+    pub fn trust_all_tools(&mut self) {
+        for tool_name in Tool::all_tool_names() {
+            self.trust_tool(tool_name);
+        }
     }
 
     pub fn untrust_tool(&mut self, tool_name: &str) {
