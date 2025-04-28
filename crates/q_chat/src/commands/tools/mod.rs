@@ -93,15 +93,18 @@ To get the current tool status, use the command "/tools list" which will display
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a mut CommandContextAdapter<'a>,
+        _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
             if args.is_empty() {
                 // Default to showing the list when no subcommand is provided
-                let handler = ToolsCommandHandler::new();
-                return handler.execute(args, ctx, tool_uses, pending_tool_index, &None).await;
+                return Ok(ChatState::ExecuteCommand {
+                    command: Command::Tools { subcommand: None },
+                    tool_uses,
+                    pending_tool_index,
+                });
             }
 
             // Parse arguments to determine the subcommand
@@ -136,11 +139,11 @@ To get the current tool status, use the command "/tools list" which will display
                 None // Default to list if no arguments (should not happen due to earlier check)
             };
 
-            // Create the handler and execute the command
-            let handler = ToolsCommandHandler::new();
-            handler
-                .execute(args, ctx, tool_uses, pending_tool_index, &subcommand)
-                .await
+            Ok(ChatState::ExecuteCommand {
+                command: Command::Tools { subcommand },
+                tool_uses,
+                pending_tool_index,
+            })
         })
     }
 
@@ -154,9 +157,5 @@ To get the current tool status, use the command "/tools list" which will display
             "trustall" => true,       // Trustall requires confirmation
             _ => false,               // Other commands don't require confirmation
         }
-    }
-
-    fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>> {
-        Ok(args)
     }
 }

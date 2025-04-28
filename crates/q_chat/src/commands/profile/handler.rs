@@ -90,114 +90,194 @@ To get the current profiles, use the command "/profile list" which will display 
 
     fn execute<'a>(
         &'a self,
-        _args: Vec<&'a str>,
+        args: Vec<&'a str>,
         ctx: &'a mut CommandContextAdapter<'a>,
-        _tool_uses: Option<Vec<QueuedTool>>,
-        _pending_tool_index: Option<usize>,
-        subcommand: &'a ProfileSubcommand,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
+            // Parse arguments to determine the subcommand
+            let subcommand = if args.is_empty() {
+                ProfileSubcommand::List
+            } else if let Some(first_arg) = args.first() {
+                match *first_arg {
+                    "list" => ProfileSubcommand::List,
+                    "set" => {
+                        if args.len() < 2 {
+                            return Err(eyre::eyre!("Missing profile name for set command"));
+                        }
+                        ProfileSubcommand::Set {
+                            name: args[1].to_string(),
+                        }
+                    },
+                    "create" => {
+                        if args.len() < 2 {
+                            return Err(eyre::eyre!("Missing profile name for create command"));
+                        }
+                        ProfileSubcommand::Create {
+                            name: args[1].to_string(),
+                        }
+                    },
+                    "delete" => {
+                        if args.len() < 2 {
+                            return Err(eyre::eyre!("Missing profile name for delete command"));
+                        }
+                        ProfileSubcommand::Delete {
+                            name: args[1].to_string(),
+                        }
+                    },
+                    "rename" => {
+                        if args.len() < 3 {
+                            return Err(eyre::eyre!("Missing old or new profile name for rename command"));
+                        }
+                        ProfileSubcommand::Rename {
+                            old_name: args[1].to_string(),
+                            new_name: args[2].to_string(),
+                        }
+                    },
+                    "help" => ProfileSubcommand::Help,
+                    _ => ProfileSubcommand::Help,
+                }
+            } else {
+                ProfileSubcommand::List // Fallback, should not happen
+            };
+
             match subcommand {
                 ProfileSubcommand::List => {
                     // Get the context manager
-                    let context_manager = ctx.conversation_state.context_manager().await;
+                    if let Some(context_manager) = &ctx.conversation_state.context_manager {
+                        // Get the list of profiles
+                        let profiles = context_manager.list_profiles().await?;
+                        let current_profile = &context_manager.current_profile;
 
-                    // Get the list of profiles
-                    let profiles = context_manager.list_profiles().await?;
-                    let current_profile = &context_manager.current_profile;
+                        // Display the profiles
+                        queue!(ctx.output, style::Print("\nAvailable profiles:\n"))?;
 
-                    // Display the profiles
-                    queue!(ctx.output, style::Print("\nAvailable profiles:\n"))?;
-
-                    for profile in profiles {
-                        if &profile == current_profile {
-                            queue!(
-                                ctx.output,
-                                style::Print("* "),
-                                style::SetForegroundColor(Color::Green),
-                                style::Print(profile),
-                                style::ResetColor,
-                                style::Print("\n")
-                            )?;
-                        } else {
-                            queue!(
-                                ctx.output,
-                                style::Print("  "),
-                                style::Print(profile),
-                                style::Print("\n")
-                            )?;
+                        for profile in profiles {
+                            if &profile == current_profile {
+                                queue!(
+                                    ctx.output,
+                                    style::Print("* "),
+                                    style::SetForegroundColor(Color::Green),
+                                    style::Print(profile),
+                                    style::ResetColor,
+                                    style::Print("\n")
+                                )?;
+                            } else {
+                                queue!(
+                                    ctx.output,
+                                    style::Print("  "),
+                                    style::Print(profile),
+                                    style::Print("\n")
+                                )?;
+                            }
                         }
-                    }
 
-                    queue!(ctx.output, style::Print("\n"))?;
+                        queue!(ctx.output, style::Print("\n"))?;
+                    } else {
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print("\nContext manager is not available.\n\n"),
+                            style::ResetColor
+                        )?;
+                    }
                 },
                 ProfileSubcommand::Create { name } => {
                     // Get the context manager
-                    let context_manager = ctx.conversation_state.context_manager().await;
+                    if let Some(context_manager) = &ctx.conversation_state.context_manager {
+                        // Create the profile
+                        context_manager.create_profile(&name).await?;
 
-                    // Create the profile
-                    context_manager.create_profile(name).await?;
-
-                    queue!(
-                        ctx.output,
-                        style::Print("\nProfile '"),
-                        style::SetForegroundColor(Color::Green),
-                        style::Print(name),
-                        style::ResetColor,
-                        style::Print("' created successfully.\n\n")
-                    )?;
+                        queue!(
+                            ctx.output,
+                            style::Print("\nProfile '"),
+                            style::SetForegroundColor(Color::Green),
+                            style::Print(name),
+                            style::ResetColor,
+                            style::Print("' created successfully.\n\n")
+                        )?;
+                    } else {
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print("\nContext manager is not available.\n\n"),
+                            style::ResetColor
+                        )?;
+                    }
                 },
                 ProfileSubcommand::Delete { name } => {
                     // Get the context manager
-                    let context_manager = ctx.conversation_state.context_manager().await;
+                    if let Some(context_manager) = &ctx.conversation_state.context_manager {
+                        // Delete the profile
+                        context_manager.delete_profile(&name).await?;
 
-                    // Delete the profile
-                    context_manager.delete_profile(name).await?;
-
-                    queue!(
-                        ctx.output,
-                        style::Print("\nProfile '"),
-                        style::SetForegroundColor(Color::Green),
-                        style::Print(name),
-                        style::ResetColor,
-                        style::Print("' deleted successfully.\n\n")
-                    )?;
+                        queue!(
+                            ctx.output,
+                            style::Print("\nProfile '"),
+                            style::SetForegroundColor(Color::Green),
+                            style::Print(name),
+                            style::ResetColor,
+                            style::Print("' deleted successfully.\n\n")
+                        )?;
+                    } else {
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print("\nContext manager is not available.\n\n"),
+                            style::ResetColor
+                        )?;
+                    }
                 },
                 ProfileSubcommand::Set { name } => {
                     // Get the context manager
-                    let context_manager = ctx.conversation_state.context_manager_mut().await;
+                    if let Some(context_manager) = &mut ctx.conversation_state.context_manager {
+                        // Switch to the profile
+                        context_manager.switch_profile(&name).await?;
 
-                    // Switch to the profile
-                    context_manager.switch_profile(name).await?;
-
-                    queue!(
-                        ctx.output,
-                        style::Print("\nSwitched to profile '"),
-                        style::SetForegroundColor(Color::Green),
-                        style::Print(name),
-                        style::ResetColor,
-                        style::Print("'.\n\n")
-                    )?;
+                        queue!(
+                            ctx.output,
+                            style::Print("\nSwitched to profile '"),
+                            style::SetForegroundColor(Color::Green),
+                            style::Print(name),
+                            style::ResetColor,
+                            style::Print("'.\n\n")
+                        )?;
+                    } else {
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print("\nContext manager is not available.\n\n"),
+                            style::ResetColor
+                        )?;
+                    }
                 },
                 ProfileSubcommand::Rename { old_name, new_name } => {
                     // Get the context manager
-                    let context_manager = ctx.conversation_state.context_manager_mut().await;
+                    if let Some(context_manager) = &mut ctx.conversation_state.context_manager {
+                        // Rename the profile
+                        context_manager.rename_profile(&old_name, &new_name).await?;
 
-                    // Rename the profile
-                    context_manager.rename_profile(old_name, new_name).await?;
-
-                    queue!(
-                        ctx.output,
-                        style::Print("\nProfile '"),
-                        style::SetForegroundColor(Color::Green),
-                        style::Print(old_name),
-                        style::ResetColor,
-                        style::Print("' renamed to '"),
-                        style::SetForegroundColor(Color::Green),
-                        style::Print(new_name),
-                        style::ResetColor,
-                        style::Print("'.\n\n")
-                    )?;
+                        queue!(
+                            ctx.output,
+                            style::Print("\nProfile '"),
+                            style::SetForegroundColor(Color::Green),
+                            style::Print(old_name),
+                            style::ResetColor,
+                            style::Print("' renamed to '"),
+                            style::SetForegroundColor(Color::Green),
+                            style::Print(new_name),
+                            style::ResetColor,
+                            style::Print("'.\n\n")
+                        )?;
+                    } else {
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print("\nContext manager is not available.\n\n"),
+                            style::ResetColor
+                        )?;
+                    }
                 },
                 ProfileSubcommand::Help => {
                     // Display help text
@@ -211,8 +291,8 @@ To get the current profiles, use the command "/profile list" which will display 
             }
 
             Ok(ChatState::PromptUser {
-                tool_uses: None,
-                pending_tool_index: None,
+                tool_uses,
+                pending_tool_index,
                 skip_printing_tools: false,
             })
         })
@@ -269,8 +349,8 @@ mod tests {
         };
 
         // Execute the list subcommand
-        let subcommand = ProfileSubcommand::List;
-        let result = handler.execute(vec![], &mut ctx, None, None, &subcommand).await;
+        let args = vec!["list"];
+        let result = handler.execute(args, &mut ctx, None, None).await;
 
         assert!(result.is_ok());
     }

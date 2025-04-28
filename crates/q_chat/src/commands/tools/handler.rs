@@ -1,7 +1,10 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crossterm::style::Color;
+use crossterm::style::{
+    Attribute,
+    Color,
+};
 use crossterm::{
     queue,
     style,
@@ -91,13 +94,46 @@ To get the current tool status, use the command "/tools list" which will display
 
     fn execute<'a>(
         &'a self,
-        _args: Vec<&'a str>,
+        args: Vec<&'a str>,
         ctx: &'a mut CommandContextAdapter<'a>,
-        _tool_uses: Option<Vec<QueuedTool>>,
-        _pending_tool_index: Option<usize>,
-        subcommand: &'a Option<ToolsSubcommand>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
+            // Parse arguments to determine the subcommand
+            let subcommand = if args.is_empty() {
+                None // Default to list
+            } else if let Some(first_arg) = args.first() {
+                match *first_arg {
+                    "list" => None, // Default is to list tools
+                    "trust" => {
+                        let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
+                        Some(ToolsSubcommand::Trust { tool_names })
+                    },
+                    "untrust" => {
+                        let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
+                        Some(ToolsSubcommand::Untrust { tool_names })
+                    },
+                    "trustall" => Some(ToolsSubcommand::TrustAll),
+                    "reset" => {
+                        if args.len() > 1 {
+                            Some(ToolsSubcommand::ResetSingle {
+                                tool_name: args[1].to_string(),
+                            })
+                        } else {
+                            Some(ToolsSubcommand::Reset)
+                        }
+                    },
+                    "help" => Some(ToolsSubcommand::Help),
+                    _ => {
+                        // For unknown subcommands, show help
+                        Some(ToolsSubcommand::Help)
+                    },
+                }
+            } else {
+                None // Default to list if no arguments (should not happen due to earlier check)
+            };
+
             match subcommand {
                 None => {
                     // List all tools and their status
@@ -151,15 +187,15 @@ To get the current tool status, use the command "/tools list" which will display
                         }
 
                         // Trust the tool
-                        ctx.tool_permissions.trust_tool(tool_name);
+                        ctx.tool_permissions.trust_tool(&tool_name);
 
                         queue!(
                             ctx.output,
                             style::SetForegroundColor(Color::Green),
                             style::Print(format!("\nTool '{}' is now trusted. I will ", tool_name)),
-                            style::Bold,
+                            style::SetAttribute(Attribute::Bold),
                             style::Print("not"),
-                            style::NoBold,
+                            style::SetAttribute(Attribute::NoBold),
                             style::Print(" ask for confirmation before running this tool.\n"),
                             style::ResetColor
                         )?;
@@ -182,7 +218,7 @@ To get the current tool status, use the command "/tools list" which will display
                         }
 
                         // Untrust the tool
-                        ctx.tool_permissions.untrust_tool(tool_name);
+                        ctx.tool_permissions.untrust_tool(&tool_name);
 
                         queue!(
                             ctx.output,
@@ -206,9 +242,9 @@ To get the current tool status, use the command "/tools list" which will display
                         style::Print("!"),
                         style::SetForegroundColor(Color::Green),
                         style::Print("). Amazon Q will execute tools "),
-                        style::Bold,
+                        style::SetAttribute(Attribute::Bold),
                         style::Print("without"),
-                        style::NoBold,
+                        style::SetAttribute(Attribute::NoBold),
                         style::Print(" asking for confirmation.\n"),
                         style::Print("Agents can sometimes do unexpected things so understand the risks.\n"),
                         style::ResetColor,
@@ -238,7 +274,7 @@ To get the current tool status, use the command "/tools list" which will display
                         )?;
                     } else {
                         // Reset the tool permission
-                        ctx.tool_permissions.reset_tool(tool_name);
+                        ctx.tool_permissions.reset_tool(&tool_name);
 
                         queue!(
                             ctx.output,
@@ -260,8 +296,8 @@ To get the current tool status, use the command "/tools list" which will display
             }
 
             Ok(ChatState::PromptUser {
-                tool_uses: None,
-                pending_tool_index: None,
+                tool_uses,
+                pending_tool_index,
                 skip_printing_tools: false,
             })
         })
@@ -318,8 +354,8 @@ mod tests {
         };
 
         // Execute the list subcommand
-        let subcommand = None;
-        let result = handler.execute(vec![], &mut ctx, None, None, &subcommand).await;
+        let args = vec!["list"];
+        let result = handler.execute(args, &mut ctx, None, None).await;
 
         assert!(result.is_ok());
     }

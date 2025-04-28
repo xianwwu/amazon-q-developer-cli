@@ -82,7 +82,7 @@ To get the current profiles, use the command "/profile list" which will display 
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a mut CommandContextAdapter<'a>,
+        _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
@@ -133,11 +133,11 @@ To get the current profiles, use the command "/profile list" which will display 
                 ProfileSubcommand::List // Fallback, should not happen
             };
 
-            // Create the handler and execute the command
-            let handler = ProfileCommandHandler::new();
-            handler
-                .execute(args, ctx, tool_uses, pending_tool_index, &subcommand)
-                .await
+            Ok(ChatState::ExecuteCommand {
+                command: Command::Profile { subcommand },
+                tool_uses,
+                pending_tool_index,
+            })
         })
     }
 
