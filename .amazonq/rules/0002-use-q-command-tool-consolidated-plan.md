@@ -20,8 +20,8 @@ The `internal_command` tool enables the AI assistant to directly execute interna
   - Issue command (using existing report_issue tool) ✅
   - Compact command ✅
   - Usage command ✅
-  - Context command (in progress) 🟡
-  - Profile command (not started) ⚪
+  - Context command ✅
+  - Profile command (in progress) 🟡
   - Tools command (not started) ⚪
   - Editor command (not started) ⚪
 
@@ -37,8 +37,8 @@ The `internal_command` tool enables the AI assistant to directly execute interna
 | help | N/A | 🟢 Completed | Help command is now trusted and doesn't require confirmation |
 | quit | N/A | 🟢 Completed | Simple command with confirmation requirement |
 | clear | N/A | 🟢 Completed | Simple command without confirmation |
-| context | add, rm, clear, show, hooks | 🟡 In Progress | Complex command with file operations |
-| profile | list, create, delete, set, rename | ⚪ Not Started | Complex command with state management |
+| context | add, rm, clear, show, hooks | 🟢 Completed | Complex command with file operations |
+| profile | list, create, delete, set, rename | 🟡 In Progress | Complex command with state management |
 | tools | list, trust, untrust, trustall, reset | ⚪ Not Started | Complex command with permission management |
 | issue | N/A | 🟢 Completed | Using existing report_issue tool instead of implementing a separate command handler |
 | compact | N/A | 🟢 Completed | Command for summarizing conversation history |
@@ -67,27 +67,25 @@ The fix ensures that the `ChatState::Exit` state is correctly returned and proce
 
 ## Next Steps
 
-1. **Complete Context Command Migration**
+1. **Complete Profile Command Migration**
    - Finish implementing remaining subcommands
-   - Test file operations and whitespace handling
-   - Verify proper argument parsing
+   - Test profile management operations
+   - Verify proper error handling
+   - Add comprehensive tests for all profile operations
 
-2. **Implement Profile Command**
-   - Implement handlers for all subcommands
-   - Ensure profile management works correctly
-   - Verify error handling
-
-3. **Implement Tools Command**
+2. **Implement Tools Command**
    - Implement handlers for all subcommands
    - Ensure tool permissions are handled correctly
    - Verify trust/untrust functionality
+   - Add tests for permission management
 
-4. **Implement Editor Command**
+3. **Implement Editor Command**
    - Implement handler for the editor command
    - Ensure external editor integration works
    - Verify content processing
+   - Add tests for editor integration
 
-5. **Complete Documentation**
+4. **Complete Documentation**
    - Ensure all implemented commands have dedicated documentation pages
    - Update SUMMARY.md with links to all command documentation
    - Verify documentation accuracy and completeness

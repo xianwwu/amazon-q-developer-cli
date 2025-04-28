@@ -107,11 +107,12 @@ For each command, we will follow this process:
 |         | rm          | ✅                  | ✅            | ✅                | File operations |
 |         | clear       | ✅                  | ✅            | ✅                | - |
 |         | show        | ✅                  | ✅            | ✅                | - |
-| profile | list        | ✅                  | ✅            | ❌                | - |
-|         | create      | ✅                  | ✅            | ❌                | - |
-|         | delete      | ✅                  | ✅            | ❌                | Requires confirmation |
-|         | set         | ✅                  | ✅            | ❌                | - |
-|         | rename      | ✅                  | ✅            | ❌                | - |
+|         | hooks       | ✅                  | ✅            | ✅                | - |
+| profile | list        | ✅                  | ✅            | 🟡                | In progress |
+|         | create      | ✅                  | ✅            | 🟡                | In progress |
+|         | delete      | ✅                  | ✅            | 🟡                | Requires confirmation |
+|         | set         | ✅                  | ✅            | 🟡                | In progress |
+|         | rename      | ✅                  | ✅            | 🟡                | In progress |
 | tools   | list        | ✅                  | ✅            | ❌                | - |
 |         | enable      | ✅                  | ✅            | ❌                | - |
 |         | disable     | ✅                  | ✅            | ❌                | - |
