@@ -113,12 +113,14 @@ For each command, we will follow this process:
 |         | delete      | ✅                  | ✅            | 🟡                | Requires confirmation |
 |         | set         | ✅                  | ✅            | 🟡                | In progress |
 |         | rename      | ✅                  | ✅            | 🟡                | In progress |
-| tools   | list        | ✅                  | ✅            | ❌                | - |
-|         | enable      | ✅                  | ✅            | ❌                | - |
-|         | disable     | ✅                  | ✅            | ❌                | - |
+| tools   | list        | ✅                  | ✅            | 🟡                | In progress |
+|         | trust       | ✅                  | ✅            | 🟡                | In progress |
+|         | untrust     | ✅                  | ✅            | 🟡                | In progress |
+|         | trustall    | ✅                  | ✅            | 🟡                | In progress |
+|         | reset       | ✅                  | ✅            | 🟡                | In progress |
 | issue   | -           | ✅                  | ✅            | ✅                | Using existing report_issue tool |
 | compact | -           | ✅                  | ✅            | ✅                | Implemented with summarization support |
-| editor  | -           | ❌                  | ❌            | ❌                | Needs implementation |
+| editor  | -           | ✅                  | ✅            | ✅                | Implemented with external editor support |
 | usage   | -           | ✅                  | ✅            | ✅                | Implemented with token statistics display |
 
 ## Migration Schedule

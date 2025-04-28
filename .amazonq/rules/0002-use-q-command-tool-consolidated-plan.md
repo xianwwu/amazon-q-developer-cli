@@ -22,8 +22,8 @@ The `internal_command` tool enables the AI assistant to directly execute interna
   - Usage command ✅
   - Context command ✅
   - Profile command (in progress) 🟡
-  - Tools command (not started) ⚪
-  - Editor command (not started) ⚪
+  - Tools command (in progress) 🟡
+  - Editor command ✅
 
 ### Future Phases ⚪
 
@@ -39,10 +39,10 @@ The `internal_command` tool enables the AI assistant to directly execute interna
 | clear | N/A | 🟢 Completed | Simple command without confirmation |
 | context | add, rm, clear, show, hooks | 🟢 Completed | Complex command with file operations |
 | profile | list, create, delete, set, rename | 🟡 In Progress | Complex command with state management |
-| tools | list, trust, untrust, trustall, reset | ⚪ Not Started | Complex command with permission management |
+| tools | list, trust, untrust, trustall, reset | 🟡 In Progress | Complex command with permission management |
 | issue | N/A | 🟢 Completed | Using existing report_issue tool instead of implementing a separate command handler |
 | compact | N/A | 🟢 Completed | Command for summarizing conversation history |
-| editor | N/A | ⚪ Not Started | Requires new handler implementation |
+| editor | N/A | 🟢 Completed | Command for opening external editor for composing prompts |
 | usage | N/A | 🟢 Completed | New command for displaying context window usage with visual progress bars |
 
 ## Implementation Approach
