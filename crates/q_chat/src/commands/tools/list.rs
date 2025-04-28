@@ -2,16 +2,20 @@ use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
 
-use crossterm::{
-    queue,
-    style::{self, Color},
+use crossterm::queue;
+use crossterm::style::{
+    self,
+    Color,
 };
 use eyre::Result;
-use fig_os_shim::Context;
 
-use crate::commands::CommandHandler;
-use crate::ChatState;
-use crate::QueuedTool;
+use crate::commands::context_adapter::CommandContextAdapter;
+use crate::commands::handler::CommandHandler;
+use crate::tools::Tool;
+use crate::{
+    ChatState,
+    QueuedTool,
+};
 
 /// Handler for the tools list command
 pub struct ListToolsCommand;
@@ -22,81 +26,83 @@ impl ListToolsCommand {
     }
 }
 
+impl Default for ListToolsCommand {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandHandler for ListToolsCommand {
     fn name(&self) -> &'static str {
         "list"
     }
-    
+
     fn description(&self) -> &'static str {
         "List all available tools and their status"
     }
-    
+
     fn usage(&self) -> &'static str {
         "/tools list"
     }
-    
+
     fn help(&self) -> String {
-        "List all available tools and their current status (enabled/disabled).".to_string()
+        "List all available tools and their trust status.".to_string()
     }
-    
+
     fn execute<'a>(
-        &'a self, 
-        _args: Vec<&'a str>, 
-        ctx: &'a Context,
+        &'a self,
+        _args: Vec<&'a str>,
+        ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Get the conversation state from the context
-            let conversation_state = ctx.get_conversation_state()?;
-            
-            // Get the tool registry
-            let tool_registry = conversation_state.tool_registry();
-            
-            // Get the tool settings
-            let tool_settings = conversation_state.tool_settings();
-            
-            // Display header
+            // List all tools and their status
             queue!(
                 ctx.output,
-                style::SetForegroundColor(Color::Blue),
-                style::Print("Available tools:\n"),
-                style::ResetColor
+                style::Print("\nTrusted tools can be run without confirmation\n\n")
             )?;
-            
-            // Display all tools
-            for tool_name in tool_registry.get_tool_names() {
-                let is_enabled = tool_settings.is_tool_enabled(tool_name);
-                let status_color = if is_enabled { Color::Green } else { Color::Red };
-                let status_text = if is_enabled { "enabled" } else { "disabled" };
-                
+
+            // Get all tool names
+            let tool_names = Tool::all_tool_names();
+
+            // Display each tool with its permission status
+            for tool_name in tool_names {
+                let permission_label = ctx.tool_permissions.display_label(tool_name);
+
                 queue!(
                     ctx.output,
-                    style::Print("  "),
-                    style::Print(tool_name),
-                    style::Print(" - "),
-                    style::SetForegroundColor(status_color),
-                    style::Print(status_text),
-                    style::ResetColor,
+                    style::Print("- "),
+                    style::Print(format!("{:<20} ", tool_name)),
+                    style::Print(permission_label),
                     style::Print("\n")
                 )?;
             }
-            
+
+            // Add a note about default settings
+            queue!(
+                ctx.output,
+                style::SetForegroundColor(Color::DarkGrey),
+                style::Print("\n* Default settings\n\n"),
+                style::Print("💡 Use "),
+                style::SetForegroundColor(Color::Green),
+                style::Print("/tools help"),
+                style::SetForegroundColor(Color::DarkGrey),
+                style::Print(" to edit permissions.\n"),
+                style::ResetColor,
+                style::Print("\n")
+            )?;
             ctx.output.flush()?;
-            
+
             Ok(ChatState::PromptUser {
                 tool_uses,
                 pending_tool_index,
-                skip_printing_tools: true,
+                skip_printing_tools: false,
             })
         })
     }
-    
+
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // List command is read-only and doesn't require confirmation
-    }
-    
-    fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>> {
-        Ok(args)
+        false // List command doesn't require confirmation
     }
 }

@@ -16,8 +16,19 @@ use crate::{
     QueuedTool,
 };
 
-mod handler;
-pub use handler::ProfileCommandHandler;
+mod create;
+mod delete;
+mod help;
+mod list;
+mod rename;
+mod set;
+
+pub use create::CreateProfileCommand;
+pub use delete::DeleteProfileCommand;
+pub use help::HelpProfileCommand;
+pub use list::ListProfileCommand;
+pub use rename::RenameProfileCommand;
+pub use set::SetProfileCommand;
 
 /// Profile command handler
 pub struct ProfileCommand;

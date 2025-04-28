@@ -8,11 +8,12 @@ use crossterm::style::{
     Color,
 };
 use eyre::Result;
-use fig_os_shim::Context;
 
-use crate::commands::CommandHandler;
+use crate::commands::context_adapter::CommandContextAdapter;
+use crate::commands::handler::CommandHandler;
 use crate::{
-    ChatContext, ChatState, QueuedTool
+    ChatState,
+    QueuedTool,
 };
 
 /// Handler for the profile set command
@@ -21,8 +22,8 @@ pub struct SetProfileCommand {
 }
 
 impl SetProfileCommand {
-    pub fn new(name: &str) -> Self {
-        Self { name: name.to_string() }
+    pub fn new(name: String) -> Self {
+        Self { name }
     }
 }
 
@@ -32,112 +33,68 @@ impl CommandHandler for SetProfileCommand {
     }
 
     fn description(&self) -> &'static str {
-        "Switch to a profile"
+        "Set the current profile"
     }
 
     fn usage(&self) -> &'static str {
-        "/profile set <n>"
+        "/profile set <name>"
     }
 
     fn help(&self) -> String {
-        "Switch to a profile with the specified name. The profile must exist.".to_string()
+        "Switch to the specified profile.".to_string()
     }
 
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,
-        ctx: &'a ChatContext,
+        ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Get the conversation state from the context
-            let conversation_state = ctx.get_conversation_state()?;
-
             // Get the context manager
-            let Some(context_manager) = &mut conversation_state.context_manager else {
+            if let Some(context_manager) = &mut ctx.conversation_state.context_manager {
+                // Switch to the profile
+                match context_manager.switch_profile(&self.name).await {
+                    Ok(_) => {
+                        queue!(
+                            ctx.output,
+                            style::Print("\nSwitched to profile '"),
+                            style::SetForegroundColor(Color::Green),
+                            style::Print(&self.name),
+                            style::ResetColor,
+                            style::Print("'.\n\n")
+                        )?;
+                    },
+                    Err(e) => {
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print(format!("\nError switching profile: {}\n\n", e)),
+                            style::ResetColor
+                        )?;
+                    },
+                }
+                ctx.output.flush()?;
+            } else {
                 queue!(
                     ctx.output,
                     style::SetForegroundColor(Color::Red),
-                    style::Print("Error: Context manager not initialized\n"),
+                    style::Print("\nContext manager is not available.\n\n"),
                     style::ResetColor
                 )?;
                 ctx.output.flush()?;
-                return Ok(ChatState::PromptUser {
-                    tool_uses,
-                    pending_tool_index,
-                    skip_printing_tools: true,
-                });
-            };
-
-            // Check if we're already on the requested profile
-            if context_manager.current_profile == self.name {
-                queue!(
-                    ctx.output,
-                    style::SetForegroundColor(Color::Yellow),
-                    style::Print(format!("\nAlready on profile: {}\n\n", self.name)),
-                    style::ResetColor
-                )?;
-                ctx.output.flush()?;
-                return Ok(ChatState::PromptUser {
-                    tool_uses,
-                    pending_tool_index,
-                    skip_printing_tools: true,
-                });
             }
-
-            // Switch to the profile
-            match context_manager.switch_profile(&self.name).await {
-                Ok(_) => {
-                    // Success message
-                    queue!(
-                        ctx.output,
-                        style::SetForegroundColor(Color::Green),
-                        style::Print(format!("\nSwitched to profile: {}\n\n", self.name)),
-                        style::ResetColor
-                    )?;
-                },
-                Err(e) => {
-                    // Error message
-                    queue!(
-                        ctx.output,
-                        style::SetForegroundColor(Color::Red),
-                        style::Print(format!("\nError switching to profile: {}\n\n", e)),
-                        style::ResetColor
-                    )?;
-                },
-            }
-
-            ctx.output.flush()?;
 
             Ok(ChatState::PromptUser {
                 tool_uses,
                 pending_tool_index,
-                skip_printing_tools: true,
+                skip_printing_tools: false,
             })
         })
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
         false // Set command doesn't require confirmation
-    }
-
-    fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>> {
-        Ok(args)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_set_profile_command() {
-        let command = SetProfileCommand::new("test");
-        assert_eq!(command.name(), "set");
-        assert_eq!(command.description(), "Switch to a profile");
-        assert_eq!(command.usage(), "/profile set <n>");
-
-        // Note: Full testing would require mocking the context manager
     }
 }

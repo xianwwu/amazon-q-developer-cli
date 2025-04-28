@@ -9,9 +9,11 @@ use crossterm::style::{
 };
 use eyre::Result;
 
-use crate::commands::CommandHandler;
+use crate::commands::context_adapter::CommandContextAdapter;
+use crate::commands::handler::CommandHandler;
 use crate::{
-    ChatContext, ChatState, QueuedTool
+    ChatState,
+    QueuedTool,
 };
 
 /// Handler for the profile delete command
@@ -20,8 +22,8 @@ pub struct DeleteProfileCommand {
 }
 
 impl DeleteProfileCommand {
-    pub fn new(name: &str) -> Self {
-        Self { name: name.to_string() }
+    pub fn new(name: String) -> Self {
+        Self { name }
     }
 }
 
@@ -35,92 +37,64 @@ impl CommandHandler for DeleteProfileCommand {
     }
 
     fn usage(&self) -> &'static str {
-        "/profile delete <n>"
+        "/profile delete <name>"
     }
 
     fn help(&self) -> String {
-        "Delete a profile with the specified name. You cannot delete the default profile or the currently active profile.".to_string()
+        "Delete the specified profile.".to_string()
     }
 
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,
-        ctx: &'a ChatContext,
+        ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Get the conversation state from the context
-            let conversation_state = ctx.get_conversation_state()?;
-
             // Get the context manager
-            let Some(context_manager) = &mut conversation_state.context_manager else {
+            if let Some(context_manager) = &ctx.conversation_state.context_manager {
+                // Delete the profile
+                match context_manager.delete_profile(&self.name).await {
+                    Ok(_) => {
+                        queue!(
+                            ctx.output,
+                            style::Print("\nProfile '"),
+                            style::SetForegroundColor(Color::Green),
+                            style::Print(&self.name),
+                            style::ResetColor,
+                            style::Print("' deleted successfully.\n\n")
+                        )?;
+                    },
+                    Err(e) => {
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print(format!("\nError deleting profile: {}\n\n", e)),
+                            style::ResetColor
+                        )?;
+                    },
+                }
+                ctx.output.flush()?;
+            } else {
                 queue!(
                     ctx.output,
                     style::SetForegroundColor(Color::Red),
-                    style::Print("Error: Context manager not initialized\n"),
+                    style::Print("\nContext manager is not available.\n\n"),
                     style::ResetColor
                 )?;
                 ctx.output.flush()?;
-                return Ok(ChatState::PromptUser {
-                    tool_uses,
-                    pending_tool_index,
-                    skip_printing_tools: true,
-                });
-            };
-
-            // Delete the profile
-            match context_manager.delete_profile(&self.name).await {
-                Ok(_) => {
-                    // Success message
-                    queue!(
-                        ctx.output,
-                        style::SetForegroundColor(Color::Green),
-                        style::Print(format!("\nDeleted profile: {}\n\n", self.name)),
-                        style::ResetColor
-                    )?;
-                },
-                Err(e) => {
-                    // Error message
-                    queue!(
-                        ctx.output,
-                        style::SetForegroundColor(Color::Red),
-                        style::Print(format!("\nError deleting profile: {}\n\n", e)),
-                        style::ResetColor
-                    )?;
-                },
             }
-
-            ctx.output.flush()?;
 
             Ok(ChatState::PromptUser {
                 tool_uses,
                 pending_tool_index,
-                skip_printing_tools: true,
+                skip_printing_tools: false,
             })
         })
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        true // Delete command requires confirmation as it's a destructive operation
-    }
-
-    fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>> {
-        Ok(args)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_delete_profile_command() {
-        let command = DeleteProfileCommand::new("test");
-        assert_eq!(command.name(), "delete");
-        assert_eq!(command.description(), "Delete a profile");
-        assert_eq!(command.usage(), "/profile delete <n>");
-
-        // Note: Full testing would require mocking the context manager
+        true // Delete command requires confirmation
     }
 }

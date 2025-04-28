@@ -1,0 +1,94 @@
+use std::future::Future;
+use std::io::Write;
+use std::pin::Pin;
+
+use crossterm::queue;
+use crossterm::style::{
+    self,
+    Color,
+};
+use eyre::Result;
+
+use crate::commands::context_adapter::CommandContextAdapter;
+use crate::commands::handler::CommandHandler;
+use crate::tools::Tool;
+use crate::{
+    ChatState,
+    QueuedTool,
+};
+
+/// Handler for the tools untrust command
+pub struct UntrustToolsCommand {
+    tool_names: Vec<String>,
+}
+
+impl UntrustToolsCommand {
+    pub fn new(tool_names: Vec<String>) -> Self {
+        Self { tool_names }
+    }
+}
+
+impl CommandHandler for UntrustToolsCommand {
+    fn name(&self) -> &'static str {
+        "untrust"
+    }
+
+    fn description(&self) -> &'static str {
+        "Revert a tool to per-request confirmation"
+    }
+
+    fn usage(&self) -> &'static str {
+        "/tools untrust <tool_name> [tool_name...]"
+    }
+
+    fn help(&self) -> String {
+        "Untrust specific tools, reverting them to per-request confirmation.".to_string()
+    }
+
+    fn execute<'a>(
+        &'a self,
+        _args: Vec<&'a str>,
+        ctx: &'a mut CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+        Box::pin(async move {
+            // Untrust the specified tools
+            for tool_name in &self.tool_names {
+                // Check if the tool exists
+                if !Tool::all_tool_names().contains(&tool_name.as_str()) {
+                    queue!(
+                        ctx.output,
+                        style::SetForegroundColor(Color::Red),
+                        style::Print(format!("\nUnknown tool: '{}'\n", tool_name)),
+                        style::ResetColor
+                    )?;
+                    continue;
+                }
+
+                // Untrust the tool
+                ctx.tool_permissions.untrust_tool(tool_name);
+
+                queue!(
+                    ctx.output,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print(format!("\nTool '{}' is set to per-request confirmation.\n", tool_name)),
+                    style::ResetColor
+                )?;
+            }
+
+            queue!(ctx.output, style::Print("\n"))?;
+            ctx.output.flush()?;
+
+            Ok(ChatState::PromptUser {
+                tool_uses,
+                pending_tool_index,
+                skip_printing_tools: false,
+            })
+        })
+    }
+
+    fn requires_confirmation(&self, _args: &[&str]) -> bool {
+        false // Untrust command doesn't require confirmation
+    }
+}

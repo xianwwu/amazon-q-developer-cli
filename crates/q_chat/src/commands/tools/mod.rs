@@ -16,8 +16,21 @@ use crate::{
     QueuedTool,
 };
 
-mod handler;
-pub use handler::ToolsCommandHandler;
+mod help;
+mod list;
+mod reset;
+mod reset_single;
+mod trust;
+mod trustall;
+mod untrust;
+
+pub use help::HelpToolsCommand;
+pub use list::ListToolsCommand;
+pub use reset::ResetToolsCommand;
+pub use reset_single::ResetSingleToolCommand;
+pub use trust::TrustToolsCommand;
+pub use trustall::TrustAllToolsCommand;
+pub use untrust::UntrustToolsCommand;
 
 /// Handler for the tools command
 pub struct ToolsCommand;
