@@ -67,23 +67,21 @@ The fix ensures that the `ChatState::Exit` state is correctly returned and proce
 
 ## Next Steps
 
-1. **Complete Profile Command Migration**
-   - Finish implementing remaining subcommands
+1. **Fix Profile and Tools Command Handlers**
+   - Fix compilation errors in the profile and tools command handlers
+   - Update the handlers to use the correct context_manager access pattern
+   - Fix the execute method signature to match the CommandHandler trait
+   - Add proper imports for Bold and NoBold attributes
+
+2. **Complete Profile Command Migration**
    - Test profile management operations
-   - Verify proper error handling
+   - Verify proper error handling for edge cases
    - Add comprehensive tests for all profile operations
 
-2. **Implement Tools Command**
-   - Implement handlers for all subcommands
-   - Ensure tool permissions are handled correctly
-   - Verify trust/untrust functionality
+3. **Complete Tools Command Migration**
+   - Test tool permission management
+   - Verify trust/untrust functionality works as expected
    - Add tests for permission management
-
-3. **Implement Editor Command**
-   - Implement handler for the editor command
-   - Ensure external editor integration works
-   - Verify content processing
-   - Add tests for editor integration
 
 4. **Complete Documentation**
    - Ensure all implemented commands have dedicated documentation pages
