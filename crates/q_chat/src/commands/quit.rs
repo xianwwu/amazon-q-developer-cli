@@ -7,6 +7,7 @@ use super::{
     CommandContextAdapter,
     CommandHandler,
 };
+use crate::command::Command;
 use crate::{
     ChatState,
     QueuedTool,
@@ -72,6 +73,12 @@ Common quit commands from other tools that users might try:
             .to_string()
     }
 
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        Ok(Command::Quit)
+    }
+
+    // Override the default execute implementation since this command
+    // returns ChatState::Exit instead of ChatState::ExecuteCommand
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,

@@ -142,26 +142,61 @@ impl InternalCommand {
         // Log the command string
         debug!("Executing command: {}", command_str);
 
-        // Try to parse the command
-        match Command::parse(&command_str, &mut std::io::stdout()) {
-            Ok(command) => {
-                // Return an InvokeOutput with the response and next state
-                Ok(InvokeOutput {
-                    output: crate::tools::OutputKind::Text(response),
-                    next_state: Some(ChatState::ExecuteCommand {
-                        command,
-                        tool_uses: None,
-                        pending_tool_index: None,
-                    }),
-                })
-            },
-            Err(e) => {
-                // Return an InvokeOutput with the error message and no next state
-                Ok(InvokeOutput {
-                    output: crate::tools::OutputKind::Text(e),
-                    next_state: None,
-                })
-            },
+        // Get the command handler from the registry
+        let cmd = self.command.trim_start_matches('/');
+        let command_registry = CommandRegistry::global();
+
+        if let Some(handler) = command_registry.get(cmd) {
+            // Convert args to a Vec<&str>
+            let args = self
+                .args
+                .as_ref()
+                .map(|args| args.iter().map(|s| s.as_str()).collect())
+                .unwrap_or_default();
+
+            // Use to_command to get the Command enum
+            match handler.to_command(args) {
+                Ok(command) => {
+                    // Return an InvokeOutput with the response and next state
+                    Ok(InvokeOutput {
+                        output: crate::tools::OutputKind::Text(response),
+                        next_state: Some(ChatState::ExecuteCommand {
+                            command,
+                            tool_uses: None,
+                            pending_tool_index: None,
+                        }),
+                    })
+                },
+                Err(e) => {
+                    // Return an InvokeOutput with the error message and no next state
+                    Ok(InvokeOutput {
+                        output: crate::tools::OutputKind::Text(format!("Error parsing command: {}", e)),
+                        next_state: None,
+                    })
+                },
+            }
+        } else {
+            // Try to parse the command using the old method as fallback
+            match Command::parse(&command_str, &mut std::io::stdout()) {
+                Ok(command) => {
+                    // Return an InvokeOutput with the response and next state
+                    Ok(InvokeOutput {
+                        output: crate::tools::OutputKind::Text(response),
+                        next_state: Some(ChatState::ExecuteCommand {
+                            command,
+                            tool_uses: None,
+                            pending_tool_index: None,
+                        }),
+                    })
+                },
+                Err(e) => {
+                    // Return an InvokeOutput with the error message and no next state
+                    Ok(InvokeOutput {
+                        output: crate::tools::OutputKind::Text(e),
+                        next_state: None,
+                    })
+                },
+            }
         }
     }
 }

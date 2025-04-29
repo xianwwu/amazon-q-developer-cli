@@ -10,6 +10,10 @@ use crossterm::style::{
 };
 use eyre::Result;
 
+use crate::command::{
+    Command,
+    ToolsSubcommand,
+};
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::{
@@ -43,6 +47,12 @@ impl CommandHandler for TrustAllToolsCommand {
 
     fn usage(&self) -> &'static str {
         "/tools trustall"
+    }
+
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        Ok(Command::Tools {
+            subcommand: Some(ToolsSubcommand::TrustAll),
+        })
     }
 
     fn help(&self) -> String {

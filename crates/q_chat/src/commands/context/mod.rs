@@ -1,19 +1,9 @@
-use std::future::Future;
-use std::pin::Pin;
-
 use eyre::Result;
 
-use super::{
-    CommandContextAdapter,
-    CommandHandler,
-};
+use super::CommandHandler;
 use crate::command::{
     Command,
     ContextSubcommand,
-};
-use crate::{
-    ChatState,
-    QueuedTool,
 };
 
 /// Context command handler
@@ -78,78 +68,66 @@ To see the full content of context files, use "/context show --expand"."#
             .to_string()
     }
 
-    fn execute<'a>(
-        &'a self,
-        args: Vec<&'a str>,
-        _ctx: &'a mut CommandContextAdapter<'a>,
-        tool_uses: Option<Vec<QueuedTool>>,
-        pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
-        Box::pin(async move {
-            // Parse arguments to determine the subcommand
-            let subcommand = if args.is_empty() {
-                ContextSubcommand::Show { expand: false }
-            } else if let Some(first_arg) = args.first() {
-                match *first_arg {
-                    "show" => {
-                        let expand = args.len() > 1 && args[1] == "--expand";
-                        ContextSubcommand::Show { expand }
-                    },
-                    "add" => {
-                        let mut global = false;
-                        let mut force = false;
-                        let mut paths = Vec::new();
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        // Parse arguments to determine the subcommand
+        let subcommand = if args.is_empty() {
+            ContextSubcommand::Show { expand: false }
+        } else if let Some(first_arg) = args.first() {
+            match *first_arg {
+                "show" => {
+                    let expand = args.len() > 1 && args[1] == "--expand";
+                    ContextSubcommand::Show { expand }
+                },
+                "add" => {
+                    let mut global = false;
+                    let mut force = false;
+                    let mut paths = Vec::new();
 
-                        for arg in &args[1..] {
-                            match *arg {
-                                "--global" => global = true,
-                                "--force" => force = true,
-                                _ => paths.push((*arg).to_string()),
-                            }
+                    for arg in &args[1..] {
+                        match *arg {
+                            "--global" => global = true,
+                            "--force" => force = true,
+                            _ => paths.push((*arg).to_string()),
                         }
+                    }
 
-                        ContextSubcommand::Add { global, force, paths }
-                    },
-                    "rm" | "remove" => {
-                        let mut global = false;
-                        let mut paths = Vec::new();
+                    ContextSubcommand::Add { global, force, paths }
+                },
+                "rm" | "remove" => {
+                    let mut global = false;
+                    let mut paths = Vec::new();
 
-                        for arg in &args[1..] {
-                            match *arg {
-                                "--global" => global = true,
-                                _ => paths.push((*arg).to_string()),
-                            }
+                    for arg in &args[1..] {
+                        match *arg {
+                            "--global" => global = true,
+                            _ => paths.push((*arg).to_string()),
                         }
+                    }
 
-                        ContextSubcommand::Remove { global, paths }
-                    },
-                    "clear" => {
-                        let global = args.len() > 1 && args[1] == "--global";
-                        ContextSubcommand::Clear { global }
-                    },
-                    "help" => ContextSubcommand::Help,
-                    "hooks" => {
-                        // Use the Command::parse_hooks function to parse hooks subcommands
-                        // This ensures consistent behavior with the Command::parse method
-                        let hook_parts: Vec<&str> = std::iter::once("hooks").chain(args.iter().copied()).collect();
+                    ContextSubcommand::Remove { global, paths }
+                },
+                "clear" => {
+                    let global = args.len() > 1 && args[1] == "--global";
+                    ContextSubcommand::Clear { global }
+                },
+                "help" => ContextSubcommand::Help,
+                "hooks" => {
+                    // Use the Command::parse_hooks function to parse hooks subcommands
+                    // This ensures consistent behavior with the Command::parse method
+                    let hook_parts: Vec<&str> = std::iter::once("hooks").chain(args.iter().copied()).collect();
 
-                        match crate::command::Command::parse_hooks(&hook_parts) {
-                            Ok(crate::command::Command::Context { subcommand }) => subcommand,
-                            _ => ContextSubcommand::Hooks { subcommand: None },
-                        }
-                    },
-                    _ => ContextSubcommand::Help,
-                }
-            } else {
-                ContextSubcommand::Show { expand: false } // Fallback, should not happen
-            };
+                    match crate::command::Command::parse_hooks(&hook_parts) {
+                        Ok(crate::command::Command::Context { subcommand }) => subcommand,
+                        _ => ContextSubcommand::Hooks { subcommand: None },
+                    }
+                },
+                _ => ContextSubcommand::Help,
+            }
+        } else {
+            ContextSubcommand::Show { expand: false } // Fallback, should not happen
+        };
 
-            Ok(ChatState::ExecuteCommand {
-                command: Command::Context { subcommand },
-                tool_uses,
-                pending_tool_index,
-            })
-        })
+        Ok(Command::Context { subcommand })
     }
 
     fn requires_confirmation(&self, args: &[&str]) -> bool {

@@ -9,6 +9,10 @@ use crossterm::style::{
 };
 use eyre::Result;
 
+use crate::command::{
+    Command,
+    ProfileSubcommand,
+};
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::{
@@ -37,11 +41,19 @@ impl CommandHandler for DeleteProfileCommand {
     }
 
     fn usage(&self) -> &'static str {
-        "/profile delete <name>"
+        "/profile delete <n>"
     }
 
     fn help(&self) -> String {
         "Delete the specified profile.".to_string()
+    }
+
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        Ok(Command::Profile {
+            subcommand: ProfileSubcommand::Delete {
+                name: self.name.clone(),
+            },
+        })
     }
 
     fn execute<'a>(

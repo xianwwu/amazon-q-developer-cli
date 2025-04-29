@@ -40,17 +40,22 @@ We will refactor the command system to use a Command enum with embedded CommandH
    - Add `to_args()` method to convert subcommands to argument lists
    - Link subcommand handlers to subcommand enum variants
 
-### Phase 3: CommandRegistry Simplification
+### Phase 3: CommandRegistry Replacement
 
-1. **Simplify CommandRegistry**
-   - Remove the HashMap-based storage of handlers
-   - Update `parse_and_execute()` to use Command enum methods
-   - Update `generate_llm_descriptions()` to use Command enum methods
+1. **Add Static Methods to Command Enum**
+   - Add `parse()` method to parse command strings into Command enums
+   - Add `execute()` method for direct command execution
+   - Add `generate_llm_descriptions()` method for LLM integration
 
 2. **Update Integration Points**
    - Update the internal_command tool to work with the new architecture
    - Update any code that directly accesses the CommandRegistry
    - Ensure backward compatibility where needed
+
+3. **Remove CommandRegistry Dependency**
+   - Replace CommandRegistry calls with direct Command enum calls
+   - Simplify or remove the CommandRegistry class
+   - Update tests to use the new command-centric approach
 
 ### Phase 4: Command Migration
 
@@ -104,16 +109,22 @@ pub enum Command {
 }
 
 impl Command {
+    // Parse a command string into a Command enum
+    pub fn parse(command_str: &str) -> Result<Self> {
+        // Implementation that parses command strings
+        // This replaces CommandRegistry's parsing logic
+    }
+    
     // Get the appropriate handler for this command
-    pub fn get_handler(&self) -> &dyn CommandHandler {
+    pub fn to_handler(&self) -> &'static dyn CommandHandler {
         match self {
             Command::Help { .. } => &HELP_HANDLER,
             Command::Quit => &QUIT_HANDLER,
             Command::Clear => &CLEAR_HANDLER,
-            Command::Context { subcommand } => subcommand.get_handler(),
-            Command::Profile { subcommand } => subcommand.get_handler(),
+            Command::Context { subcommand } => subcommand.to_handler(),
+            Command::Profile { subcommand } => subcommand.to_handler(),
             Command::Tools { subcommand } => match subcommand {
-                Some(sub) => sub.get_handler(),
+                Some(sub) => sub.to_handler(),
                 None => &TOOLS_LIST_HANDLER,
             },
             Command::Compact { .. } => &COMPACT_HANDLER,
@@ -121,71 +132,47 @@ impl Command {
         }
     }
     
-    // Execute the command using its handler
+    // Convert command to arguments for the handler
+    pub fn to_args(&self) -> Vec<&str> {
+        // Implementation for each command variant
+    }
+    
+    // Execute the command directly
     pub async fn execute<'a>(
         &'a self,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Result<ChatState> {
-        let handler = self.get_handler();
-        let args = self.to_args();
-        handler.execute(args, ctx, tool_uses, pending_tool_index).await
-    }
-    
-    // Convert command to arguments for the handler
-    fn to_args(&self) -> Vec<&str> {
-        // Implementation for each command variant
+        self.to_handler().execute(self.to_args(), ctx, tool_uses, pending_tool_index).await
     }
     
     // Generate LLM descriptions for all commands
     pub fn generate_llm_descriptions() -> serde_json::Value {
         // Implementation that collects descriptions from all handlers
+        // This replaces CommandRegistry's description generation
     }
 }
 ```
 
-### Simplified CommandRegistry
+### Removed CommandRegistry
 
-```rust
-pub struct CommandRegistry;
+The CommandRegistry will be completely removed, with its functionality moved to the Command enum:
 
-impl CommandRegistry {
-    pub fn global() -> &'static Self {
-        static INSTANCE: OnceLock<CommandRegistry> = OnceLock::new();
-        INSTANCE.get_or_init(|| CommandRegistry)
-    }
-    
-    pub async fn parse_and_execute(
-        &self,
-        command_str: &str,
-        ctx: &mut CommandContextAdapter,
-        tool_uses: Option<Vec<QueuedTool>>,
-        pending_tool_index: Option<usize>,
-    ) -> Result<ChatState> {
-        let command = Command::parse(command_str)?;
-        command.execute(ctx, tool_uses, pending_tool_index).await
-    }
-    
-    pub fn generate_llm_descriptions(&self) -> serde_json::Value {
-        Command::generate_llm_descriptions()
-    }
-}
-```
+1. **Command Parsing**: `Command::parse(command_str)` replaces `CommandRegistry::parse_command(command_str)`
+2. **Command Execution**: `Command::parse(command_str).execute(ctx)` replaces `CommandRegistry::execute_command(command_str, ctx)`
+3. **LLM Descriptions**: `Command::generate_llm_descriptions()` replaces `CommandRegistry::generate_llm_descriptions()`
 
 ## Benefits of This Approach
 
-1. **Single Point of Modification**: When adding a new command, you primarily modify the Command enum and add a new static handler
-
+1. **Single Point of Modification**: When adding a new command, you only modify the Command enum
 2. **Separation of Concerns**: Each command's logic is still encapsulated in its own handler
-
 3. **Type Safety**: Command parameters are directly encoded in the enum variants
-
 4. **Reuse Existing Handlers**: You can reuse your existing CommandHandler implementations
-
 5. **Consistent Behavior**: Commands behave the same whether invoked directly or through the tool
-
 6. **LLM Integration**: The llm_description() method in each handler is still used for generating tool descriptions
+7. **Simplified Architecture**: Removes the need for a separate CommandRegistry class
+8. **Reduced Indirection**: Direct access to commands without going through a registry
 
 ## Timeline
 
@@ -204,5 +191,6 @@ Total: 7 weeks
 - Improved code maintainability and readability
 - Successful execution of all existing commands with the new architecture
 - Comprehensive test coverage for all commands
+- Complete removal of CommandRegistry dependencies
 
 🤖 Assisted by [Amazon Q Developer](https://aws.amazon.com/q/developer)

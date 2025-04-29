@@ -7,6 +7,7 @@ use super::{
     CommandContextAdapter,
     CommandHandler,
 };
+use crate::command::Command;
 use crate::{
     ChatState,
     QueuedTool,
@@ -51,6 +52,29 @@ impl CommandHandler for CompactCommand {
             .to_string()
     }
 
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        // Parse arguments to determine if this is a help request, has a custom prompt, or shows summary
+        let mut prompt = None;
+        let mut show_summary = false;
+        let mut help = false;
+
+        for arg in args {
+            match arg {
+                "--summary" => show_summary = true,
+                "help" => help = true,
+                _ => prompt = Some(arg.to_string()),
+            }
+        }
+
+        Ok(Command::Compact {
+            prompt,
+            show_summary,
+            help,
+        })
+    }
+
+    // Override the default execute implementation because compact command
+    // needs to return ChatState::CompactHistory instead of ChatState::ExecuteCommand
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
@@ -72,6 +96,7 @@ impl CommandHandler for CompactCommand {
                 }
             }
 
+            // Return CompactHistory state directly instead of ExecuteCommand
             Ok(ChatState::CompactHistory {
                 tool_uses,
                 pending_tool_index,

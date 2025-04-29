@@ -1,16 +1,7 @@
-use std::future::Future;
-use std::pin::Pin;
-
 use eyre::Result;
 
-use super::{
-    CommandContextAdapter,
-    CommandHandler,
-};
-use crate::{
-    ChatState,
-    QueuedTool,
-};
+use super::CommandHandler;
+use crate::command::Command;
 
 /// Clear command handler
 pub struct ClearCommand;
@@ -67,21 +58,12 @@ Examples of statements that may trigger this command:
             .to_string()
     }
 
-    fn execute<'a>(
-        &'a self,
-        _args: Vec<&'a str>,
-        _ctx: &'a mut CommandContextAdapter<'a>,
-        tool_uses: Option<Vec<QueuedTool>>,
-        pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
-        Box::pin(async move {
-            Ok(ChatState::ExecuteCommand {
-                command: crate::command::Command::Clear,
-                tool_uses,
-                pending_tool_index,
-            })
-        })
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        Ok(Command::Clear)
     }
+
+    // Using the default implementation from the trait that calls to_command
+    // No need to override execute anymore
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
         true // Clear command requires confirmation

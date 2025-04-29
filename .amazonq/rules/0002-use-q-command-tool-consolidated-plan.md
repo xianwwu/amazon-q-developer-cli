@@ -85,6 +85,45 @@ The fix ensures that the `ChatState::Exit` state is correctly returned and proce
    - Verify documentation accuracy and completeness
    - Include examples and use cases for each command
 
+## CommandHandler Trait Enhancement
+
+We have enhanced the `CommandHandler` trait to better separate command parsing from execution and created a bidirectional relationship with the Command enum:
+
+1. **New `to_command` Method**: Added a method that returns a `Command`/`Subcommand` enum with values:
+   ```rust
+   fn to_command<'a>(&self, args: Vec<&'a str>) -> Result<Command>;
+   ```
+
+2. **Refactored `execute` Method**: The existing `execute` method has been preserved as a default implementation that delegates to `to_command`:
+   ```rust
+   fn execute<'a>(&self, args: Vec<&'a str>, ctx: &'a mut CommandContextAdapter<'a>, 
+                 tool_uses: Option<Vec<QueuedTool>>, 
+                 pending_tool_index: Option<usize>) -> Pin<Box<dyn Future<Output = Result<ChatState>> + 'a>> {
+       Box::pin(async move {
+           let command = self.to_command(args)?;
+           Ok(ChatState::ExecuteCommand {
+               command,
+               tool_uses,
+               pending_tool_index,
+           })
+       })
+   }
+   ```
+
+3. **New `to_handler` Method in Command Enum**: Added a method that returns the appropriate CommandHandler for a Command variant:
+   ```rust
+   fn to_handler(&self) -> &'static dyn CommandHandler;
+   ```
+
+4. **Updated `internal_command` Tool**: The tool now uses the bidirectional relationship between Commands and Handlers.
+
+This enhancement:
+- Makes the command system more type-safe by using enum variants
+- Separates command parsing (`to_command`) from execution (`execute`)
+- Creates a command-centric architecture with bidirectional relationships
+- Reduces dependency on the CommandRegistry
+- Prepares for future refactoring where `execute` will be used for a different purpose
+
 ## Future Architecture Refinement
 
 For future refactoring, we plan to implement a Command enum with embedded CommandHandlers to reduce the number of places that need modification when adding new commands while maintaining separation of concerns.

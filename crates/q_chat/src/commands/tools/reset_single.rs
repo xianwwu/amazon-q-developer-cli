@@ -9,6 +9,10 @@ use crossterm::style::{
 };
 use eyre::Result;
 
+use crate::command::{
+    Command,
+    ToolsSubcommand,
+};
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::tools::Tool;
@@ -43,6 +47,14 @@ impl CommandHandler for ResetSingleToolCommand {
 
     fn help(&self) -> String {
         "Reset a specific tool to its default permission level.".to_string()
+    }
+
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        Ok(Command::Tools {
+            subcommand: Some(ToolsSubcommand::ResetSingle {
+                tool_name: self.tool_name.clone(),
+            }),
+        })
     }
 
     fn execute<'a>(

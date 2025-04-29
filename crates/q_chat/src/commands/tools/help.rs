@@ -8,6 +8,10 @@ use crossterm::style::{
 };
 use eyre::Result;
 
+use crate::command::{
+    Command,
+    ToolsSubcommand,
+};
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::{
@@ -45,6 +49,12 @@ impl CommandHandler for HelpToolsCommand {
 
     fn help(&self) -> String {
         "Show help for the tools command.".to_string()
+    }
+
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        Ok(Command::Tools {
+            subcommand: Some(ToolsSubcommand::Help),
+        })
     }
 
     fn execute<'a>(

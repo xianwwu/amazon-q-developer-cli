@@ -139,6 +139,12 @@ Examples:
         .to_string()
     }
 
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command> {
+        let initial_text = if !args.is_empty() { Some(args.join(" ")) } else { None };
+
+        Ok(crate::command::Command::PromptEditor { initial_text })
+    }
+
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,

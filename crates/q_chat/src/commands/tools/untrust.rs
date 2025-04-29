@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
@@ -9,6 +10,10 @@ use crossterm::style::{
 };
 use eyre::Result;
 
+use crate::command::{
+    Command,
+    ToolsSubcommand,
+};
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::tools::Tool;
@@ -43,6 +48,13 @@ impl CommandHandler for UntrustToolsCommand {
 
     fn help(&self) -> String {
         "Untrust specific tools, reverting them to per-request confirmation.".to_string()
+    }
+
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        let tool_names: HashSet<String> = self.tool_names.iter().cloned().collect();
+        Ok(Command::Tools {
+            subcommand: Some(ToolsSubcommand::Untrust { tool_names }),
+        })
     }
 
     fn execute<'a>(

@@ -10,6 +10,7 @@ use eyre::Result;
 
 use super::context_adapter::CommandContextAdapter;
 use super::handler::CommandHandler;
+use crate::command::Command;
 use crate::{
     ChatState,
     QueuedTool,
@@ -118,6 +119,11 @@ No arguments or options are needed for this command.
         .to_string()
     }
 
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        Ok(Command::Usage)
+    }
+
+    // Keep the original execute implementation since it has custom logic
     fn execute<'a>(
         &'a self,
         _args: Vec<&'a str>,

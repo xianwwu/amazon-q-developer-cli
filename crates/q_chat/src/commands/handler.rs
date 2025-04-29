@@ -15,22 +15,23 @@
 /// 3. **Extensibility**: The trait is designed to be extended with new methods as needed, such as
 ///    `to_command` for converting arguments to a Command enum.
 ///
-/// # Future Enhancements
+/// # Command Parsing and Execution
 ///
-/// In future iterations, the CommandHandler trait should be enhanced to:
+/// The trait separates command parsing from execution:
 ///
-/// 1. Add a `to_command` method that converts arguments to a Command enum
-/// 2. Support bidirectional mapping between Command enums and CommandHandlers
-/// 3. Provide more sophisticated argument parsing capabilities
+/// - `to_command`: Converts string arguments to a Command enum variant
+/// - `execute`: Default implementation that delegates to `to_command` and wraps the result in a
+///   ChatState
 ///
-/// These enhancements will enable tools like internal_command to leverage the existing
-/// command infrastructure without duplicating logic.
+/// This separation allows tools like internal_command to leverage the parsing logic
+/// without duplicating code, while preserving the execution flow for direct command invocation.
 use std::future::Future;
 use std::pin::Pin;
 
 use eyre::Result;
 
 use super::context_adapter::CommandContextAdapter;
+use crate::command::Command;
 use crate::{
     ChatState,
     QueuedTool,
@@ -52,6 +53,13 @@ pub trait CommandHandler: Send + Sync {
     /// Returns detailed help text for the command
     fn help(&self) -> String;
 
+    /// Converts string arguments to a Command enum variant
+    ///
+    /// This method takes a vector of string slices and returns a Command enum.
+    /// It's used by the execute method and can also be used directly by tools
+    /// like internal_command to parse commands without executing them.
+    fn to_command(&self, args: Vec<&str>) -> Result<Command>;
+
     /// Returns a detailed description with examples for LLM tool descriptions
     /// This is used to provide more context to the LLM about how to use the command
     #[allow(dead_code)]
@@ -64,13 +72,25 @@ pub trait CommandHandler: Send + Sync {
     ///
     /// This method is async to allow for operations that require async/await,
     /// such as file system operations or network requests.
+    ///
+    /// The default implementation delegates to to_command and wraps the result
+    /// in a ChatState::ExecuteCommand.
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a mut CommandContextAdapter<'a>,
+        _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+        Box::pin(async move {
+            let command = self.to_command(args)?;
+            Ok(ChatState::ExecuteCommand {
+                command,
+                tool_uses,
+                pending_tool_index,
+            })
+        })
+    }
 
     /// Check if this command requires confirmation before execution
     fn requires_confirmation(&self, _args: &[&str]) -> bool {

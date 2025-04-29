@@ -103,6 +103,47 @@ Examples:
 To get the current tool status, use the command "/tools list" which will display all available tools with their current permission status."#.to_string()
     }
 
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        if args.is_empty() {
+            // Default to showing the list when no subcommand is provided
+            return Ok(Command::Tools { subcommand: None });
+        }
+
+        // Parse arguments to determine the subcommand
+        let subcommand = if let Some(first_arg) = args.first() {
+            match *first_arg {
+                "list" => None, // Default is to list tools
+                "trust" => {
+                    let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
+                    Some(ToolsSubcommand::Trust { tool_names })
+                },
+                "untrust" => {
+                    let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
+                    Some(ToolsSubcommand::Untrust { tool_names })
+                },
+                "trustall" => Some(ToolsSubcommand::TrustAll),
+                "reset" => {
+                    if args.len() > 1 {
+                        Some(ToolsSubcommand::ResetSingle {
+                            tool_name: args[1].to_string(),
+                        })
+                    } else {
+                        Some(ToolsSubcommand::Reset)
+                    }
+                },
+                "help" => Some(ToolsSubcommand::Help),
+                _ => {
+                    // For unknown subcommands, show help
+                    Some(ToolsSubcommand::Help)
+                },
+            }
+        } else {
+            None // Default to list if no arguments (should not happen due to earlier check)
+        };
+
+        Ok(Command::Tools { subcommand })
+    }
+
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,

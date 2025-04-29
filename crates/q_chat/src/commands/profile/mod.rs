@@ -1,19 +1,9 @@
-use std::future::Future;
-use std::pin::Pin;
-
 use eyre::Result;
 
-use super::{
-    CommandContextAdapter,
-    CommandHandler,
-};
+use super::CommandHandler;
 use crate::command::{
     Command,
     ProfileSubcommand,
-};
-use crate::{
-    ChatState,
-    QueuedTool,
 };
 
 mod create;
@@ -90,66 +80,54 @@ Examples:
 To get the current profiles, use the command "/profile list" which will display all available profiles with the current one marked."#.to_string()
     }
 
-    fn execute<'a>(
-        &'a self,
-        args: Vec<&'a str>,
-        _ctx: &'a mut CommandContextAdapter<'a>,
-        tool_uses: Option<Vec<QueuedTool>>,
-        pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
-        Box::pin(async move {
-            // Parse arguments to determine the subcommand
-            let subcommand = if args.is_empty() {
-                ProfileSubcommand::List
-            } else if let Some(first_arg) = args.first() {
-                match *first_arg {
-                    "list" => ProfileSubcommand::List,
-                    "set" => {
-                        if args.len() < 2 {
-                            return Err(eyre::eyre!("Missing profile name for set command"));
-                        }
-                        ProfileSubcommand::Set {
-                            name: args[1].to_string(),
-                        }
-                    },
-                    "create" => {
-                        if args.len() < 2 {
-                            return Err(eyre::eyre!("Missing profile name for create command"));
-                        }
-                        ProfileSubcommand::Create {
-                            name: args[1].to_string(),
-                        }
-                    },
-                    "delete" => {
-                        if args.len() < 2 {
-                            return Err(eyre::eyre!("Missing profile name for delete command"));
-                        }
-                        ProfileSubcommand::Delete {
-                            name: args[1].to_string(),
-                        }
-                    },
-                    "rename" => {
-                        if args.len() < 3 {
-                            return Err(eyre::eyre!("Missing old or new profile name for rename command"));
-                        }
-                        ProfileSubcommand::Rename {
-                            old_name: args[1].to_string(),
-                            new_name: args[2].to_string(),
-                        }
-                    },
-                    "help" => ProfileSubcommand::Help,
-                    _ => ProfileSubcommand::Help,
-                }
-            } else {
-                ProfileSubcommand::List // Fallback, should not happen
-            };
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        // Parse arguments to determine the subcommand
+        let subcommand = if args.is_empty() {
+            ProfileSubcommand::List
+        } else if let Some(first_arg) = args.first() {
+            match *first_arg {
+                "list" => ProfileSubcommand::List,
+                "set" => {
+                    if args.len() < 2 {
+                        return Err(eyre::eyre!("Missing profile name for set command"));
+                    }
+                    ProfileSubcommand::Set {
+                        name: args[1].to_string(),
+                    }
+                },
+                "create" => {
+                    if args.len() < 2 {
+                        return Err(eyre::eyre!("Missing profile name for create command"));
+                    }
+                    ProfileSubcommand::Create {
+                        name: args[1].to_string(),
+                    }
+                },
+                "delete" => {
+                    if args.len() < 2 {
+                        return Err(eyre::eyre!("Missing profile name for delete command"));
+                    }
+                    ProfileSubcommand::Delete {
+                        name: args[1].to_string(),
+                    }
+                },
+                "rename" => {
+                    if args.len() < 3 {
+                        return Err(eyre::eyre!("Missing old or new profile name for rename command"));
+                    }
+                    ProfileSubcommand::Rename {
+                        old_name: args[1].to_string(),
+                        new_name: args[2].to_string(),
+                    }
+                },
+                "help" => ProfileSubcommand::Help,
+                _ => ProfileSubcommand::Help,
+            }
+        } else {
+            ProfileSubcommand::List // Fallback, should not happen
+        };
 
-            Ok(ChatState::ExecuteCommand {
-                command: Command::Profile { subcommand },
-                tool_uses,
-                pending_tool_index,
-            })
-        })
+        Ok(Command::Profile { subcommand })
     }
 
     fn requires_confirmation(&self, args: &[&str]) -> bool {

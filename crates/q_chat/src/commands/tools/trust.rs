@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
@@ -10,6 +11,10 @@ use crossterm::style::{
 };
 use eyre::Result;
 
+use crate::command::{
+    Command,
+    ToolsSubcommand,
+};
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::tools::Tool;
@@ -44,6 +49,13 @@ impl CommandHandler for TrustToolsCommand {
 
     fn help(&self) -> String {
         "Trust specific tools for the session. Trusted tools will not require confirmation before running.".to_string()
+    }
+
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        let tool_names: HashSet<String> = self.tool_names.iter().cloned().collect();
+        Ok(Command::Tools {
+            subcommand: Some(ToolsSubcommand::Trust { tool_names }),
+        })
     }
 
     fn execute<'a>(

@@ -9,6 +9,7 @@ use crossterm::style::{
 };
 use eyre::Result;
 
+use crate::command::Command;
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::tools::Tool;
@@ -47,6 +48,10 @@ impl CommandHandler for ListToolsCommand {
 
     fn help(&self) -> String {
         "List all available tools and their trust status.".to_string()
+    }
+
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+        Ok(Command::Tools { subcommand: None })
     }
 
     fn execute<'a>(
