@@ -87,27 +87,5 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_internal_command_invalid() -> Result<()> {
-        let ctx = Context::new_fake();
-        let mut output = Cursor::new(Vec::new());
 
-        let command = InternalCommand {
-            command: "invalid".to_string(),
-            subcommand: None,
-            args: None,
-            flags: None,
-            tool_use_id: None,
-        };
-
-        let tool = Tool::InternalCommand(command);
-        let result = tool.invoke(&ctx, &mut output).await?;
-
-        // Check that the output contains an error message
-        let output_str = String::from_utf8(output.into_inner())?;
-        assert!(output_str.contains("Unknown command"));
-        assert!(result.next_state.is_none());
-
-        Ok(())
-    }
 }

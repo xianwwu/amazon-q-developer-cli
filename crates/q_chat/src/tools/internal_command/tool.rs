@@ -168,9 +168,9 @@ impl InternalCommand {
                     })
                 },
                 Err(e) => {
-                    // Return an InvokeOutput with the error message and no next state
+                    // Return an InvokeOutput with the error message from e and no next state
                     Ok(InvokeOutput {
-                        output: crate::tools::OutputKind::Text(format!("Error parsing command: {}", e)),
+                        output: crate::tools::OutputKind::Text(e.to_string()),
                         next_state: None,
                     })
                 },
@@ -190,7 +190,7 @@ impl InternalCommand {
                     })
                 },
                 Err(e) => {
-                    // Return an InvokeOutput with the error message and no next state
+                    // Return an InvokeOutput with the error message from e and no next state
                     Ok(InvokeOutput {
                         output: crate::tools::OutputKind::Text(e),
                         next_state: None,

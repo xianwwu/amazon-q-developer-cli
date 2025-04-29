@@ -239,6 +239,10 @@ mod tests {
                 "Test command help".to_string()
             }
 
+            fn to_command(&self, _args: Vec<&str>) -> Result<crate::Command> {
+                Ok(crate::Command::Quit)
+            }
+
             fn execute<'a>(
                 &'a self,
                 _args: Vec<&'a str>,

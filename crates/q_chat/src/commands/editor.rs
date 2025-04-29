@@ -315,18 +315,7 @@ Examples:
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
-    use fig_os_shim::Context;
-
     use super::*;
-    use crate::Settings;
-    use crate::commands::context_adapter::CommandContextAdapter;
-    use crate::conversation_state::ConversationState;
-    use crate::input_source::InputSource;
-    use crate::shared_writer::SharedWriter;
-    use crate::tools::ToolPermissions;
 
     #[tokio::test]
     async fn test_editor_command_help() {
