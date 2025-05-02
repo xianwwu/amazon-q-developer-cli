@@ -5,11 +5,15 @@ use eyre::Result;
 
 use super::context_adapter::CommandContextAdapter;
 use super::handler::CommandHandler;
-use crate::ChatState;
-use crate::QueuedTool;
-use crate::tools::gh_issue::GhIssue;
-use crate::tools::gh_issue::GhIssueContext;
 use crate::tools::Tool;
+use crate::tools::gh_issue::{
+    GhIssue,
+    GhIssueContext,
+};
+use crate::{
+    ChatState,
+    QueuedTool,
+};
 
 /// Command handler for the `/issue` command
 pub struct IssueCommand;
@@ -136,22 +140,23 @@ The command automatically includes:
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use super::*;
+    use crate::Settings;
     use crate::commands::context_adapter::CommandContextAdapter;
     use crate::context::Context;
     use crate::conversation_state::ConversationState;
+    use crate::input_source::InputSource;
     use crate::shared_writer::SharedWriter;
     use crate::tools::ToolPermissions;
-    use crate::input_source::InputSource;
-    use crate::Settings;
-    use std::io::Cursor;
 
     #[tokio::test]
     async fn test_issue_command() {
         // This is a minimal test to ensure the command handler works
         // A full integration test would require mocking the GitHub API
         let command = IssueCommand::new();
-        
+
         // Create a minimal context
         let context = Context::default();
         let mut output = SharedWriter::new(Cursor::new(Vec::new()));
@@ -159,7 +164,7 @@ mod tests {
         let mut tool_permissions = ToolPermissions::default();
         let mut input_source = InputSource::default();
         let settings = Settings::default();
-        
+
         let mut ctx = CommandContextAdapter::new(
             &context,
             &mut output,
@@ -169,11 +174,11 @@ mod tests {
             &mut input_source,
             &settings,
         );
-        
+
         // Execute the command
         let args = vec!["Test Issue"];
         let result = command.execute(args, &mut ctx, None, None).await;
-        
+
         // We can't fully test the result since it would open a browser
         // But we can at least check that it doesn't error
         assert!(result.is_ok());

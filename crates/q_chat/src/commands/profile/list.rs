@@ -141,8 +141,14 @@ mod tests {
         // Create a minimal context
         let context = Arc::new(Context::new_fake());
         let output = SharedWriter::null();
-        let mut conversation_state =
-            ConversationState::new(Arc::clone(&context), HashMap::new(), None, Some(SharedWriter::null())).await;
+        let mut conversation_state = ConversationState::new(
+            Arc::clone(&context),
+            "test-conversation",
+            HashMap::new(),
+            None,
+            Some(SharedWriter::null()),
+        )
+        .await;
         let mut tool_permissions = ToolPermissions::new(0);
         let mut input_source = InputSource::new_mock(vec![]);
         let settings = Settings::new_fake();

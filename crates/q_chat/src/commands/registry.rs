@@ -36,6 +36,8 @@ use std::sync::OnceLock;
 
 use eyre::Result;
 
+#[cfg(test)]
+use crate::commands::CommandContextAdapter;
 use crate::commands::{
     ClearCommand,
     CommandHandler,
@@ -47,6 +49,11 @@ use crate::commands::{
     QuitCommand,
     ToolsCommand,
     UsageCommand,
+};
+#[cfg(test)]
+use crate::{
+    ChatState,
+    QueuedTool,
 };
 
 /// A registry of available commands that can be executed
