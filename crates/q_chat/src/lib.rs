@@ -174,6 +174,7 @@ use tracing::{
     warn,
 };
 use unicode_width::UnicodeWidthStr;
+use util::images::handle_images_from_user_prompt;
 use util::{
     animate_output,
     play_notification_bell,
@@ -1366,19 +1367,35 @@ impl ChatContext {
                         .append_prompts(prompts)
                         .ok_or(ChatError::Custom("Prompt append failed".into()))?;
                 }
+                let valid_images = handle_images_from_user_prompt(&mut self.output, &user_input);
 
                 // Otherwise continue with normal chat on 'n' or other responses
                 self.tool_use_status = ToolUseStatus::Idle;
 
-                if pending_tool_index.is_some() {
-                    self.conversation_state.abandon_tool_use(tool_uses, user_input);
-                } else {
-                    self.conversation_state.set_next_user_message(user_input).await;
-                }
-
-                let conv_state = self.conversation_state.as_sendable_conversation_state(true).await;
-
                 if self.interactive {
+                    if !&valid_images.is_empty() {
+                        execute!(
+                            self.output,
+                            style::SetForegroundColor(Color::Cyan),
+                            style::Print("\nImages detected:\n"),
+                            style::SetForegroundColor(Color::Reset)
+                        )?;
+                        for (_, metadata) in &valid_images {
+                            let image_size_str = if metadata.size > 1024 * 1024 {
+                                format!("{:.2} MB", metadata.size as f64 / (1024.0 * 1024.0))
+                            } else if metadata.size > 1024 {
+                                format!("{:.2} KB", metadata.size as f64 / 1024.0)
+                            } else {
+                                format!("{} bytes", metadata.size)
+                            };
+                            execute!(
+                                self.output,
+                                style::SetForegroundColor(Color::Cyan),
+                                style::Print(format!("  - {} ({})\n", metadata.filename, image_size_str)),
+                                style::SetForegroundColor(Color::Reset)
+                            )?;
+                        }
+                    }
                     queue!(self.output, style::SetForegroundColor(Color::Magenta))?;
                     queue!(self.output, style::SetForegroundColor(Color::Reset))?;
                     queue!(self.output, cursor::Hide)?;
@@ -1386,6 +1403,20 @@ impl ChatContext {
                     self.spinner = Some(Spinner::new(Spinners::Dots, "Thinking...".to_owned()));
                 }
 
+                if pending_tool_index.is_some() {
+                    self.conversation_state.abandon_tool_use(tool_uses, user_input);
+                } else if !valid_images.is_empty() {
+                    self.conversation_state
+                        .set_next_user_message_with_images(
+                            user_input,
+                            valid_images.clone().into_iter().map(|(image, _)| image).collect(),
+                        )
+                        .await;
+                } else {
+                    self.conversation_state.set_next_user_message(user_input).await;
+                }
+
+                let conv_state = self.conversation_state.as_sendable_conversation_state(true).await;
                 self.send_tool_use_telemetry().await;
 
                 ChatState::HandleResponseStream(self.client.send_message(conv_state).await?)

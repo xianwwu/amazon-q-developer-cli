@@ -3,6 +3,7 @@ use std::env;
 use fig_api_client::model::{
     AssistantResponseMessage,
     EnvState,
+    ImageBlock,
     ShellState,
     ToolResult,
     ToolResultContentBlock,
@@ -35,6 +36,7 @@ pub struct UserMessage {
     pub additional_context: String,
     pub env_context: UserEnvContext,
     pub content: UserMessageContent,
+    pub images: Option<Vec<ImageBlock>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +60,16 @@ impl UserMessage {
     /// environment [UserEnvContext].
     pub fn new_prompt(prompt: String) -> Self {
         Self {
+            images: None,
+            additional_context: String::new(),
+            env_context: UserEnvContext::generate_new(),
+            content: UserMessageContent::Prompt { prompt },
+        }
+    }
+
+    pub fn new_prompt_with_images(prompt: String, images: Vec<ImageBlock>) -> Self {
+        Self {
+            images: Some(images),
             additional_context: String::new(),
             env_context: UserEnvContext::generate_new(),
             content: UserMessageContent::Prompt { prompt },
@@ -66,6 +78,7 @@ impl UserMessage {
 
     pub fn new_cancelled_tool_uses<'a>(prompt: Option<String>, tool_use_ids: impl Iterator<Item = &'a str>) -> Self {
         Self {
+            images: None,
             additional_context: String::new(),
             env_context: UserEnvContext::generate_new(),
             content: UserMessageContent::CancelledToolUses {
@@ -90,6 +103,7 @@ impl UserMessage {
             content: UserMessageContent::ToolUseResults {
                 tool_use_results: results,
             },
+            images: None,
         }
     }
 
@@ -97,6 +111,7 @@ impl UserMessage {
     /// [fig_api_client::model::ConversationState].
     pub fn into_history_entry(self) -> UserInputMessage {
         UserInputMessage {
+            images: None,
             content: self.prompt().unwrap_or_default().to_string(),
             user_input_message_context: Some(UserInputMessageContext {
                 shell_state: self.env_context.shell_state,
@@ -125,6 +140,7 @@ impl UserMessage {
             _ => String::new(),
         };
         UserInputMessage {
+            images: self.images,
             content: format!("{} {}", self.additional_context, formatted_prompt)
                 .trim()
                 .to_string(),

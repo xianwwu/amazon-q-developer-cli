@@ -8,6 +8,7 @@ use fig_api_client::model::{
     AssistantResponseMessage,
     ChatMessage,
     ConversationState as FigConversationState,
+    ImageBlock,
     Tool,
     ToolInputSchema,
     ToolResult,
@@ -199,6 +200,23 @@ impl ConversationState {
         };
 
         let msg = UserMessage::new_prompt(input);
+        self.next_message = Some(msg);
+    }
+
+    pub async fn set_next_user_message_with_images(&mut self, input: String, images: Vec<ImageBlock>) {
+        debug_assert!(self.next_message.is_none(), "next_message should not exist");
+        if let Some(next_message) = self.next_message.as_ref() {
+            warn!(?next_message, "next_message should not exist");
+        }
+
+        let input = if input.is_empty() {
+            warn!("input must not be empty when adding new messages");
+            "Empty prompt".to_string()
+        } else {
+            input
+        };
+
+        let msg = UserMessage::new_prompt_with_images(input, images);
         self.next_message = Some(msg);
     }
 
@@ -413,6 +431,7 @@ impl ConversationState {
             content: summary_content,
             user_input_message_context: None,
             user_intent: None,
+            images: None,
         };
 
         // If the last message contains tool uses, then add cancelled tool results to the summary
