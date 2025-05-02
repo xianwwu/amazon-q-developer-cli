@@ -31,6 +31,7 @@ impl UsageCommand {
         Self
     }
 
+    #[allow(dead_code)]
     /// Format a progress bar based on percentage
     fn format_progress_bar(percentage: f64, width: usize) -> String {
         let filled_width = ((percentage / 100.0) * width as f64).round() as usize;
@@ -42,6 +43,7 @@ impl UsageCommand {
         format!("{}{}", filled, empty)
     }
 
+    #[allow(dead_code)]
     /// Get color based on usage percentage
     fn get_color_for_percentage(percentage: f64) -> Color {
         if percentage < 50.0 {

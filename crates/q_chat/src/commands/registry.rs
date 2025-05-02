@@ -38,7 +38,6 @@ use eyre::Result;
 
 use crate::commands::{
     ClearCommand,
-    CommandContextAdapter,
     CommandHandler,
     CompactCommand,
     ContextCommand,
@@ -48,11 +47,6 @@ use crate::commands::{
     QuitCommand,
     ToolsCommand,
     UsageCommand,
-};
-use crate::{
-    ChatContext,
-    ChatState,
-    QueuedTool,
 };
 
 /// A registry of available commands that can be executed
@@ -89,12 +83,12 @@ impl CommandRegistry {
     }
 
     /// Register a new command handler
-    pub fn register(&mut self, name: &str, handler: Box<dyn CommandHandler>) {
+    pub(crate) fn register(&mut self, name: &str, handler: Box<dyn CommandHandler>) {
         self.commands.insert(name.to_string(), handler);
     }
 
     /// Get a command handler by name
-    pub fn get(&self, name: &str) -> Option<&dyn CommandHandler> {
+    pub(crate) fn get(&self, name: &str) -> Option<&dyn CommandHandler> {
         self.commands.get(name).map(|h| h.as_ref())
     }
 
@@ -144,42 +138,8 @@ impl CommandRegistry {
         serde_json::json!(commands)
     }
 
-    /// Parse and execute a command string
-    pub async fn parse_and_execute(
-        &self,
-        input: &str,
-        chat_context: &mut ChatContext,
-        tool_uses: Option<Vec<QueuedTool>>,
-        pending_tool_index: Option<usize>,
-    ) -> Result<ChatState> {
-        let (name, args) = Self::parse_command_string(input)?;
-
-        if let Some(handler) = self.get(name) {
-            let parsed_args = handler.parse_args(args)?;
-
-            // Create a CommandContextAdapter from the ChatContext
-            let mut adapter = CommandContextAdapter::new(
-                &chat_context.ctx,
-                &mut chat_context.output,
-                &mut chat_context.conversation_state,
-                &mut chat_context.tool_permissions,
-                chat_context.interactive,
-                &mut chat_context.input_source,
-                &chat_context.settings,
-            );
-
-            handler
-                .execute(parsed_args, &mut adapter, tool_uses, pending_tool_index)
-                .await
-        } else {
-            // If not a registered command, treat as a question to the AI
-            Ok(ChatState::HandleInput {
-                input: input.to_string(),
-                tool_uses,
-                pending_tool_index,
-            })
-        }
-    }
+    // The parse_and_execute method has been removed as it's no longer used.
+    // Command execution now happens directly through the Command enum.
 
     /// Parse a command string into name and arguments
     pub fn parse_command_string(input: &str) -> Result<(&str, Vec<&str>)> {

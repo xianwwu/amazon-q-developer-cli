@@ -41,6 +41,7 @@ impl EditorCommand {
         Self
     }
 
+    #[allow(dead_code)]
     /// Get the default editor from environment or fallback to platform-specific defaults
     fn get_default_editor() -> String {
         if let Ok(editor) = env::var("EDITOR") {

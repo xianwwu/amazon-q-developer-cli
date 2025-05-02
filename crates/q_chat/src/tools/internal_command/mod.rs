@@ -5,7 +5,8 @@ pub mod tool;
 
 pub use schema::InternalCommand;
 
-use crate::ToolSpec;
+use crate::commands::registry::CommandRegistry;
+use crate::tools::ToolSpec;
 
 /// Get the tool specification for internal_command
 ///
@@ -19,7 +20,7 @@ pub fn get_tool_spec() -> ToolSpec {
     description.push_str("Available commands:\n");
 
     // Get detailed command descriptions from the command registry
-    let command_registry = crate::commands::registry::CommandRegistry::global();
+    let command_registry = CommandRegistry::global();
     let llm_descriptions = command_registry.generate_llm_descriptions();
 
     // Add each command to the description with its LLM description

@@ -123,7 +123,7 @@ impl ConversationState {
                         description: v.description,
                         input_schema: v.input_schema.into(),
                     });
-                    acc.entry(v.tool_origin)
+                    acc.entry(v.tool_origin.unwrap_or(ToolOrigin::Core))
                         .and_modify(|tools| tools.push(tool.clone()))
                         .or_insert(vec![tool]);
                     acc

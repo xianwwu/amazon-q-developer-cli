@@ -12,8 +12,11 @@ use tracing::debug;
 use crate::ChatState;
 use crate::command::Command;
 use crate::commands::registry::CommandRegistry;
-use crate::tools::InvokeOutput;
 use crate::tools::internal_command::schema::InternalCommand;
+use crate::tools::{
+    InvokeOutput,
+    OutputKind,
+};
 
 impl InternalCommand {
     /// Validate that the command exists
@@ -159,7 +162,7 @@ impl InternalCommand {
                 Ok(command) => {
                     // Return an InvokeOutput with the response and next state
                     Ok(InvokeOutput {
-                        output: crate::tools::OutputKind::Text(response),
+                        output: OutputKind::Text(response),
                         next_state: Some(ChatState::ExecuteCommand {
                             command,
                             tool_uses: None,
@@ -170,7 +173,7 @@ impl InternalCommand {
                 Err(e) => {
                     // Return an InvokeOutput with the error message from e and no next state
                     Ok(InvokeOutput {
-                        output: crate::tools::OutputKind::Text(e.to_string()),
+                        output: OutputKind::Text(e.to_string()),
                         next_state: None,
                     })
                 },
@@ -181,7 +184,7 @@ impl InternalCommand {
                 Ok(command) => {
                     // Return an InvokeOutput with the response and next state
                     Ok(InvokeOutput {
-                        output: crate::tools::OutputKind::Text(response),
+                        output: OutputKind::Text(response),
                         next_state: Some(ChatState::ExecuteCommand {
                             command,
                             tool_uses: None,
@@ -192,7 +195,7 @@ impl InternalCommand {
                 Err(e) => {
                     // Return an InvokeOutput with the error message from e and no next state
                     Ok(InvokeOutput {
-                        output: crate::tools::OutputKind::Text(e),
+                        output: OutputKind::Text(e),
                         next_state: None,
                     })
                 },

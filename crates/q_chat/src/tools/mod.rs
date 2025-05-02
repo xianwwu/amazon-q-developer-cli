@@ -1,3 +1,4 @@
+pub mod custom_tool;
 pub mod execute_bash;
 pub mod fs_read;
 pub mod fs_write;
@@ -25,7 +26,10 @@ use fs_read::FsRead;
 use fs_write::FsWrite;
 use gh_issue::GhIssue;
 use internal_command::InternalCommand;
-use serde::Deserialize;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use tracing::warn;
 use use_aws::UseAws;
 
@@ -36,6 +40,25 @@ use crate::message::{
     ToolUseResultBlock,
 };
 
+/// Represents the origin of a tool
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, Hash, PartialEq)]
+pub enum ToolOrigin {
+    /// Tool from the core system
+    Core,
+    /// Tool from an MCP server
+    McpServer(String),
+}
+
+/// A tool specification to be sent to the model as part of a conversation. Maps to
+/// [BedrockToolSpecification].
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    pub input_schema: InputSchema,
+    pub tool_origin: Option<ToolOrigin>,
+}
+
 /// Represents an executable tool use.
 #[derive(Debug, Clone)]
 pub enum Tool {
@@ -45,6 +68,7 @@ pub enum Tool {
     UseAws(UseAws),
     GhIssue(GhIssue),
     InternalCommand(InternalCommand),
+    Custom(custom_tool::CustomTool),
 }
 
 impl Tool {
@@ -57,6 +81,7 @@ impl Tool {
             Tool::UseAws(_) => "use_aws",
             Tool::GhIssue(_) => "gh_issue",
             Tool::InternalCommand(_) => "internal_command",
+            Tool::Custom(_) => "custom",
         }
     }
 
@@ -81,6 +106,7 @@ impl Tool {
             Tool::UseAws(use_aws) => use_aws.requires_acceptance(),
             Tool::GhIssue(_) => false,
             Tool::InternalCommand(internal_command) => internal_command.requires_acceptance_simple(),
+            Tool::Custom(_) => true,
         }
     }
 
@@ -93,6 +119,7 @@ impl Tool {
             Tool::UseAws(use_aws) => use_aws.invoke(context, updates).await,
             Tool::GhIssue(gh_issue) => gh_issue.invoke(updates).await,
             Tool::InternalCommand(internal_command) => internal_command.invoke(context, updates).await,
+            Tool::Custom(custom_tool) => custom_tool.invoke(context, updates).await,
         }
     }
 
@@ -105,6 +132,7 @@ impl Tool {
             Tool::UseAws(use_aws) => use_aws.queue_description(updates),
             Tool::GhIssue(gh_issue) => gh_issue.queue_description(updates),
             Tool::InternalCommand(internal_command) => internal_command.queue_description(updates),
+            Tool::Custom(custom_tool) => custom_tool.queue_description(updates),
         }
     }
 
@@ -119,6 +147,7 @@ impl Tool {
             Tool::InternalCommand(internal_command) => internal_command
                 .validate_simple()
                 .map_err(|e| eyre::eyre!("Tool validation failed: {:?}", e)),
+            Tool::Custom(_) => Ok(()),
         }
     }
 }
@@ -244,15 +273,6 @@ impl ToolPermissions {
     }
 }
 
-/// A tool specification to be sent to the model as part of a conversation. Maps to
-/// [BedrockToolSpecification].
-#[derive(Debug, Clone, Deserialize)]
-pub struct ToolSpec {
-    pub name: String,
-    pub description: String,
-    pub input_schema: InputSchema,
-}
-
 #[derive(Debug, Clone)]
 pub struct QueuedTool {
     pub id: String,
@@ -262,7 +282,7 @@ pub struct QueuedTool {
 }
 
 /// The schema specification describing a tool's fields.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InputSchema(pub serde_json::Value);
 
 /// The output received from invoking a [Tool].
@@ -483,5 +503,25 @@ impl From<ToolUseResultBlock> for OutputKind {
             ToolUseResultBlock::Text(text) => OutputKind::Text(text),
             ToolUseResultBlock::Json(json) => OutputKind::Json(json),
         }
+    }
+}
+
+impl InvokeOutput {
+    pub fn new(content: String) -> Self {
+        Self {
+            output: OutputKind::Text(content),
+            next_state: None,
+        }
+    }
+
+    pub fn with_json(json: serde_json::Value) -> Self {
+        Self {
+            output: OutputKind::Json(json),
+            next_state: None,
+        }
+    }
+
+    pub fn content(&self) -> String {
+        self.output.to_string()
     }
 }

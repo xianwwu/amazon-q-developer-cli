@@ -16,7 +16,8 @@ pub use compact::CompactCommand;
 pub use context::ContextCommand;
 pub use context_adapter::CommandContextAdapter;
 pub use editor::EditorCommand;
-pub use handler::CommandHandler;
+// Keep CommandHandler as crate-only visibility
+pub(crate) use handler::CommandHandler;
 pub use help::HelpCommand;
 pub use profile::ProfileCommand;
 pub use quit::QuitCommand;

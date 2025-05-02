@@ -31,14 +31,11 @@ use std::pin::Pin;
 use eyre::Result;
 
 use super::context_adapter::CommandContextAdapter;
+use crate::QueuedTool;
 use crate::command::Command;
-use crate::{
-    ChatState,
-    QueuedTool,
-};
 
 /// Trait for command handlers
-pub trait CommandHandler: Send + Sync {
+pub(crate) trait CommandHandler: Send + Sync {
     /// Returns the name of the command
     #[allow(dead_code)]
     fn name(&self) -> &'static str;
@@ -75,16 +72,20 @@ pub trait CommandHandler: Send + Sync {
     ///
     /// The default implementation delegates to to_command and wraps the result
     /// in a ChatState::ExecuteCommand.
+    ///
+    /// TODO: This method will be used in future refactoring when the command system
+    /// is further simplified. Currently, commands are executed through the Command enum.
+    #[allow(dead_code)]
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
         _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<crate::ChatState>> + Send + 'a>> {
         Box::pin(async move {
             let command = self.to_command(args)?;
-            Ok(ChatState::ExecuteCommand {
+            Ok(crate::ChatState::ExecuteCommand {
                 command,
                 tool_uses,
                 pending_tool_index,
@@ -101,6 +102,7 @@ pub trait CommandHandler: Send + Sync {
     ///
     /// This method takes a vector of string slices and returns a vector of string slices.
     /// The lifetime of the returned slices must be the same as the lifetime of the input slices.
+    #[allow(dead_code)]
     fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>> {
         Ok(args)
     }

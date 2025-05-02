@@ -57,6 +57,7 @@ use super::tools::{
 };
 use crate::tools::ToolSpec;
 use crate::tools::custom_tool::CustomTool;
+use crate::tools::internal_command::InternalCommand;
 
 const NAMESPACE_DELIMITER: &str = "___";
 // This applies for both mcp server and tool name since in the end the tool name as seen by the
@@ -496,11 +497,15 @@ impl ToolManager {
         let tx = self.loading_status_sender.take();
         let display_task = self.loading_display_task.take();
         let tool_specs = {
-            let mut tool_specs = serde_json::from_str::<HashMap<String, ToolSpec>>(include_str!("tools/tool_index.json"))?;
-            
+            let mut tool_specs =
+                serde_json::from_str::<HashMap<String, ToolSpec>>(include_str!("tools/tool_index.json"))?;
+
             // Add internal_command tool dynamically using the get_tool_spec function
-            tool_specs.insert("internal_command".to_string(), tools::internal_command::get_tool_spec());
-            
+            tool_specs.insert(
+                "internal_command".to_string(),
+                crate::tools::internal_command::get_tool_spec(),
+            );
+
             Arc::new(Mutex::new(tool_specs))
         };
         let conversation_id = self.conversation_id.clone();
@@ -554,7 +559,7 @@ impl ToolManager {
                                     sanitized_mapping.insert(full_name.clone(), format!("{}{}{}", server_name, NAMESPACE_DELIMITER, spec.name));
                                 }
                                 spec.name = full_name;
-                                spec.tool_origin = ToolOrigin::McpServer(server_name.clone());
+                                spec.tool_origin = Some(ToolOrigin::McpServer(server_name.clone()));
                                 tool_specs_clone.lock().await.insert(spec.name.clone(), spec);
                             }
                             // Send server load success metric datum
@@ -675,7 +680,9 @@ impl ToolManager {
             "execute_bash" => Tool::ExecuteBash(serde_json::from_value::<ExecuteBash>(value.args).map_err(map_err)?),
             "use_aws" => Tool::UseAws(serde_json::from_value::<UseAws>(value.args).map_err(map_err)?),
             "report_issue" => Tool::GhIssue(serde_json::from_value::<GhIssue>(value.args).map_err(map_err)?),
-            "internal_command" => Tool::InternalCommand(serde_json::from_value::<InternalCommand>(value.args).map_err(map_err)?),
+            "internal_command" => {
+                Tool::InternalCommand(serde_json::from_value::<InternalCommand>(value.args).map_err(map_err)?)
+            },
             // Note that this name is namespaced with server_name{DELIMITER}tool_name
             name => {
                 let name = self.tn_map.get(name).map_or(name, String::as_str);
