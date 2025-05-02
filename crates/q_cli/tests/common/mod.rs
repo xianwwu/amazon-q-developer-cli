@@ -3,7 +3,6 @@
 use std::process::Command;
 
 pub use assert_cmd::prelude::*;
-use fig_util::CLI_CRATE_NAME;
 use predicates::function::FnPredicate;
 pub use predicates::prelude::*;
 

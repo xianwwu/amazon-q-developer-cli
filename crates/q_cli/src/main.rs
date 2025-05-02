@@ -1,5 +1,11 @@
-pub mod cli;
-pub mod util;
+mod cli;
+mod diagnostics;
+mod install;
+mod logging;
+mod request;
+mod settings;
+mod telemetry;
+mod util;
 
 use std::process::ExitCode;
 
@@ -11,20 +17,26 @@ use clap::error::{
 };
 use crossterm::style::Stylize;
 use eyre::Result;
-use fig_log::get_log_level_max;
-use fig_util::{
+use logging::get_log_level_max;
+use telemetry::{
+    DispatchMode,
+    finish_telemetry,
+    init_global_telemetry_emitter,
+    set_dispatch_mode,
+};
+use tracing::metadata::LevelFilter;
+use util::{
     CLI_BINARY_NAME,
     PRODUCT_NAME,
 };
-use tracing::metadata::LevelFilter;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() -> Result<ExitCode> {
     color_eyre::install()?;
-    fig_telemetry::set_dispatch_mode(fig_telemetry::DispatchMode::On);
-    fig_telemetry::init_global_telemetry_emitter();
+    set_dispatch_mode(DispatchMode::On);
+    init_global_telemetry_emitter();
 
     let multithread = matches!(
         std::env::args().nth(1).as_deref(),
@@ -68,7 +80,7 @@ fn main() -> Result<ExitCode> {
 
     let result = runtime.block_on(async {
         let result = parsed.execute().await;
-        fig_telemetry::finish_telemetry().await;
+        finish_telemetry().await;
         result
     });
 

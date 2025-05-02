@@ -1,5 +1,3 @@
-use fig_util::system_info::in_cloudshell;
-
 const GOV_REGIONS: &[&str] = &["us-gov-east-1", "us-gov-west-1"];
 
 pub fn region_check(capability: &'static str) -> eyre::Result<()> {

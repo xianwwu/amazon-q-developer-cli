@@ -18,9 +18,12 @@ wayland = ["arboard/wayland-data-control"]
 amzn-codewhisperer-client.workspace = true
 amzn-codewhisperer-streaming-client.workspace = true
 anstream.workspace = true
-appkit-nsworkspace-bindings.workspace = true
 arboard = { version = "3.5.0", default-features = false }
 async-trait.workspace = true
+aws-runtime = "1.4.4"
+aws-config = "1.0.3"
+aws-credential-types = "1.0.3"
+aws-smithy-async = "1.2.2"
 base64.workspace = true
 bitflags.workspace = true
 bytes.workspace = true
@@ -35,32 +38,16 @@ crossterm.workspace = true
 ctrlc = "3.4.6"
 dialoguer = { version = "0.11.0", features = ["fuzzy-select"] }
 eyre.workspace = true
-fig_api_client.workspace = true
-fig_auth.workspace = true
-fig_diagnostic.workspace = true
-fig_install.workspace = true
-fig_integrations.workspace = true
-fig_ipc.workspace = true
-fig_log.workspace = true
-fig_os_shim.workspace = true
-fig_proto.workspace = true
-fig_remote_ipc.workspace = true
-fig_request.workspace = true
-fig_settings.workspace = true
-fig_telemetry.workspace = true
-fig_telemetry_core.workspace = true
-fig_util.workspace = true
+fd-lock = "4.0.4"
 flume.workspace = true
 futures.workspace = true
 glob.workspace = true
 globset.workspace = true
 indicatif.workspace = true
 indoc.workspace = true
-mcp_client.workspace = true
 mimalloc.workspace = true
 owo-colors = "4.2.0"
 parking_lot.workspace = true
-q_chat.workspace = true
 rand.workspace = true
 regex.workspace = true
 semver.workspace = true
@@ -74,6 +61,7 @@ time.workspace = true
 tokio-tungstenite.workspace = true
 tokio-util.workspace = true
 tokio.workspace = true
+tracing-appender = "0.2.2"
 tracing-subscriber.workspace = true
 tracing.workspace = true
 unicode-width.workspace = true
@@ -82,18 +70,24 @@ uuid.workspace = true
 walkdir.workspace = true
 which.workspace = true
 whoami.workspace = true
+hex.workspace = true
+aws-sdk-cognitoidentity = "1.51.0"
+aws-sdk-cognitoidentityprovider = "1.60.1"
+aws-smithy-types = "1.2.10"
+r2d2.workspace = true
+rusqlite.workspace = true
+r2d2_sqlite.workspace = true
+strum = { version = "0.27.1", features = ["derive"] }
+shell-color = "1.0.0"
+
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
-macos-utils = { path = "../macos-utils" }
 objc2.workspace = true
 objc2-app-kit = { workspace = true, features = ["NSRunningApplication"] }
 objc2-foundation.workspace = true
-
-[target.'cfg(target_os = "linux")'.dependencies]
-dbus = { path = "../dbus" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58.0", features = ["Win32_System_Threading"] }
@@ -105,3 +99,12 @@ criterion = "0.5.1"
 insta.workspace = true
 paste = "1.0.11"
 predicates = "3.0"
+tracing-test = "0.2.4"
+
+[build-dependencies]
+serde.workspace = true
+serde_json.workspace = true
+syn = "2.0.101"
+prettyplease = "0.2.32"
+quote = "1.0.40"
+convert_case.workspace = true
