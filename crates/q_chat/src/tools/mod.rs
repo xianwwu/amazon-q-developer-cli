@@ -30,48 +30,15 @@ use serde::{
     Deserialize,
     Serialize,
 };
-use tracing::warn;
 use use_aws::UseAws;
 
+use super::consts::MAX_TOOL_RESPONSE_SIZE;
 use crate::ToolResultStatus;
-use crate::consts::MAX_TOOL_RESPONSE_SIZE;
 use crate::message::{
     AssistantToolUse,
     ToolUseResult,
     ToolUseResultBlock,
 };
-
-/// Represents the origin of a tool
-#[derive(Debug, Clone, Deserialize, Serialize, Eq, Hash, PartialEq)]
-pub enum ToolOrigin {
-    /// Tool from the core system
-    Native,
-    /// Tool from an MCP server
-    McpServer(String),
-}
-
-impl std::fmt::Display for ToolOrigin {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ToolOrigin::Native => write!(f, "Built-in"),
-            ToolOrigin::McpServer(server) => write!(f, "{} (MCP)", server),
-        }
-    }
-}
-
-fn tool_origin() -> ToolOrigin {
-    ToolOrigin::Native
-}
-
-/// A tool specification to be sent to the model as part of a conversation. Maps to
-/// [BedrockToolSpecification].
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ToolSpec {
-    pub name: String,
-    pub description: String,
-    pub input_schema: InputSchema,
-    pub tool_origin: ToolOrigin,
-}
 
 /// Represents an executable tool use.
 #[derive(Debug, Clone)]
@@ -80,9 +47,9 @@ pub enum Tool {
     FsWrite(FsWrite),
     ExecuteBash(ExecuteBash),
     UseAws(UseAws),
+    Custom(CustomTool),
     GhIssue(GhIssue),
     InternalCommand(InternalCommand),
-    Custom(custom_tool::CustomTool),
 }
 
 impl Tool {
@@ -258,10 +225,6 @@ impl ToolPermissions {
     }
 
     pub fn reset_tool(&mut self, tool_name: &str) {
-        if !self.permissions.contains_key(tool_name) {
-            warn!("No custom permissions set for tool '{tool_name}' to reset");
-            return;
-        }
         self.permissions.remove(tool_name);
     }
 
@@ -285,6 +248,37 @@ impl ToolPermissions {
 
         format!("{} {label}", "*".reset())
     }
+}
+
+/// A tool specification to be sent to the model as part of a conversation. Maps to
+/// [BedrockToolSpecification].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    #[serde(alias = "inputSchema")]
+    pub input_schema: InputSchema,
+    #[serde(skip_serializing, default = "tool_origin")]
+    pub tool_origin: ToolOrigin,
+}
+
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Hash)]
+pub enum ToolOrigin {
+    Native,
+    McpServer(String),
+}
+
+impl std::fmt::Display for ToolOrigin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolOrigin::Native => write!(f, "Built-in"),
+            ToolOrigin::McpServer(server) => write!(f, "{} (MCP)", server),
+        }
+    }
+}
+
+fn tool_origin() -> ToolOrigin {
+    ToolOrigin::Native
 }
 
 #[derive(Debug, Clone)]
@@ -435,15 +429,15 @@ fn absolute_to_relative(cwd: impl AsRef<Path>, path: impl AsRef<Path>) -> Result
     }
 
     // ".." for any uncommon parts, then just append the rest of the path.
-    let mut result = PathBuf::new();
+    let mut relative = PathBuf::new();
     for _ in cwd_parts {
-        result.push("..");
+        relative.push("..");
     }
     for part in path_parts {
-        result.push(part);
+        relative.push(part);
     }
 
-    Ok(result)
+    Ok(relative)
 }
 
 /// Small helper for formatting the path as a relative path, if able.
