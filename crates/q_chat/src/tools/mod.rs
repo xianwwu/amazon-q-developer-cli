@@ -18,9 +18,9 @@ use aws_smithy_types::{
     Number as SmithyNumber,
 };
 use crossterm::style::Stylize;
+use custom_tool::CustomTool;
 use execute_bash::ExecuteBash;
 use eyre::Result;
-use fig_api_client::model::ToolResultStatus;
 use fig_os_shim::Context;
 use fs_read::FsRead;
 use fs_write::FsWrite;
@@ -33,6 +33,7 @@ use serde::{
 use tracing::warn;
 use use_aws::UseAws;
 
+use crate::ToolResultStatus;
 use crate::consts::MAX_TOOL_RESPONSE_SIZE;
 use crate::message::{
     AssistantToolUse,
@@ -44,9 +45,22 @@ use crate::message::{
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, Hash, PartialEq)]
 pub enum ToolOrigin {
     /// Tool from the core system
-    Core,
+    Native,
     /// Tool from an MCP server
     McpServer(String),
+}
+
+impl std::fmt::Display for ToolOrigin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolOrigin::Native => write!(f, "Built-in"),
+            ToolOrigin::McpServer(server) => write!(f, "{} (MCP)", server),
+        }
+    }
+}
+
+fn tool_origin() -> ToolOrigin {
+    ToolOrigin::Native
 }
 
 /// A tool specification to be sent to the model as part of a conversation. Maps to
@@ -56,7 +70,7 @@ pub struct ToolSpec {
     pub name: String,
     pub description: String,
     pub input_schema: InputSchema,
-    pub tool_origin: Option<ToolOrigin>,
+    pub tool_origin: ToolOrigin,
 }
 
 /// Represents an executable tool use.
@@ -73,16 +87,17 @@ pub enum Tool {
 
 impl Tool {
     /// The display name of a tool
-    pub fn display_name(&self) -> &'static str {
+    pub fn display_name(&self) -> String {
         match self {
             Tool::FsRead(_) => "fs_read",
             Tool::FsWrite(_) => "fs_write",
             Tool::ExecuteBash(_) => "execute_bash",
             Tool::UseAws(_) => "use_aws",
+            Tool::Custom(custom_tool) => &custom_tool.name,
             Tool::GhIssue(_) => "gh_issue",
             Tool::InternalCommand(_) => "internal_command",
-            Tool::Custom(_) => "custom",
         }
+        .to_owned()
     }
 
     /// Get all tool names
@@ -104,9 +119,9 @@ impl Tool {
             Tool::FsWrite(_) => true,
             Tool::ExecuteBash(execute_bash) => execute_bash.requires_acceptance(),
             Tool::UseAws(use_aws) => use_aws.requires_acceptance(),
+            Tool::Custom(_) => true,
             Tool::GhIssue(_) => false,
             Tool::InternalCommand(internal_command) => internal_command.requires_acceptance_simple(),
-            Tool::Custom(_) => true,
         }
     }
 
@@ -117,9 +132,9 @@ impl Tool {
             Tool::FsWrite(fs_write) => fs_write.invoke(context, updates).await,
             Tool::ExecuteBash(execute_bash) => execute_bash.invoke(updates).await,
             Tool::UseAws(use_aws) => use_aws.invoke(context, updates).await,
+            Tool::Custom(custom_tool) => custom_tool.invoke(context, updates).await,
             Tool::GhIssue(gh_issue) => gh_issue.invoke(updates).await,
             Tool::InternalCommand(internal_command) => internal_command.invoke(context, updates).await,
-            Tool::Custom(custom_tool) => custom_tool.invoke(context, updates).await,
         }
     }
 
@@ -130,9 +145,9 @@ impl Tool {
             Tool::FsWrite(fs_write) => fs_write.queue_description(ctx, updates),
             Tool::ExecuteBash(execute_bash) => execute_bash.queue_description(updates),
             Tool::UseAws(use_aws) => use_aws.queue_description(updates),
+            Tool::Custom(custom_tool) => custom_tool.queue_description(updates),
             Tool::GhIssue(gh_issue) => gh_issue.queue_description(updates),
             Tool::InternalCommand(internal_command) => internal_command.queue_description(updates),
-            Tool::Custom(custom_tool) => custom_tool.queue_description(updates),
         }
     }
 
@@ -143,11 +158,11 @@ impl Tool {
             Tool::FsWrite(fs_write) => fs_write.validate(ctx).await,
             Tool::ExecuteBash(execute_bash) => execute_bash.validate(ctx).await,
             Tool::UseAws(use_aws) => use_aws.validate(ctx).await,
+            Tool::Custom(custom_tool) => custom_tool.validate(ctx).await,
             Tool::GhIssue(gh_issue) => gh_issue.validate(ctx).await,
             Tool::InternalCommand(internal_command) => internal_command
                 .validate_simple()
                 .map_err(|e| eyre::eyre!("Tool validation failed: {:?}", e)),
-            Tool::Custom(_) => Ok(()),
         }
     }
 }
@@ -185,7 +200,6 @@ impl TryFrom<AssistantToolUse> for Tool {
         })
     }
 }
-
 #[derive(Debug, Clone)]
 pub struct ToolPermission {
     pub trusted: bool,
@@ -282,7 +296,7 @@ pub struct QueuedTool {
 }
 
 /// The schema specification describing a tool's fields.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputSchema(pub serde_json::Value);
 
 /// The output received from invoking a [Tool].
@@ -294,6 +308,15 @@ pub struct InvokeOutput {
     /// If set, tool_use_execute will return this state instead of proceeding to
     /// HandleResponseStream
     pub(crate) next_state: Option<crate::ChatState>,
+}
+
+impl InvokeOutput {
+    pub fn as_str(&self) -> &str {
+        match &self.output {
+            OutputKind::Text(s) => s.as_str(),
+            OutputKind::Json(j) => j.as_str().unwrap_or_default(),
+        }
+    }
 }
 
 #[non_exhaustive]

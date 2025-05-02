@@ -200,7 +200,8 @@ const SMALL_SCREEN_WECLOME_TEXT: &str = color_print::cstr! {"
 <em>Welcome to <cyan!>Amazon Q</cyan!>!</em>
 "};
 
-const ROTATING_TIPS: [&str; 8] = [
+const ROTATING_TIPS: [&str; 9] = [
+    color_print::cstr! {"Get notified whenever Q CLI finishes responding. Just run <green!>q settings chat.enableNotifications true</green!>"},
     color_print::cstr! {"You can use <green!>/editor</green!> to edit your prompt with a vim-like experience"},
     color_print::cstr! {"You can execute bash commands by typing <green!>!</green!> followed by the command"},
     color_print::cstr! {"Q can use tools without asking for confirmation every time. Give <green!>/tools trust</green!> a try"},
@@ -215,14 +216,14 @@ const GREETING_BREAK_POINT: usize = 67;
 
 const POPULAR_SHORTCUTS: &str = color_print::cstr! {"
 <black!>
-<green!>/help</green!> all commands  <em>•</em>  <green!>ctrl + j</green!> new lines  <em>•</em>  <green!>ctrl + k</green!> fuzzy search
+<green!>/help</green!> all commands  <em>•</em>  <green!>ctrl + j</green!> new lines  <em>•</em>  <green!>ctrl + s</green!> fuzzy search
 </black!>"};
 
 const SMALL_SCREEN_POPULAR_SHORTCUTS: &str = color_print::cstr! {"
 <black!>
 <green!>/help</green!> all commands
 <green!>ctrl + j</green!> new lines
-<green!>ctrl + k</green!> fuzzy search
+<green!>ctrl + s</green!> fuzzy search
 </black!>
 "};
 const HELP_TEXT: &str = color_print::cstr! {"
@@ -255,7 +256,6 @@ const HELP_TEXT: &str = color_print::cstr! {"
   <em>help</em>        <black!>Show prompts help</black!>
   <em>list</em>        <black!>List or search available prompts</black!>
   <em>get</em>         <black!>Retrieve and send a prompt</black!>
-<em>/context</em>      <black!>Manage context files for the chat session</black!>
 <em>/context</em>      <black!>Manage context files and hooks for the chat session</black!>
   <em>help</em>        <black!>Show context help</black!>
   <em>show</em>        <black!>Display current context rules configuration [--expand]</black!>
@@ -271,7 +271,7 @@ const HELP_TEXT: &str = color_print::cstr! {"
 <cyan,em>Tips:</cyan,em>
 <em>!{command}</em>            <black!>Quickly execute a command in your current session</black!>
 <em>Ctrl(^) + j</em>           <black!>Insert new-line to provide multi-line prompt. Alternatively, [Alt(⌥) + Enter(⏎)]</black!>
-<em>Ctrl(^) + k</em>           <black!>Fuzzy search commands and context files. Use Tab to select multiple items.</black!>
+<em>Ctrl(^) + s</em>           <black!>Fuzzy search commands and context files. Use Tab to select multiple items.</black!>
                       <black!>Change the keybind to ctrl+x with: q settings chat.skimCommandKey x (where x is any key)</black!>
 
 "};
@@ -697,8 +697,21 @@ impl ChatContext {
                 }
                 line.push_str(word);
             } else {
-                wrapped_lines.push(line);
-                line = word.to_string();
+                // Here we need to account for words that are too long as well
+                if word.len() >= inner_width {
+                    let mut start = 0_usize;
+                    for (i, _) in word.chars().enumerate() {
+                        if i - start >= inner_width {
+                            wrapped_lines.push(word[start..i].to_string());
+                            start = i;
+                        }
+                    }
+                    wrapped_lines.push(word[start..].to_string());
+                    line = String::new();
+                } else {
+                    wrapped_lines.push(line);
+                    line = word.to_string();
+                }
             }
         }
 
@@ -733,7 +746,7 @@ impl ChatContext {
         // Centered wrapped content
         for line in wrapped_lines {
             let visible_line_len = strip_ansi_escapes::strip(&line).len();
-            let left_pad = (box_width - 4 - visible_line_len) / 2;
+            let left_pad = box_width.saturating_sub(4).saturating_sub(visible_line_len) / 2;
 
             let content = format!(
                 "│ {: <pad$}{}{: <rem$} │",
@@ -741,7 +754,10 @@ impl ChatContext {
                 line,
                 "",
                 pad = left_pad,
-                rem = box_width - 4 - left_pad - visible_line_len
+                rem = box_width
+                    .saturating_sub(4)
+                    .saturating_sub(left_pad)
+                    .saturating_sub(visible_line_len),
             );
             execute!(self.output, style::Print(format!("{}\n", content)))?;
         }
@@ -788,26 +804,27 @@ impl ChatContext {
                 self.draw_tip_box(tip)?;
             }
 
+            execute!(
+                self.output,
+                style::Print(if is_small_screen {
+                    SMALL_SCREEN_POPULAR_SHORTCUTS
+                } else {
+                    POPULAR_SHORTCUTS
+                }),
+                style::Print(
+                    "━"
+                        .repeat(if is_small_screen { 0 } else { GREETING_BREAK_POINT })
+                        .dark_grey()
+                )
+            )?;
+            execute!(self.output, style::Print("\n"), style::SetForegroundColor(Color::Reset))?;
+
             // update the current tip index
             let next_tip_index = (current_tip_index + 1) % ROTATING_TIPS.len();
             self.state
                 .set_value("chat.greeting.rotating_tips_current_index", next_tip_index)?;
         }
 
-        execute!(
-            self.output,
-            style::Print(if is_small_screen {
-                SMALL_SCREEN_POPULAR_SHORTCUTS
-            } else {
-                POPULAR_SHORTCUTS
-            }),
-            style::Print(
-                "━"
-                    .repeat(if is_small_screen { 0 } else { GREETING_BREAK_POINT })
-                    .dark_grey()
-            )
-        )?;
-        execute!(self.output, style::Print("\n"), style::SetForegroundColor(Color::Reset))?;
         if self.interactive && self.all_tools_trusted() {
             queue!(
                 self.output,
@@ -831,6 +848,7 @@ impl ChatContext {
             if self.interactive {
                 execute!(
                     self.output,
+                    style::SetAttribute(Attribute::Reset),
                     style::SetForegroundColor(Color::Magenta),
                     style::Print("> "),
                     style::SetAttribute(Attribute::Reset),
@@ -1293,7 +1311,11 @@ impl ChatContext {
             self.input_source
                 .put_skim_command_selector(Arc::new(context_manager.clone()), tool_names);
         }
-
+        execute!(
+            self.output,
+            style::SetForegroundColor(Color::Reset),
+            style::SetAttribute(Attribute::Reset)
+        )?;
         let user_input = match self.read_user_input(&self.generate_tool_trust_prompt(), false) {
             Some(input) => input,
             None => return Ok(ChatState::Exit),
@@ -1523,6 +1545,7 @@ impl ChatContext {
                             // Display the content as if the user typed it
                             execute!(
                                 self.output,
+                                style::SetAttribute(Attribute::Reset),
                                 style::SetForegroundColor(Color::Magenta),
                                 style::Print("> "),
                                 style::SetAttribute(Attribute::Reset),
@@ -2383,7 +2406,7 @@ impl ChatContext {
                             let _ = queue!(
                                 self.output,
                                 style::SetAttribute(Attribute::Bold),
-                                style::Print(format!("{:?}:\n", origin)),
+                                style::Print(format!("{}:\n", origin)),
                                 style::SetAttribute(Attribute::Reset),
                                 style::Print(to_display),
                                 style::Print("\n")
@@ -2803,8 +2826,7 @@ impl ChatContext {
             if let Tool::Custom(ct) = &tool.tool {
                 tool_telemetry = tool_telemetry.and_modify(|ev| {
                     ev.custom_tool_call_latency = Some(tool_time.as_secs() as usize);
-                    let input_size = ct.get_input_token_size();
-                    ev.input_token_size = Some(input_size);
+                    ev.input_token_size = Some(ct.get_input_token_size());
                     ev.is_custom_tool = true;
                 });
             }
@@ -2831,9 +2853,8 @@ impl ChatContext {
 
                     tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_success = Some(true));
                     if let Tool::Custom(_) = &tool.tool {
-                        tool_telemetry.and_modify(|ev| {
-                            ev.output_token_size = Some(TokenCounter::count_tokens(&result.content()));
-                        });
+                        tool_telemetry
+                            .and_modify(|ev| ev.output_token_size = Some(TokenCounter::count_tokens(result.as_str())));
                     }
                     tool_results.push(ToolUseResult {
                         tool_use_id: tool.id,
@@ -3493,6 +3514,9 @@ fn create_stream(model_responses: serde_json::Value) -> StreamingClient {
 
 #[cfg(test)]
 mod tests {
+    use bstr::ByteSlice;
+    use shared_writer::TestWriterWithSink;
+
     use super::*;
 
     #[tokio::test]
@@ -3873,6 +3897,88 @@ mod tests {
         for (input, expected) in cases {
             let processed = input.trim().to_string();
             assert_eq!(processed, expected.trim().to_string(), "Failed for input: {}", input);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_draw_tip_box() {
+        let ctx = Context::builder().with_test_home().await.unwrap().build_fake();
+        let buf = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let test_writer = TestWriterWithSink { sink: buf.clone() };
+        let output = SharedWriter::new(test_writer.clone());
+        let tool_manager = ToolManager::default();
+        let tool_config = serde_json::from_str::<HashMap<String, ToolSpec>>(include_str!("tools/tool_index.json"))
+            .expect("Tools failed to load");
+        let test_client = create_stream(serde_json::json!([]));
+
+        let mut chat_context = ChatContext::new(
+            Arc::clone(&ctx),
+            "fake_conv_id",
+            Settings::new_fake(),
+            State::new_fake(),
+            output,
+            None,
+            InputSource::new_mock(vec![]),
+            true,
+            test_client,
+            || Some(80),
+            tool_manager,
+            None,
+            tool_config,
+            ToolPermissions::new(0),
+        )
+        .await
+        .unwrap();
+
+        // Test with a short tip
+        let short_tip = "This is a short tip";
+        chat_context.draw_tip_box(short_tip).expect("Failed to draw tip box");
+
+        // Test with a longer tip that should wrap
+        let long_tip = "This is a much longer tip that should wrap to multiple lines because it exceeds the inner width of the tip box which is calculated based on the GREETING_BREAK_POINT constant";
+        chat_context.draw_tip_box(long_tip).expect("Failed to draw tip box");
+
+        // Test with a long tip with two long words that should wrap
+        let long_tip_with_one_long_word = {
+            let mut s = "a".repeat(200);
+            s.push(' ');
+            s.push_str(&"a".repeat(200));
+            s
+        };
+        chat_context
+            .draw_tip_box(long_tip_with_one_long_word.as_str())
+            .expect("Failed to draw tip box");
+
+        // Test with a long tip with two long words that should wrap
+        let long_tip_with_two_long_words = "a".repeat(200);
+        chat_context
+            .draw_tip_box(long_tip_with_two_long_words.as_str())
+            .expect("Failed to draw tip box");
+
+        // Get the output and verify it contains expected formatting elements
+        let content = test_writer.get_content();
+        let output_str = content.to_str_lossy();
+
+        // Check for box drawing characters
+        assert!(output_str.contains("╭"), "Output should contain top-left corner");
+        assert!(output_str.contains("╮"), "Output should contain top-right corner");
+        assert!(output_str.contains("│"), "Output should contain vertical lines");
+        assert!(output_str.contains("╰"), "Output should contain bottom-left corner");
+        assert!(output_str.contains("╯"), "Output should contain bottom-right corner");
+
+        // Check for the label
+        assert!(
+            output_str.contains("Did you know?"),
+            "Output should contain the 'Did you know?' label"
+        );
+
+        // Check that both tips are present
+        assert!(output_str.contains(short_tip), "Output should contain the short tip");
+
+        // For the long tip, we check for substrings since it will be wrapped
+        let long_tip_parts: Vec<&str> = long_tip.split_whitespace().collect();
+        for part in long_tip_parts.iter().take(3) {
+            assert!(output_str.contains(part), "Output should contain parts of the long tip");
         }
     }
 }
