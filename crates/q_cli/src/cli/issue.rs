@@ -41,15 +41,7 @@ impl IssueArgs {
             _ => joined_description,
         };
 
-        let _ = q_chat::util::issue::IssueCreator {
-            title: Some(issue_title),
-            expected_behavior: None,
-            actual_behavior: None,
-            steps_to_reproduce: None,
-            additional_environment: None,
-        }
-        .create_url()
-        .await;
+        todo!();
 
         Ok(ExitCode::SUCCESS)
     }

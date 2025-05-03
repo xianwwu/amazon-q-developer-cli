@@ -60,7 +60,6 @@ use fig_util::{
     system_info,
 };
 use internal::InternalSubcommand;
-use q_chat::cli::Chat;
 use serde::Serialize;
 use tracing::{
     Level,
@@ -187,8 +186,11 @@ pub enum CliRootCommands {
     /// Open the dashboard
     Dashboard,
     /// AI assistant in your terminal
-    #[command(alias("q"))]
-    Chat(Chat),
+    Chat {
+        /// Args for the chat command
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Inline shell completions
     #[command(subcommand)]
     Inline(inline::InlineSubcommand),
@@ -333,11 +335,11 @@ impl Cli {
                 CliRootCommands::Telemetry(subcommand) => subcommand.execute().await,
                 CliRootCommands::Version { changelog } => Self::print_version(changelog),
                 CliRootCommands::Dashboard => launch_dashboard(false).await,
-                CliRootCommands::Chat(args) => q_chat::launch_chat(args).await,
+                CliRootCommands::Chat { args } => todo!(),
                 CliRootCommands::Inline(subcommand) => subcommand.execute(&cli_context).await,
             },
             // Root command
-            None => q_chat::launch_chat(q_chat::cli::Chat::default()).await,
+            None => todo!(),
         }
     }
 
@@ -521,19 +523,6 @@ mod test {
             verbose: 0,
             help_all: true,
         });
-
-        assert_eq!(Cli::parse_from([CLI_BINARY_NAME, "chat", "-vv"]), Cli {
-            subcommand: Some(CliRootCommands::Chat(Chat {
-                accept_all: false,
-                no_interactive: false,
-                input: None,
-                profile: None,
-                trust_all_tools: false,
-                trust_tools: None,
-            })),
-            verbose: 2,
-            help_all: false,
-        });
     }
 
     /// This test validates that the restart command maintains the same CLI facing definition
@@ -672,110 +661,5 @@ mod test {
         assert_parse!(["version", "--changelog=1.8.0"], CliRootCommands::Version {
             changelog: Some("1.8.0".to_string()),
         });
-    }
-
-    #[test]
-    fn test_chat_with_context_profile() {
-        assert_parse!(
-            ["chat", "--profile", "my-profile"],
-            CliRootCommands::Chat(Chat {
-                accept_all: false,
-                no_interactive: false,
-                input: None,
-                profile: Some("my-profile".to_string()),
-                trust_all_tools: false,
-                trust_tools: None,
-            })
-        );
-    }
-
-    #[test]
-    fn test_chat_with_context_profile_and_input() {
-        assert_parse!(
-            ["chat", "--profile", "my-profile", "Hello"],
-            CliRootCommands::Chat(Chat {
-                accept_all: false,
-                no_interactive: false,
-                input: Some("Hello".to_string()),
-                profile: Some("my-profile".to_string()),
-                trust_all_tools: false,
-                trust_tools: None,
-            })
-        );
-    }
-
-    #[test]
-    fn test_chat_with_context_profile_and_accept_all() {
-        assert_parse!(
-            ["chat", "--profile", "my-profile", "--accept-all"],
-            CliRootCommands::Chat(Chat {
-                accept_all: true,
-                no_interactive: false,
-                input: None,
-                profile: Some("my-profile".to_string()),
-                trust_all_tools: false,
-                trust_tools: None,
-            })
-        );
-    }
-
-    #[test]
-    fn test_chat_with_no_interactive() {
-        assert_parse!(
-            ["chat", "--no-interactive"],
-            CliRootCommands::Chat(Chat {
-                accept_all: false,
-                no_interactive: true,
-                input: None,
-                profile: None,
-                trust_all_tools: false,
-                trust_tools: None,
-            })
-        );
-    }
-
-    #[test]
-    fn test_chat_with_tool_trust_all() {
-        assert_parse!(
-            ["chat", "--trust-all-tools"],
-            CliRootCommands::Chat(Chat {
-                accept_all: false,
-                no_interactive: false,
-                input: None,
-                profile: None,
-                trust_all_tools: true,
-                trust_tools: None,
-            })
-        );
-    }
-
-    #[test]
-    fn test_chat_with_tool_trust_none() {
-        assert_parse!(
-            ["chat", "--trust-tools="],
-            CliRootCommands::Chat(Chat {
-                accept_all: false,
-                no_interactive: false,
-                input: None,
-                profile: None,
-                trust_all_tools: false,
-                trust_tools: Some(vec!["".to_string()]),
-            })
-        );
-    }
-
-    #[test]
-    fn test_chat_with_tool_trust_some() {
-        assert_parse!(
-            ["chat", "--trust-tools=fs_read,fs_write"],
-            CliRootCommands::Chat(Chat {
-                accept_all: false,
-                no_interactive: false,
-                input: None,
-                profile: None,
-                trust_all_tools: false,
-                trust_tools: Some(vec!["fs_read".to_string(), "fs_write".to_string()]),
-            })
-        );
     }
 }

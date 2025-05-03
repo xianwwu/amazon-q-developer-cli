@@ -15,7 +15,7 @@
 #![allow(rustdoc::redundant_explicit_links)]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
-//! amzn-toolkit-telemetry
+//! amzn-toolkit-telemetry-client
 //!
 //! # Crate Organization
 //!

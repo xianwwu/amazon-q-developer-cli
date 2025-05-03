@@ -1,4 +1,4 @@
-use amzn_toolkit_telemetry::config::endpoint::{
+use amzn_toolkit_telemetry_client::config::endpoint::{
     Endpoint,
     EndpointFuture,
     Params,

@@ -100,8 +100,8 @@ impl Client {
 /// operation call. For example, this can be used to add an additional HTTP header:
 ///
 /// ```ignore
-/// # async fn wrapper() -> ::std::result::Result<(), amzn_toolkit_telemetry::Error> {
-/// # let client: amzn_toolkit_telemetry::Client = unimplemented!();
+/// # async fn wrapper() -> ::std::result::Result<(), amzn_toolkit_telemetry_client::Error> {
+/// # let client: amzn_toolkit_telemetry_client::Client = unimplemented!();
 /// use ::http::header::{HeaderName, HeaderValue};
 ///
 /// let result = client.post_error_report()
