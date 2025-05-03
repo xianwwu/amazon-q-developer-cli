@@ -19,18 +19,9 @@ use crossterm::{
     style,
     terminal,
 };
-use fig_api_client::model::{
-    ToolResult,
-    ToolResultContentBlock,
-    ToolResultStatus,
-};
 use futures::{
     StreamExt,
     stream,
-};
-use mcp_client::{
-    JsonRpcResponse,
-    PromptGet,
 };
 use serde::{
     Deserialize,
@@ -43,6 +34,7 @@ use tracing::error;
 use super::command::PromptsGetCommand;
 use super::message::AssistantToolUse;
 use super::tools::custom_tool::{
+    CustomTool,
     CustomToolClient,
     CustomToolConfig,
 };
@@ -54,9 +46,17 @@ use super::tools::use_aws::UseAws;
 use super::tools::{
     Tool,
     ToolOrigin,
+    ToolSpec,
 };
-use crate::tools::ToolSpec;
-use crate::tools::custom_tool::CustomTool;
+use crate::fig_api_client::model::{
+    ToolResult,
+    ToolResultContentBlock,
+    ToolResultStatus,
+};
+use crate::mcp_client::{
+    JsonRpcResponse,
+    PromptGet,
+};
 
 const NAMESPACE_DELIMITER: &str = "___";
 // This applies for both mcp server and tool name since in the end the tool name as seen by the
@@ -322,14 +322,14 @@ impl ToolManagerBuilder {
                 },
                 Err(e) => {
                     error!("Error initializing mcp client for server {}: {:?}", name, &e);
-                    let event = fig_telemetry::EventType::McpServerInit {
+                    let event = crate::fig_telemetry::EventType::McpServerInit {
                         conversation_id: conversation_id.clone(),
                         init_failure_reason: Some(e.to_string()),
                         number_of_tools: 0,
                     };
                     tokio::spawn(async move {
-                        let app_event = fig_telemetry::AppTelemetryEvent::new(event).await;
-                        fig_telemetry::dispatch_or_send_event(app_event).await;
+                        let app_event = crate::fig_telemetry::AppTelemetryEvent::new(event).await;
+                        crate::fig_telemetry::send_event(app_event).await;
                     });
                     let _ = tx.send(LoadingMsg::Error {
                         name: name.clone(),
@@ -569,9 +569,9 @@ impl ToolManager {
                             }
                             // Send server load success metric datum
                             tokio::spawn(async move {
-                                let event = fig_telemetry::EventType::McpServerInit { conversation_id, init_failure_reason: None, number_of_tools  };
-                                let app_event = fig_telemetry::AppTelemetryEvent::new(event).await;
-                                fig_telemetry::dispatch_or_send_event(app_event).await;
+                                let event = crate::fig_telemetry::EventType::McpServerInit { conversation_id, init_failure_reason: None, number_of_tools  };
+                                let app_event = crate::fig_telemetry::AppTelemetryEvent::new(event).await;
+                                crate::fig_telemetry::send_event(app_event).await;
                             });
                             // Tool name translation. This is beyond of the scope of what is
                             // considered a "server load". Reasoning being:
@@ -618,9 +618,9 @@ impl ToolManager {
                             error!("Error obtaining tool spec for {}: {:?}", server_name_clone, e);
                             let init_failure_reason = Some(e.to_string());
                             tokio::spawn(async move {
-                                let event = fig_telemetry::EventType::McpServerInit { conversation_id, init_failure_reason, number_of_tools: 0  };
-                                let app_event = fig_telemetry::AppTelemetryEvent::new(event).await;
-                                fig_telemetry::dispatch_or_send_event(app_event).await;
+                                let event = crate::fig_telemetry::EventType::McpServerInit { conversation_id, init_failure_reason, number_of_tools: 0  };
+                                let app_event = crate::fig_telemetry::AppTelemetryEvent::new(event).await;
+                                crate::fig_telemetry::send_event(app_event).await;
                             });
                             if let Some(tx_clone) = &tx_clone {
                                 if let Err(e) = tx_clone.send(LoadingMsg::Error {

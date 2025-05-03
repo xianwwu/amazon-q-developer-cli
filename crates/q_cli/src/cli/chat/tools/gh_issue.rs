@@ -14,7 +14,6 @@ use eyre::{
     WrapErr,
     eyre,
 };
-use fig_os_shim::Context;
 use serde::Deserialize;
 
 use super::super::context::ContextManager;
@@ -23,7 +22,8 @@ use super::{
     InvokeOutput,
     ToolPermission,
 };
-use crate::token_counter::TokenCounter;
+use crate::cli::chat::token_counter::TokenCounter;
+use crate::fig_os_shim::Context;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GhIssue {

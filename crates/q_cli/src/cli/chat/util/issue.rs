@@ -4,9 +4,10 @@ use anstream::{
 };
 use crossterm::style::Stylize;
 use eyre::Result;
-use fig_diagnostic::Diagnostics;
-use fig_util::GITHUB_REPO_NAME;
-use fig_util::system_info::is_remote;
+
+use crate::diagnostics::Diagnostics;
+use crate::fig_util::GITHUB_REPO_NAME;
+use crate::fig_util::system_info::is_remote;
 
 const TEMPLATE_NAME: &str = "1_bug_report_template.yml";
 
@@ -73,7 +74,7 @@ impl IssueCreator {
             params.iter(),
         )?;
 
-        if is_remote() || fig_util::open_url_async(url.as_str()).await.is_err() {
+        if is_remote() || crate::fig_util::open::open_url_async(url.as_str()).await.is_err() {
             println!("Issue Url: {}", url.as_str().underlined());
         }
 

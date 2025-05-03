@@ -8,18 +8,6 @@ use crossterm::{
     style,
 };
 use eyre::Result;
-use fig_os_shim::Context;
-use mcp_client::{
-    Client as McpClient,
-    ClientConfig as McpClientConfig,
-    JsonRpcResponse,
-    JsonRpcStdioTransport,
-    MessageContent,
-    PromptGet,
-    ServerCapabilities,
-    StdioTransport,
-    ToolCallResult,
-};
 use serde::{
     Deserialize,
     Serialize,
@@ -31,8 +19,20 @@ use super::{
     InvokeOutput,
     ToolSpec,
 };
-use crate::CONTINUATION_LINE;
-use crate::token_counter::TokenCounter;
+use crate::cli::chat::CONTINUATION_LINE;
+use crate::cli::chat::token_counter::TokenCounter;
+use crate::fig_os_shim::Context;
+use crate::mcp_client::{
+    Client as McpClient,
+    ClientConfig as McpClientConfig,
+    JsonRpcResponse,
+    JsonRpcStdioTransport,
+    MessageContent,
+    PromptGet,
+    ServerCapabilities,
+    StdioTransport,
+    ToolCallResult,
+};
 
 // TODO: support http transport type
 #[derive(Clone, Serialize, Deserialize, Debug)]

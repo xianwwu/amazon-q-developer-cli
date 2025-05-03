@@ -4,7 +4,6 @@ use anstream::println;
 use clap::{
     ArgGroup,
     Args,
-    Parser,
     Subcommand,
 };
 use eyre::{
@@ -12,29 +11,15 @@ use eyre::{
     WrapErr,
     bail,
 };
-use fig_auth::is_logged_in;
-use fig_ipc::local::open_ui_element;
-use fig_os_shim::Os;
-use fig_proto::local::UiElement;
-use fig_settings::JsonStore;
-use fig_util::{
-    CLI_BINARY_NAME,
-    directories,
-    manifest,
-    system_info,
-};
 use globset::Glob;
 use serde_json::json;
 
 use super::OutputFormat;
-use crate::cli::Cli;
-use crate::util::desktop::{
-    LaunchArgs,
-    launch_fig_desktop,
-};
-use crate::util::{
+use crate::fig_os_shim::Os;
+use crate::fig_settings::JsonStore;
+use crate::fig_util::{
     CliContext,
-    app_not_running_message,
+    directories,
 };
 
 #[derive(Debug, Subcommand, PartialEq, Eq)]
@@ -70,12 +55,6 @@ pub struct SettingsArgs {
 
 impl SettingsArgs {
     pub async fn execute(&self, cli_context: &CliContext) -> Result<ExitCode> {
-        macro_rules! print_connection_error {
-            () => {
-                println!("{}", app_not_running_message());
-            };
-        }
-
         match self.cmd {
             Some(SettingsSubcommands::Open) => {
                 let file = directories::settings_path().context("Could not get settings path")?;
@@ -90,7 +69,7 @@ impl SettingsArgs {
                 }
             },
             Some(SettingsSubcommands::All { format }) => {
-                let settings = fig_settings::OldSettings::load()?.map().clone();
+                let settings = crate::fig_settings::OldSettings::load()?.map().clone();
 
                 match format {
                     OutputFormat::Plain => {
@@ -106,9 +85,13 @@ impl SettingsArgs {
 
                 Ok(ExitCode::SUCCESS)
             },
-            None => match &self.key {
-                Some(key) => match (&self.value, self.delete) {
-                    (None, false) => match fig_settings::settings::get_value(key)? {
+            None => {
+                let Some(key) = &self.key else {
+                    return Ok(ExitCode::SUCCESS);
+                };
+
+                match (&self.value, self.delete) {
+                    (None, false) => match crate::fig_settings::settings::get_value(key)? {
                         Some(value) => {
                             match self.format {
                                 OutputFormat::Plain => match value.as_str() {
@@ -130,12 +113,12 @@ impl SettingsArgs {
                     },
                     (Some(value_str), false) => {
                         let value = serde_json::from_str(value_str).unwrap_or_else(|_| json!(value_str));
-                        fig_settings::settings::set_value(key, value)?;
+                        crate::fig_settings::settings::set_value(key, value)?;
                         Ok(ExitCode::SUCCESS)
                     },
                     (None, true) => {
                         let glob = Glob::new(key).context("Could not create glob")?.compile_matcher();
-                        let settings = fig_settings::OldSettings::load()?;
+                        let settings = crate::fig_settings::OldSettings::load()?;
                         let map = settings.map();
                         let keys_to_remove = map.keys().filter(|key| glob.is_match(key)).collect::<Vec<_>>();
 
@@ -145,7 +128,7 @@ impl SettingsArgs {
                             },
                             1 => {
                                 println!("Removing {:?}", keys_to_remove[0]);
-                                fig_settings::settings::remove_value(keys_to_remove[0])?;
+                                crate::fig_settings::settings::remove_value(keys_to_remove[0])?;
                             },
                             _ => {
                                 println!("Removing:");
@@ -154,7 +137,7 @@ impl SettingsArgs {
                                 }
 
                                 for key in &keys_to_remove {
-                                    fig_settings::settings::remove_value(key)?;
+                                    crate::fig_settings::settings::remove_value(key)?;
                                 }
                             },
                         }
@@ -162,32 +145,7 @@ impl SettingsArgs {
                         Ok(ExitCode::SUCCESS)
                     },
                     _ => Ok(ExitCode::SUCCESS),
-                },
-                None => {
-                    if manifest::is_minimal() || system_info::is_remote() {
-                        Cli::parse_from([CLI_BINARY_NAME, "settings", "--help"]);
-                        return Ok(ExitCode::SUCCESS);
-                    }
-
-                    launch_fig_desktop(LaunchArgs {
-                        wait_for_socket: true,
-                        open_dashboard: false,
-                        immediate_update: true,
-                        verbose: true,
-                    })?;
-
-                    if is_logged_in().await {
-                        match open_ui_element(UiElement::Settings, None).await {
-                            Ok(()) => Ok(ExitCode::SUCCESS),
-                            Err(err) => {
-                                print_connection_error!();
-                                Err(err.into())
-                            },
-                        }
-                    } else {
-                        Ok(ExitCode::SUCCESS)
-                    }
-                },
+                }
             },
         }
     }

@@ -1,17 +1,5 @@
 use std::env;
 
-use fig_api_client::model::{
-    AssistantResponseMessage,
-    EnvState,
-    ShellState,
-    ToolResult,
-    ToolResultContentBlock,
-    ToolResultStatus,
-    ToolUse,
-    UserInputMessage,
-    UserInputMessageContext,
-};
-use fig_util::Shell;
 use serde::{
     Deserialize,
     Serialize,
@@ -26,6 +14,16 @@ use super::tools::{
     serde_value_to_document,
 };
 use super::util::truncate_safe;
+use crate::fig_api_client::model::{
+    AssistantResponseMessage,
+    EnvState,
+    ToolResult,
+    ToolResultContentBlock,
+    ToolResultStatus,
+    ToolUse,
+    UserInputMessage,
+    UserInputMessageContext,
+};
 
 const USER_ENTRY_START_HEADER: &str = "--- USER MESSAGE BEGIN ---\n";
 const USER_ENTRY_END_HEADER: &str = "--- USER MESSAGE END ---\n\n";
@@ -99,7 +97,6 @@ impl UserMessage {
         UserInputMessage {
             content: self.prompt().unwrap_or_default().to_string(),
             user_input_message_context: Some(UserInputMessageContext {
-                shell_state: self.env_context.shell_state,
                 env_state: self.env_context.env_state,
                 tool_results: match self.content {
                     UserMessageContent::CancelledToolUses { tool_use_results, .. }
@@ -129,7 +126,6 @@ impl UserMessage {
                 .trim()
                 .to_string(),
             user_input_message_context: Some(UserInputMessageContext {
-                shell_state: self.env_context.shell_state,
                 env_state: self.env_context.env_state,
                 tool_results: match self.content {
                     UserMessageContent::CancelledToolUses { tool_use_results, .. }
@@ -242,14 +238,12 @@ impl From<InvokeOutput> for ToolUseResultBlock {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserEnvContext {
-    shell_state: Option<ShellState>,
     env_state: Option<EnvState>,
 }
 
 impl UserEnvContext {
     pub fn generate_new() -> Self {
         Self {
-            shell_state: Some(build_shell_state()),
             env_state: Some(build_env_state()),
         }
     }
@@ -374,23 +368,6 @@ pub fn build_env_state() -> EnvState {
     }
 
     env_state
-}
-
-fn build_shell_state() -> ShellState {
-    // Try to grab the shell from the parent process via the `Shell::current_shell`,
-    // then try the `SHELL` env, finally just report bash
-    let shell_name = Shell::current_shell()
-        .or_else(|| {
-            let shell_name = env::var("SHELL").ok()?;
-            Shell::try_find_shell(shell_name)
-        })
-        .unwrap_or(Shell::Bash)
-        .to_string();
-
-    ShellState {
-        shell_name,
-        shell_history: None,
-    }
 }
 
 #[cfg(test)]

@@ -20,29 +20,6 @@ use eyre::{
     Result,
     bail,
 };
-use fig_api_client::list_available_profiles;
-use fig_api_client::profile::Profile;
-use fig_auth::builder_id::{
-    PollCreateToken,
-    TokenType,
-    poll_create_token,
-    start_device_authorization,
-};
-use fig_auth::pkce::start_pkce_authorization;
-use fig_auth::secret_store::SecretStore;
-use fig_ipc::local::{
-    login_command,
-    logout_command,
-};
-use fig_telemetry_core::{
-    QProfileSwitchIntent,
-    TelemetryResult,
-};
-use fig_util::system_info::is_remote;
-use fig_util::{
-    CLI_BINARY_NAME,
-    PRODUCT_NAME,
-};
 use serde_json::json;
 use tokio::signal::unix::{
     SignalKind,
@@ -54,11 +31,28 @@ use tracing::{
 };
 
 use super::OutputFormat;
-use crate::util::spinner::{
+use crate::fig_api_client::list_available_profiles;
+use crate::fig_api_client::profile::Profile;
+use crate::fig_auth::builder_id::{
+    PollCreateToken,
+    TokenType,
+    poll_create_token,
+    start_device_authorization,
+};
+use crate::fig_auth::pkce::start_pkce_authorization;
+use crate::fig_auth::secret_store::SecretStore;
+use crate::fig_telemetry::{
+    QProfileSwitchIntent,
+    TelemetryResult,
+};
+use crate::fig_util::spinner::{
     Spinner,
     SpinnerComponent,
 };
-use crate::util::{
+use crate::fig_util::system_info::is_remote;
+use crate::fig_util::{
+    CLI_BINARY_NAME,
+    PRODUCT_NAME,
     choose,
     input,
 };
@@ -128,7 +122,7 @@ impl RootUserSubcommand {
     pub async fn execute(self) -> Result<ExitCode> {
         match self {
             Self::Login(args) => {
-                if fig_auth::is_logged_in().await {
+                if crate::fig_auth::is_logged_in().await {
                     eyre::bail!(
                         "Already logged in, please logout with {} first",
                         format!("{CLI_BINARY_NAME} logout").magenta()
@@ -140,9 +134,7 @@ impl RootUserSubcommand {
                 Ok(ExitCode::SUCCESS)
             },
             Self::Logout => {
-                let logout_join = logout_command();
-
-                let (_, _) = tokio::join!(logout_join, fig_auth::logout());
+                let _ = crate::fig_auth::logout().await;
 
                 println!("You are now logged out");
                 println!(
@@ -152,7 +144,7 @@ impl RootUserSubcommand {
                 Ok(ExitCode::SUCCESS)
             },
             Self::Whoami { format } => {
-                let builder_id = fig_auth::builder_id_token().await;
+                let builder_id = crate::fig_auth::builder_id_token().await;
 
                 match builder_id {
                     Ok(Some(token)) => {
@@ -179,9 +171,10 @@ impl RootUserSubcommand {
                         );
 
                         if matches!(token.token_type(), TokenType::IamIdentityCenter) {
-                            if let Ok(Some(profile)) = fig_settings::state::get::<fig_api_client::profile::Profile>(
-                                "api.codewhisperer.profile",
-                            ) {
+                            if let Ok(Some(profile)) = crate::fig_settings::state::get::<
+                                crate::fig_api_client::profile::Profile,
+                            >("api.codewhisperer.profile")
+                            {
                                 color_print::cprintln!(
                                     "\n<em>Profile:</em>\n{}\n{}\n",
                                     profile.profile_name,
@@ -198,14 +191,14 @@ impl RootUserSubcommand {
                 }
             },
             Self::Profile => {
-                if !fig_util::system_info::in_cloudshell() && !fig_auth::is_logged_in().await {
+                if !crate::fig_util::system_info::in_cloudshell() && !crate::fig_auth::is_logged_in().await {
                     bail!(
                         "You are not logged in, please log in with {}",
                         format!("{CLI_BINARY_NAME} login",).bold()
                     );
                 }
 
-                if let Ok(Some(token)) = fig_auth::builder_id_token().await {
+                if let Ok(Some(token)) = crate::fig_auth::builder_id_token().await {
                     if matches!(token.token_type(), TokenType::BuilderId) {
                         bail!("This command is only available for Pro users");
                     }
@@ -253,18 +246,20 @@ pub async fn login_interactive(args: LoginArgs) -> Result<()> {
             let (start_url, region) = match login_method {
                 AuthMethod::BuilderId => (None, None),
                 AuthMethod::IdentityCenter => {
-                    let default_start_url = args
-                        .identity_provider
-                        .or_else(|| fig_settings::state::get_string("auth.idc.start-url").ok().flatten());
+                    let default_start_url = args.identity_provider.or_else(|| {
+                        crate::fig_settings::state::get_string("auth.idc.start-url")
+                            .ok()
+                            .flatten()
+                    });
                     let default_region = args
                         .region
-                        .or_else(|| fig_settings::state::get_string("auth.idc.region").ok().flatten());
+                        .or_else(|| crate::fig_settings::state::get_string("auth.idc.region").ok().flatten());
 
                     let start_url = input("Enter Start URL", default_start_url.as_deref())?;
                     let region = input("Enter Region", default_region.as_deref())?;
 
-                    let _ = fig_settings::state::set_value("auth.idc.start-url", start_url.clone());
-                    let _ = fig_settings::state::set_value("auth.idc.region", region.clone());
+                    let _ = crate::fig_settings::state::set_value("auth.idc.start-url", start_url.clone());
+                    let _ = crate::fig_settings::state::set_value("auth.idc.region", region.clone());
 
                     (Some(start_url), Some(region))
                 },
@@ -278,7 +273,7 @@ pub async fn login_interactive(args: LoginArgs) -> Result<()> {
             } else {
                 let (client, registration) = start_pkce_authorization(start_url.clone(), region.clone()).await?;
 
-                match fig_util::open_url_async(&registration.url).await {
+                match crate::fig_util::open::open_url_async(&registration.url).await {
                     // If it succeeded, finish PKCE.
                     Ok(()) => {
                         let mut spinner = Spinner::new(vec![
@@ -293,7 +288,7 @@ pub async fn login_interactive(args: LoginArgs) -> Result<()> {
                                 exit(1);
                             },
                         }
-                        fig_telemetry::send_user_logged_in().await;
+                        crate::fig_telemetry::send_user_logged_in().await;
                         spinner.stop_with_message("Device authorized".into());
                     },
                     // If we are unable to open the link with the browser, then fallback to
@@ -308,10 +303,6 @@ pub async fn login_interactive(args: LoginArgs) -> Result<()> {
             }
         },
     };
-
-    if let Err(err) = login_command().await {
-        error!(%err, "Failed to send login command.");
-    }
 
     if login_method == AuthMethod::IdentityCenter {
         select_profile_interactive(true).await?;
@@ -338,7 +329,7 @@ async fn try_device_authorization(
 
     if is_remote() {
         print_open_url();
-    } else if let Err(err) = fig_util::open_url_async(&device_auth.verification_uri_complete).await {
+    } else if let Err(err) = crate::fig_util::open::open_url_async(&device_auth.verification_uri_complete).await {
         error!(%err, "Failed to open URL with browser");
         print_open_url();
     }
@@ -367,7 +358,7 @@ async fn try_device_authorization(
         {
             PollCreateToken::Pending => {},
             PollCreateToken::Complete(_) => {
-                fig_telemetry::send_user_logged_in().await;
+                crate::fig_telemetry::send_user_logged_in().await;
                 spinner.stop_with_message("Device authorized".into());
                 break;
             },
@@ -391,12 +382,12 @@ async fn select_profile_interactive(whoami: bool) -> Result<()> {
         return Ok(());
     }
 
-    let sso_region: Option<String> = fig_settings::state::get_string("auth.idc.region").ok().flatten();
+    let sso_region: Option<String> = crate::fig_settings::state::get_string("auth.idc.region").ok().flatten();
     let total_profiles = profiles.len() as i64;
 
     if whoami && profiles.len() == 1 {
         if let Some(profile_region) = profiles[0].arn.split(':').nth(3) {
-            fig_telemetry::send_profile_state(
+            crate::fig_telemetry::send_profile_state(
                 QProfileSwitchIntent::Update,
                 profile_region.to_string(),
                 TelemetryResult::Succeeded,
@@ -405,7 +396,7 @@ async fn select_profile_interactive(whoami: bool) -> Result<()> {
             .await;
         }
         spinner.stop_with_message(String::new());
-        return Ok(fig_settings::state::set_value(
+        return Ok(crate::fig_settings::state::set_value(
             "api.codewhisperer.profile",
             serde_json::to_value(&profiles[0])?,
         )?);
@@ -415,7 +406,7 @@ async fn select_profile_interactive(whoami: bool) -> Result<()> {
         .iter()
         .map(|p| format!("{} (arn: {})", p.profile_name, p.arn))
         .collect();
-    let active_profile: Option<Profile> = fig_settings::state::get("api.codewhisperer.profile")?;
+    let active_profile: Option<Profile> = crate::fig_settings::state::get("api.codewhisperer.profile")?;
 
     if let Some(default_idx) = active_profile
         .as_ref()
@@ -425,7 +416,7 @@ async fn select_profile_interactive(whoami: bool) -> Result<()> {
     }
 
     spinner.stop_with_message(String::new());
-    let selected = Select::with_theme(&crate::util::dialoguer_theme())
+    let selected = Select::with_theme(&crate::fig_util::dialoguer_theme())
         .with_prompt("Select an IAM Identity Center profile")
         .items(&items)
         .default(0)
@@ -436,8 +427,8 @@ async fn select_profile_interactive(whoami: bool) -> Result<()> {
             let chosen = &profiles[i];
             let profile = serde_json::to_value(chosen)?;
             eprintln!("Set profile: {}\n", chosen.profile_name.as_str().green());
-            fig_settings::state::set_value("api.codewhisperer.profile", profile)?;
-            fig_settings::state::remove_value("api.selectedCustomization")?;
+            crate::fig_settings::state::set_value("api.codewhisperer.profile", profile)?;
+            crate::fig_settings::state::remove_value("api.selectedCustomization")?;
 
             if let Some(profile_region) = chosen.arn.split(':').nth(3) {
                 let intent = if whoami {
@@ -445,7 +436,7 @@ async fn select_profile_interactive(whoami: bool) -> Result<()> {
                 } else {
                     QProfileSwitchIntent::User
                 };
-                fig_telemetry::send_did_select_profile(
+                crate::fig_telemetry::send_did_select_profile(
                     intent,
                     profile_region.to_string(),
                     TelemetryResult::Succeeded,
@@ -456,7 +447,7 @@ async fn select_profile_interactive(whoami: bool) -> Result<()> {
             }
         },
         None => {
-            fig_telemetry::send_did_select_profile(
+            crate::fig_telemetry::send_did_select_profile(
                 QProfileSwitchIntent::User,
                 "not-set".to_string(),
                 TelemetryResult::Cancelled,
@@ -475,6 +466,6 @@ mod tests {
     #[test]
     #[ignore]
     fn unset_profile() {
-        fig_settings::state::remove_value("api.codewhisperer.profile").unwrap();
+        crate::fig_settings::state::remove_value("api.codewhisperer.profile").unwrap();
     }
 }

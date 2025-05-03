@@ -4,21 +4,6 @@ use std::collections::{
 };
 use std::sync::Arc;
 
-use fig_api_client::model::{
-    AssistantResponseMessage,
-    ChatMessage,
-    ConversationState as FigConversationState,
-    Tool,
-    ToolInputSchema,
-    ToolResult,
-    ToolResultContentBlock,
-    ToolSpecification,
-    ToolUse,
-    UserInputMessage,
-    UserInputMessageContext,
-};
-use fig_os_shim::Context;
-use mcp_client::Prompt;
 use tracing::{
     debug,
     error,
@@ -42,7 +27,6 @@ use super::message::{
     UserMessageContent,
     build_env_state,
 };
-use super::shared_writer::SharedWriter;
 use super::token_counter::{
     CharCount,
     CharCounter,
@@ -54,6 +38,22 @@ use super::tools::{
     ToolSpec,
     serde_value_to_document,
 };
+use crate::cli::chat::shared_writer::SharedWriter;
+use crate::fig_api_client::model::{
+    AssistantResponseMessage,
+    ChatMessage,
+    ConversationState as FigConversationState,
+    Tool,
+    ToolInputSchema,
+    ToolResult,
+    ToolResultContentBlock,
+    ToolSpecification,
+    ToolUse,
+    UserInputMessage,
+    UserInputMessageContext,
+};
+use crate::fig_os_shim::Context;
+use crate::mcp_client::Prompt;
 
 const CONTEXT_ENTRY_START_HEADER: &str = "--- CONTEXT ENTRY BEGIN ---\n";
 const CONTEXT_ENTRY_END_HEADER: &str = "--- CONTEXT ENTRY END ---\n\n";
@@ -152,17 +152,17 @@ impl ConversationState {
     /// It asserts that the collection ends with a prompt that assumes the role of user.
     pub fn append_prompts(&mut self, mut prompts: VecDeque<Prompt>) -> Option<String> {
         debug_assert!(self.next_message.is_none(), "next_message should not exist");
-        debug_assert!(prompts.back().is_some_and(|p| p.role == mcp_client::Role::User));
+        debug_assert!(prompts.back().is_some_and(|p| p.role == crate::mcp_client::Role::User));
         let last_msg = prompts.pop_back()?;
         let (mut candidate_user, mut candidate_asst) = (None::<UserMessage>, None::<AssistantMessage>);
         while let Some(prompt) = prompts.pop_front() {
             let Prompt { role, content } = prompt;
             match role {
-                mcp_client::Role::User => {
+                crate::mcp_client::Role::User => {
                     let user_msg = UserMessage::new_prompt(content.to_string());
                     candidate_user.replace(user_msg);
                 },
-                mcp_client::Role::Assistant => {
+                crate::mcp_client::Role::Assistant => {
                     let assistant_msg = AssistantMessage::new_response(None, content.into());
                     candidate_asst.replace(assistant_msg);
                 },
@@ -582,7 +582,7 @@ impl ConversationState {
                                 content: vec![ToolResultContentBlock::Text(
                                     "Tool use was cancelled by the user".to_string(),
                                 )],
-                                status: fig_api_client::model::ToolResultStatus::Error,
+                                status: crate::fig_api_client::model::ToolResultStatus::Error,
                             })
                             .collect::<Vec<_>>(),
                     );
@@ -599,11 +599,10 @@ impl ConversationState {
                         content: vec![ToolResultContentBlock::Text(
                             "Tool use was cancelled by the user".to_string(),
                         )],
-                        status: fig_api_client::model::ToolResultStatus::Error,
+                        status: crate::fig_api_client::model::ToolResultStatus::Error,
                     })
                     .collect::<Vec<_>>();
                 let user_input_message_context = UserInputMessageContext {
-                    shell_state: None,
                     env_state: Some(build_env_state()),
                     tool_results: Some(tool_results),
                     tools: if self.tools.is_empty() {
@@ -754,18 +753,17 @@ fn format_hook_context<'a>(hook_results: impl IntoIterator<Item = &'a (Hook, Str
 
 #[cfg(test)]
 mod tests {
-    use fig_api_client::model::{
-        AssistantResponseMessage,
-        ToolResultStatus,
-    };
-
     use super::super::context::{
         AMAZONQ_FILENAME,
         profile_context_path,
     };
     use super::super::message::AssistantToolUse;
     use super::*;
-    use crate::tool_manager::ToolManager;
+    use crate::cli::chat::tool_manager::ToolManager;
+    use crate::fig_api_client::model::{
+        AssistantResponseMessage,
+        ToolResultStatus,
+    };
 
     fn assert_conversation_state_invariants(state: FigConversationState, assertion_iteration: usize) {
         if let Some(Some(msg)) = state.history.as_ref().map(|h| h.first()) {

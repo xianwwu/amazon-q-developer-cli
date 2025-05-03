@@ -10,9 +10,9 @@ use clap::{
     ValueEnum,
 };
 use eyre::Result;
-use fig_util::CLI_BINARY_NAME;
 
 use crate::cli::Cli;
+use crate::fig_util::CLI_BINARY_NAME;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Shells {

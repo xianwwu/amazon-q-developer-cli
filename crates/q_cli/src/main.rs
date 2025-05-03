@@ -1,11 +1,17 @@
 mod cli;
 mod diagnostics;
-mod install;
-mod logging;
+mod fig_api_client;
+mod fig_auth;
+mod fig_aws_common;
+mod fig_install;
+mod fig_log;
+mod fig_os_shim;
+mod fig_settings;
+mod fig_telemetry;
+mod fig_telemetry_core;
+mod fig_util;
+mod mcp_client;
 mod request;
-mod settings;
-mod telemetry;
-mod util;
 
 use std::process::ExitCode;
 
@@ -17,15 +23,14 @@ use clap::error::{
 };
 use crossterm::style::Stylize;
 use eyre::Result;
-use logging::get_log_level_max;
-use telemetry::{
-    DispatchMode,
+use fig_log::get_log_level_max;
+use tracing::metadata::LevelFilter;
+
+use crate::fig_telemetry::{
     finish_telemetry,
     init_global_telemetry_emitter,
-    set_dispatch_mode,
 };
-use tracing::metadata::LevelFilter;
-use util::{
+use crate::fig_util::{
     CLI_BINARY_NAME,
     PRODUCT_NAME,
 };
@@ -35,7 +40,6 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() -> Result<ExitCode> {
     color_eyre::install()?;
-    set_dispatch_mode(DispatchMode::On);
     init_global_telemetry_emitter();
 
     let multithread = matches!(

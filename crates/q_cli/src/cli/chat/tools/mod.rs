@@ -20,7 +20,6 @@ use crossterm::style::Stylize;
 use custom_tool::CustomTool;
 use execute_bash::ExecuteBash;
 use eyre::Result;
-use fig_os_shim::Context;
 use fs_read::FsRead;
 use fs_write::FsWrite;
 use gh_issue::GhIssue;
@@ -31,6 +30,7 @@ use serde::{
 use use_aws::UseAws;
 
 use super::consts::MAX_TOOL_RESPONSE_SIZE;
+use crate::fig_os_shim::Context;
 
 /// Represents an executable tool use.
 #[derive(Debug, Clone)]
@@ -381,9 +381,8 @@ fn supports_truecolor(ctx: &Context) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use fig_os_shim::EnvProvider;
-
     use super::*;
+    use crate::fig_os_shim::EnvProvider;
 
     #[tokio::test]
     async fn test_tilde_path_expansion() {

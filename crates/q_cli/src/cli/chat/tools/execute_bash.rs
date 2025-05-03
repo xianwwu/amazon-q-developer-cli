@@ -15,7 +15,6 @@ use eyre::{
     Context as EyreContext,
     Result,
 };
-use fig_os_shim::Context;
 use serde::Deserialize;
 use tokio::io::AsyncBufReadExt;
 use tokio::select;
@@ -27,6 +26,7 @@ use super::{
     MAX_TOOL_RESPONSE_SIZE,
     OutputKind,
 };
+use crate::fig_os_shim::Context;
 
 const READONLY_COMMANDS: &[&str] = &["ls", "cat", "echo", "pwd", "which", "head", "tail", "find", "grep"];
 

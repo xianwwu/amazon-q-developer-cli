@@ -4,8 +4,6 @@ use std::time::{
 };
 
 use eyre::Result;
-use fig_api_client::clients::SendMessageOutput;
-use fig_api_client::model::ChatResponseStream;
 use rand::distr::{
     Alphanumeric,
     SampleString,
@@ -21,6 +19,8 @@ use super::message::{
     AssistantMessage,
     AssistantToolUse,
 };
+use crate::fig_api_client::clients::SendMessageOutput;
+use crate::fig_api_client::model::ChatResponseStream;
 
 #[derive(Debug, Error)]
 pub struct RecvError {
@@ -44,7 +44,7 @@ impl std::fmt::Display for RecvError {
 #[derive(Debug, Error)]
 pub enum RecvErrorKind {
     #[error("{0}")]
-    Client(#[from] fig_api_client::Error),
+    Client(#[from] crate::fig_api_client::Error),
     #[error("{0}")]
     Json(#[from] serde_json::Error),
     /// An error was encountered while waiting for the next event in the stream after a noticeably
@@ -54,7 +54,7 @@ pub enum RecvErrorKind {
     /// to an exceptionally complex tool use taking too long to generate.
     #[error("The stream ended after {}s: {source}", .duration.as_secs())]
     StreamTimeout {
-        source: fig_api_client::Error,
+        source: crate::fig_api_client::Error,
         duration: std::time::Duration,
     },
     /// Unexpected end of stream while receiving a tool use.

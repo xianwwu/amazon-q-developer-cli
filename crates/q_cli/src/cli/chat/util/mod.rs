@@ -3,9 +3,8 @@ pub mod issue;
 use std::io::Write;
 use std::time::Duration;
 
-use fig_util::system_info::in_cloudshell;
-
 use super::ChatError;
+use crate::fig_util::system_info::in_cloudshell;
 
 const GOV_REGIONS: &[&str] = &["us-gov-east-1", "us-gov-west-1"];
 

@@ -10,8 +10,6 @@ use eyre::{
     Result,
     eyre,
 };
-use fig_os_shim::Context;
-use fig_util::directories;
 use glob::glob;
 use regex::Regex;
 use serde::{
@@ -24,6 +22,8 @@ use super::hooks::{
     Hook,
     HookExecutor,
 };
+use crate::fig_os_shim::Context;
+use crate::fig_util::directories;
 
 pub const AMAZONQ_FILENAME: &str = "AmazonQ.md";
 

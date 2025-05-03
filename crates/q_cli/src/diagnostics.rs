@@ -1,22 +1,6 @@
 #![allow(clippy::ref_option_ref)]
 use std::collections::BTreeMap;
 
-use fig_os_shim::{
-    Context,
-    Os,
-    PlatformProvider,
-};
-use fig_telemetry::InstallMethod;
-use fig_util::consts::build::HASH;
-use fig_util::manifest::manifest;
-use fig_util::system_info::{
-    OSVersion,
-    os_version,
-};
-use fig_util::{
-    Shell,
-    Terminal,
-};
 use serde::Serialize;
 use sysinfo::{
     CpuRefreshKind,
@@ -25,6 +9,19 @@ use sysinfo::{
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+
+use crate::fig_os_shim::{
+    Context,
+    Os,
+    PlatformProvider,
+};
+use crate::fig_telemetry::InstallMethod;
+use crate::fig_util::consts::build::HASH;
+use crate::fig_util::manifest::manifest;
+use crate::fig_util::system_info::{
+    OSVersion,
+    os_version,
+};
 
 fn serialize_display<D, S>(display: D, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -60,7 +57,7 @@ pub struct BuildDetails {
 
 impl BuildDetails {
     pub fn new() -> BuildDetails {
-        let date = fig_util::consts::build::DATETIME
+        let date = crate::fig_util::consts::build::DATETIME
             .and_then(|input| OffsetDateTime::parse(input, &Rfc3339).ok())
             .and_then(|time| {
                 let rfc3339 = time.format(&Rfc3339).ok()?;
@@ -133,7 +130,7 @@ impl EnvVarDiagnostic {
     fn new() -> EnvVarDiagnostic {
         let env_vars = std::env::vars()
             .filter(|(key, _)| {
-                let fig_var = fig_util::env_var::ALL.contains(&key.as_str());
+                let fig_var = crate::fig_util::env_var::ALL.contains(&key.as_str());
                 let other_var = [
                     // General env vars
                     "SHELL",
@@ -173,10 +170,6 @@ pub struct CurrentEnvironment {
     pub cwd: Option<String>,
     pub cli_path: Option<String>,
     pub os: Os,
-    pub shell_path: Option<String>,
-    pub shell_version: Option<String>,
-    #[serde(serialize_with = "serialize_display_option")]
-    pub terminal: Option<Terminal>,
     #[serde(serialize_with = "serialize_display")]
     pub install_method: InstallMethod,
     #[serde(skip_serializing_if = "is_false")]
@@ -193,19 +186,9 @@ pub struct CurrentEnvironment {
 
 impl CurrentEnvironment {
     async fn new() -> CurrentEnvironment {
-        use fig_util::process_info::{
-            Pid,
-            PidExt,
-        };
         let ctx = Context::new();
 
         let username = format!("/{}", whoami::username());
-
-        let shell_path = Pid::current()
-            .parent()
-            .and_then(|pid| pid.exe())
-            .map(|p| p.to_string_lossy().replace(&username, "/USER"));
-        let shell_version = Shell::current_shell_version().await.map(|(_, v)| v).ok();
 
         let cwd = ctx
             .env()
@@ -220,22 +203,18 @@ impl CurrentEnvironment {
             .map(|path| path.to_string_lossy().replace(&username, "/USER"));
 
         let os = ctx.platform().os();
-        let terminal = Terminal::parent_terminal(&ctx);
-        let install_method = fig_telemetry::get_install_method();
+        let install_method = crate::fig_telemetry::get_install_method();
 
-        let in_cloudshell = fig_util::system_info::in_cloudshell();
-        let in_ssh = fig_util::system_info::in_ssh();
-        let in_ci = fig_util::system_info::in_ci();
-        let in_wsl = fig_util::system_info::in_wsl();
-        let in_codespaces = fig_util::system_info::in_codespaces();
+        let in_cloudshell = crate::fig_util::system_info::in_cloudshell();
+        let in_ssh = crate::fig_util::system_info::in_ssh();
+        let in_ci = crate::fig_util::system_info::in_ci();
+        let in_wsl = crate::fig_util::system_info::in_wsl();
+        let in_codespaces = crate::fig_util::system_info::in_codespaces();
 
         CurrentEnvironment {
-            shell_path,
-            shell_version,
             cwd,
             cli_path,
             os,
-            terminal,
             install_method,
             in_cloudshell,
             in_ssh,

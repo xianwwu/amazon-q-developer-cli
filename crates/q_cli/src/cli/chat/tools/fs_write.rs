@@ -13,7 +13,6 @@ use eyre::{
     bail,
     eyre,
 };
-use fig_os_shim::Context;
 use serde::Deserialize;
 use similar::DiffableStr;
 use syntect::easy::HighlightLines;
@@ -34,6 +33,7 @@ use super::{
     sanitize_path_tool_arg,
     supports_truecolor,
 };
+use crate::fig_os_shim::Context;
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);

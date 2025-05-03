@@ -67,19 +67,6 @@ use eyre::{
     Result,
     bail,
 };
-use fig_api_client::StreamingClient;
-use fig_api_client::clients::SendMessageOutput;
-use fig_api_client::model::{
-    ChatResponseStream,
-    Tool as FigTool,
-    ToolResultStatus,
-};
-use fig_os_shim::Context;
-use fig_settings::{
-    Settings,
-    State,
-};
-use fig_util::CLI_BINARY_NAME;
 use hooks::{
     Hook,
     HookTrigger,
@@ -95,6 +82,20 @@ use rand::distr::{
     SampleString,
 };
 use shared_writer::SharedWriter;
+
+use crate::fig_api_client::StreamingClient;
+use crate::fig_api_client::clients::SendMessageOutput;
+use crate::fig_api_client::model::{
+    ChatResponseStream,
+    Tool as FigTool,
+    ToolResultStatus,
+};
+use crate::fig_os_shim::Context;
+use crate::fig_settings::{
+    Settings,
+    State,
+};
+use crate::fig_util::CLI_BINARY_NAME;
 
 /// Help text for the compact command
 fn compact_help_text() -> String {
@@ -125,10 +126,6 @@ that may eventually reach memory constraints.
     )
 }
 use input_source::InputSource;
-use mcp_client::{
-    Prompt,
-    PromptGetResult,
-};
 use parse::{
     ParseState,
     interpret_markdown,
@@ -182,6 +179,11 @@ use util::{
 use uuid::Uuid;
 use winnow::Partial;
 use winnow::stream::Offset;
+
+use crate::mcp_client::{
+    Prompt,
+    PromptGetResult,
+};
 
 const WELCOME_TEXT: &str = color_print::cstr! {"
 <em>Welcome to </em>
@@ -309,7 +311,7 @@ pub async fn chat(
     trust_all_tools: bool,
     trust_tools: Option<Vec<String>>,
 ) -> Result<ExitCode> {
-    if !fig_util::system_info::in_cloudshell() && !fig_auth::is_logged_in().await {
+    if !crate::fig_util::system_info::in_cloudshell() && !crate::fig_auth::is_logged_in().await {
         bail!(
             "You are not logged in, please log in with {}",
             format!("{CLI_BINARY_NAME} login",).bold()
@@ -454,7 +456,7 @@ enum ToolUseStatus {
 #[derive(Debug, Error)]
 pub enum ChatError {
     #[error("{0}")]
-    Client(#[from] fig_api_client::Error),
+    Client(#[from] crate::fig_api_client::Error),
     #[error("{0}")]
     ResponseStream(#[from] parser::RecvError),
     #[error("{0}")]
@@ -997,7 +999,7 @@ impl ChatContext {
                     ChatError::Client(err) => match err {
                         // Errors from attempting to send too large of a conversation history. In
                         // this case, attempt to automatically compact the history for the user.
-                        fig_api_client::Error::ContextWindowOverflow => {
+                        crate::fig_api_client::Error::ContextWindowOverflow => {
                             let history_too_small = self
                                 .conversation_state
                                 .backend_conversation_state(false, true)
@@ -1026,7 +1028,7 @@ impl ChatContext {
                                 help: false,
                             });
                         },
-                        fig_api_client::Error::QuotaBreach(msg) => {
+                        crate::fig_api_client::Error::QuotaBreach(msg) => {
                             print_err!(msg, err);
                         },
                         _ => {
@@ -1110,7 +1112,7 @@ impl ChatContext {
         let response = match response {
             Ok(res) => res,
             Err(e) => match e {
-                fig_api_client::Error::ContextWindowOverflow => {
+                crate::fig_api_client::Error::ContextWindowOverflow => {
                     self.conversation_state.clear(true);
                     if self.interactive {
                         self.spinner.take();
@@ -1164,7 +1166,7 @@ impl ChatContext {
         }
 
         if let Some(message_id) = self.conversation_state.message_id() {
-            fig_telemetry::send_chat_added_message(
+            crate::fig_telemetry::send_chat_added_message(
                 self.conversation_state.conversation_id().to_owned(),
                 message_id.to_owned(),
                 self.conversation_state.context_message_length(),
@@ -2159,7 +2161,7 @@ impl ChatContext {
                             }
                         },
                     }
-                    // fig_telemetry::send_context_command_executed
+                    // crate::fig_telemetry::send_context_command_executed
                 } else {
                     execute!(
                         self.output,
@@ -3049,7 +3051,7 @@ impl ChatContext {
 
             if ended {
                 if let Some(message_id) = self.conversation_state.message_id() {
-                    fig_telemetry::send_chat_added_message(
+                    crate::fig_telemetry::send_chat_added_message(
                         self.conversation_state.conversation_id().to_owned(),
                         message_id.to_owned(),
                         self.conversation_state.context_message_length(),
@@ -3293,9 +3295,9 @@ impl ChatContext {
                 ToolUseStatus::RetryInProgress(ref id) => Some(id.as_str()),
             }
             .map(|v| v.to_string());
-            let event: fig_telemetry::EventType = event.into();
-            let app_event = fig_telemetry::AppTelemetryEvent::new(event).await;
-            fig_telemetry::dispatch_or_send_event(app_event).await;
+            let event: crate::fig_telemetry::EventType = event.into();
+            let app_event = crate::fig_telemetry::AppTelemetryEvent::new(event).await;
+            crate::fig_telemetry::send_event(app_event).await;
         }
     }
 
@@ -3387,9 +3389,9 @@ impl ToolUseEventBuilder {
     }
 }
 
-impl From<ToolUseEventBuilder> for fig_telemetry::EventType {
+impl From<ToolUseEventBuilder> for crate::fig_telemetry::EventType {
     fn from(val: ToolUseEventBuilder) -> Self {
-        fig_telemetry::EventType::ToolUseSuggested {
+        crate::fig_telemetry::EventType::ToolUseSuggested {
             conversation_id: val.conversation_id,
             utterance_id: val.utterance_id,
             user_input_id: val.user_input_id,

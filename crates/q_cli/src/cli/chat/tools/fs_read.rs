@@ -12,7 +12,6 @@ use eyre::{
     Result,
     bail,
 };
-use fig_os_shim::Context;
 use serde::{
     Deserialize,
     Serialize,
@@ -30,6 +29,7 @@ use super::{
     format_path,
     sanitize_path_tool_arg,
 };
+use crate::fig_os_shim::Context;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "mode")]
