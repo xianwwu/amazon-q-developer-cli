@@ -381,14 +381,6 @@ pub enum ChatResponseStream {
     Unknown,
 }
 
-impl ChatResponseStream {
-    pub fn assistant_response(content: impl Into<String>) -> Self {
-        Self::AssistantResponseEvent {
-            content: content.into(),
-        }
-    }
-}
-
 impl From<amzn_codewhisperer_streaming_client::types::ChatResponseStream> for ChatResponseStream {
     fn from(value: amzn_codewhisperer_streaming_client::types::ChatResponseStream) -> Self {
         match value {

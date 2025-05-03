@@ -12,17 +12,9 @@ use strum::{
     Display,
     EnumString,
 };
-use tracing::debug;
 
-use crate::fig_os_shim::{
-    EnvProvider,
-    FsProvider,
-    PlatformProvider,
-};
-use crate::fig_util::Error;
 use crate::fig_util::build::TARGET_TRIPLE;
 use crate::fig_util::consts::build::VARIANT;
-use crate::fig_util::directories::bundle_metadata_path;
 
 #[derive(Deserialize)]
 pub struct Manifest {
@@ -219,33 +211,6 @@ pub fn manifest() -> &'static Manifest {
         packaged_at: "unknown".into(),
         packaged_by: "unknown".into(),
     })
-}
-
-/// Returns the [BundleMetadata] distributed with the app. This should only be called from the
-/// desktop binary since in some bundles (notably AppImage), only the desktop app can access it.
-///
-/// Currently, only Linux desktop bundles have a bundle metadata.
-pub async fn bundle_metadata<Ctx: FsProvider + EnvProvider + PlatformProvider>(
-    ctx: &Ctx,
-) -> Result<Option<BundleMetadata>, Error> {
-    match bundle_metadata_json(ctx).await? {
-        Some(json) => Ok(serde_json::from_str(&json)?),
-        None => Ok(None),
-    }
-}
-
-/// Returns the [BundleMetadata] without serializing. See [bundle_metadata].
-pub async fn bundle_metadata_json<Ctx: FsProvider + EnvProvider + PlatformProvider>(
-    ctx: &Ctx,
-) -> Result<Option<String>, Error> {
-    match (ctx.platform().os(), &manifest().variant) {
-        (crate::fig_os_shim::Os::Linux, Variant::Full) => {
-            let metadata_path = bundle_metadata_path(ctx)?;
-            debug!("Reading metadata at path: {:?}", &metadata_path);
-            Ok(Some(ctx.fs().read_to_string(bundle_metadata_path(ctx)?).await?))
-        },
-        _ => Ok(None),
-    }
 }
 
 /// Checks if this is a full build according to the manifest.

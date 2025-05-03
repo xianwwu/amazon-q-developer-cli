@@ -95,18 +95,10 @@ pub enum ClientError {
         source: tokio::time::error::Elapsed,
         context: String,
     },
-    #[error("Unexpected msg type encountered")]
-    UnexpectedMsgType,
     #[error("{0}")]
     NegotiationError(String),
     #[error("Failed to obtain process id")]
     MissingProcessId,
-    #[error("Invalid path received")]
-    InvalidPath,
-    #[error("{0}")]
-    ProcessKillError(String),
-    #[error("{0}")]
-    PoisonError(String),
 }
 
 impl From<(tokio::time::error::Elapsed, String)> for ClientError {
@@ -400,13 +392,13 @@ where
                 loop {
                     let result = current_resp.result.as_ref().cloned().unwrap();
                     let mut list: Vec<serde_json::Value> = match ops {
-                        PaginationSupportedOps::ResourcesList => {
+                        PaginationSupportedOps::Resources => {
                             let ResourcesListResult { resources: list, .. } =
                                 serde_json::from_value::<ResourcesListResult>(result)
                                     .map_err(ClientError::Serialization)?;
                             list
                         },
-                        PaginationSupportedOps::ResourceTemplatesList => {
+                        PaginationSupportedOps::ResourceTemplates => {
                             let ResourceTemplatesListResult {
                                 resource_templates: list,
                                 ..
@@ -414,13 +406,13 @@ where
                                 .map_err(ClientError::Serialization)?;
                             list
                         },
-                        PaginationSupportedOps::PromptsList => {
+                        PaginationSupportedOps::Prompts => {
                             let PromptsListResult { prompts: list, .. } =
                                 serde_json::from_value::<PromptsListResult>(result)
                                     .map_err(ClientError::Serialization)?;
                             list
                         },
-                        PaginationSupportedOps::ToolsList => {
+                        PaginationSupportedOps::Tools => {
                             let ToolsListResult { tools: list, .. } = serde_json::from_value::<ToolsListResult>(result)
                                 .map_err(ClientError::Serialization)?;
                             list

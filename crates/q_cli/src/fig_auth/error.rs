@@ -1,7 +1,4 @@
-use aws_sdk_ssooidc::error::{
-    DisplayErrorContext,
-    SdkError,
-};
+use aws_sdk_ssooidc::error::SdkError;
 use aws_sdk_ssooidc::operation::create_token::CreateTokenError;
 use aws_sdk_ssooidc::operation::register_client::RegisterClientError;
 use aws_sdk_ssooidc::operation::start_device_authorization::StartDeviceAuthorizationError;
@@ -39,26 +36,12 @@ pub enum Error {
     NoToken,
     #[error("OAuth state mismatch. Actual: {} | Expected: {}", .actual, .expected)]
     OAuthStateMismatch { actual: String, expected: String },
-    #[error("OAuth invalid query parameters")]
-    OAuthInvalidQueryParams(String),
     #[error("Timeout waiting for authentication to complete")]
     OAuthTimeout,
     #[error("No code received on redirect")]
     OAuthMissingCode,
     #[error("OAuth error: {0}")]
     OAuthCustomError(String),
-}
-
-impl Error {
-    pub fn to_verbose_string(&self) -> String {
-        match self {
-            Error::Ssooidc(s) => DisplayErrorContext(s).to_string(),
-            Error::SdkRegisterClient(s) => DisplayErrorContext(s).to_string(),
-            Error::SdkCreateToken(s) => DisplayErrorContext(s).to_string(),
-            Error::SdkStartDeviceAuthorization(s) => DisplayErrorContext(s).to_string(),
-            other => other.to_string(),
-        }
-    }
 }
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;

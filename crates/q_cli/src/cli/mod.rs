@@ -1,7 +1,6 @@
 //! CLI functionality
 
 mod chat;
-mod completion;
 mod debug;
 mod diagnostics;
 mod feed;

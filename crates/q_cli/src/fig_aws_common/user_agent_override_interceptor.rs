@@ -69,6 +69,7 @@ impl UserAgentOverrideInterceptor {
         Self { env: Env::real() }
     }
 
+    #[cfg(test)]
     pub fn from_env(env: Env) -> Self {
         Self { env }
     }

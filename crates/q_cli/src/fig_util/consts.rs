@@ -1,11 +1,3 @@
-pub const APP_BUNDLE_ID: &str = "com.amazon.codewhisperer";
-pub const APP_BUNDLE_NAME: &str = "Amazon Q.app";
-
-#[cfg(target_os = "macos")]
-pub const APP_PROCESS_NAME: &str = "q_desktop";
-#[cfg(target_os = "linux")]
-pub const APP_PROCESS_NAME: &str = "q-desktop";
-
 #[cfg(windows)]
 pub const APP_PROCESS_NAME: &str = "q_desktop.exe";
 
@@ -25,23 +17,10 @@ pub const PRODUCT_NAME: &str = "Amazon Q";
 pub const RUNTIME_DIR_NAME: &str = "cwrun";
 
 // These are the old "CodeWhisperer" branding, used anywhere we will not update to Amazon Q
-pub const OLD_PRODUCT_NAME: &str = "CodeWhisperer";
 pub const OLD_CLI_BINARY_NAMES: &[&str] = &["cw"];
 pub const OLD_PTY_BINARY_NAMES: &[&str] = &["cwterm"];
 
 pub const GITHUB_REPO_NAME: &str = "aws/amazon-q-developer-cli";
-
-pub mod url {
-    pub const USER_MANUAL: &str = "https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line.html";
-    pub const AUTOCOMPLETE_WIKI: &str =
-        "https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-autocomplete.html";
-    pub const AUTOCOMPLETE_SSH_WIKI: &str =
-        "https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-autocomplete-ssh.html";
-    pub const CHAT_WIKI: &str = "https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-chat.html";
-    pub const TRANSLATE_WIKI: &str =
-        "https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-conversation.html";
-    pub const TELEMETRY_WIKI: &str = "https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/opt-out-IDE.html";
-}
 
 /// Build time env vars
 pub mod build {

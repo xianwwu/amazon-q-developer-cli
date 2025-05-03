@@ -12,7 +12,6 @@ pub use clients::{
     Client,
     StreamingClient,
 };
-pub use customization::Customization;
 pub use endpoints::Endpoint;
 pub use error::Error;
 pub use profile::list_available_profiles;

@@ -48,10 +48,6 @@ impl AppTelemetryEvent {
         })
     }
 
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
-    }
-
     pub fn into_metric_datum(self) -> Option<MetricDatum> {
         self.0.into_metric_datum()
     }
@@ -139,8 +135,6 @@ pub(crate) mod tests {
         for event in all_events().await {
             let json = serde_json::to_string_pretty(&event).unwrap();
             println!("\n{json}\n");
-            let deser = AppTelemetryEvent::from_json(&json).unwrap();
-            assert_eq!(event, deser);
         }
     }
 

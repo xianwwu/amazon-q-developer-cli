@@ -161,10 +161,6 @@ impl SettingsProvider for Settings {
     }
 }
 
-pub fn init_global() -> Result<()> {
-    OldSettings::load_into_global()
-}
-
 pub fn set_value(key: impl Into<String>, value: impl Into<serde_json::Value>) -> Result<()> {
     Settings::new().set_value(key, value)
 }

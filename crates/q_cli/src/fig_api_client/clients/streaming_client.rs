@@ -274,9 +274,15 @@ mod tests {
     #[tokio::test]
     async fn test_mock() {
         let client = StreamingClient::mock(vec![vec![
-            ChatResponseStream::assistant_response("Hello!"),
-            ChatResponseStream::assistant_response(" How can I"),
-            ChatResponseStream::assistant_response(" assist you today?"),
+            ChatResponseStream::AssistantResponseEvent {
+                content: "Hello!".to_owned(),
+            },
+            ChatResponseStream::AssistantResponseEvent {
+                content: " How can I".to_owned(),
+            },
+            ChatResponseStream::AssistantResponseEvent {
+                content: " assist you today?".to_owned(),
+            },
         ]]);
         let mut output = client
             .send_message(ConversationState {

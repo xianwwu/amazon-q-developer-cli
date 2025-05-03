@@ -7,19 +7,19 @@ use thiserror::Error;
 /// https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/pagination/#operations-supporting-pagination
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaginationSupportedOps {
-    ResourcesList,
-    ResourceTemplatesList,
-    PromptsList,
-    ToolsList,
+    Resources,
+    ResourceTemplates,
+    Prompts,
+    Tools,
 }
 
 impl PaginationSupportedOps {
     pub fn as_key(&self) -> &str {
         match self {
-            PaginationSupportedOps::ResourcesList => "resources",
-            PaginationSupportedOps::ResourceTemplatesList => "resourceTemplates",
-            PaginationSupportedOps::PromptsList => "prompts",
-            PaginationSupportedOps::ToolsList => "tools",
+            PaginationSupportedOps::Resources => "resources",
+            PaginationSupportedOps::ResourceTemplates => "resourceTemplates",
+            PaginationSupportedOps::Prompts => "prompts",
+            PaginationSupportedOps::Tools => "tools",
         }
     }
 }
@@ -29,10 +29,10 @@ impl TryFrom<&str> for PaginationSupportedOps {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
-            "resources/list" => Ok(PaginationSupportedOps::ResourcesList),
-            "resources/templates/list" => Ok(PaginationSupportedOps::ResourceTemplatesList),
-            "prompts/list" => Ok(PaginationSupportedOps::PromptsList),
-            "tools/list" => Ok(PaginationSupportedOps::ToolsList),
+            "resources/list" => Ok(PaginationSupportedOps::Resources),
+            "resources/templates/list" => Ok(PaginationSupportedOps::ResourceTemplates),
+            "prompts/list" => Ok(PaginationSupportedOps::Prompts),
+            "tools/list" => Ok(PaginationSupportedOps::Tools),
             _ => Err(OpsConversionError::InvalidMethod),
         }
     }

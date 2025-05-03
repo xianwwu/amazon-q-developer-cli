@@ -251,14 +251,14 @@ impl PkceRegistration {
             response.output,
             self.region.clone(),
             Some(self.issuer_url),
-            OAuthFlow::PKCE,
+            OAuthFlow::Pkce,
             Some(C::scopes()),
         );
 
         let device_registration = DeviceRegistration::from_output(
             self.registered_client.output,
             &self.region,
-            OAuthFlow::PKCE,
+            OAuthFlow::Pkce,
             C::scopes(),
         );
 
@@ -505,7 +505,7 @@ mod tests {
     #[tokio::test]
     async fn test_pkce_flow_e2e() {
         tracing_subscriber::fmt::init();
-        let start_url = AMZN_START_URL.into();
+        let start_url = "https://amzn.awsapps.com/start".to_string();
         let region = Region::new("us-east-1");
         let client = client(region.clone());
         let registration = PkceRegistration::register(&client, region.clone(), start_url, None)

@@ -31,17 +31,6 @@ where
     serializer.serialize_str(&display.to_string())
 }
 
-fn serialize_display_option<D, S>(display: &Option<D>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    D: std::fmt::Display,
-    S: serde::Serializer,
-{
-    match display {
-        Some(display) => serializer.serialize_str(&display.to_string()),
-        None => serializer.serialize_none(),
-    }
-}
-
 fn is_false(value: &bool) -> bool {
     !value
 }

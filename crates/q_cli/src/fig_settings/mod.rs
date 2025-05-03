@@ -1,5 +1,4 @@
 pub mod error;
-pub mod history;
 pub mod keybindings;
 pub mod settings;
 pub mod sqlite;
@@ -232,39 +231,6 @@ pub trait JsonStore: Sized {
         Ok(json)
     }
 
-    /// Loads data from file into global backend
-    fn load_into_global() -> Result<()> {
-        match Self::load_from_file() {
-            Ok(json) => {
-                *Self::data_lock().write() = Some(json);
-                Ok(())
-            },
-            Err(err) => {
-                *Self::data_lock().write() = Some(Map::new());
-
-                let file_content: Result<String> = (|| {
-                    let _lock_guard = Self::file_lock().write();
-                    let mut file = FileRwLock::new(File::open(Self::path()?)?);
-                    let mut read = file.write()?;
-                    let mut content = String::new();
-                    #[allow(clippy::verbose_file_reads)]
-                    read.read_to_string(&mut content)?;
-                    Ok(content)
-                })();
-
-                error!(%err, ?file_content, "Failed to load json file into global backend");
-
-                // Write default data to file
-                let json = Self::new_from_backend(Backend::Memory(Map::new()));
-                if let Err(err) = json.save_to_file() {
-                    error!(%err, "Failed to write default data to file");
-                }
-
-                Err(err)
-            },
-        }
-    }
-
     fn save_to_file(&self) -> Result<()> {
         let path = Self::path()?;
 
@@ -381,55 +347,3 @@ impl JsonStore for OldSettings {
         }
     }
 }
-
-// #[cfg(test)]
-// mod test {
-//     use std::path::Path;
-
-//     use super::*;
-
-//     fn test_store_type(path: &Path, store: JsonType) {
-//         let mut local_json = LocalJson::load_file(store).unwrap();
-//         assert_eq!(fs::read_to_string(path).unwrap(), "");
-//         assert_eq!(local_json.inner, serde_json::Map::new());
-//         local_json.save().unwrap();
-//         assert_eq!(fs::read_to_string(path).unwrap(), "{}");
-
-//         local_json.set("a", 123);
-//         local_json.set("b", "hello");
-//         local_json.set("c", false);
-//         local_json.save().unwrap();
-//         assert_eq!(
-//             fs::read_to_string(path).unwrap(),
-//             "{\n  \"a\": 123,\n  \"b\": \"hello\",\n  \"c\": false\n}"
-//         );
-
-//         local_json.remove("a").unwrap();
-//         local_json.save().unwrap();
-//         assert_eq!(
-//             fs::read_to_string(path).unwrap(),
-//             "{\n  \"b\": \"hello\",\n  \"c\": false\n}"
-//         );
-//         assert_eq!(local_json.get("b").unwrap(), "hello");
-
-//         fs::write(path, "invalid json").unwrap();
-//         assert!(matches!(
-//             LocalJson::load_file(store).unwrap_err(),
-//             Error::SettingsNotObject
-//         ));
-//     }
-
-//     #[fig_test::test]
-//     fn test_settings_raw() {
-//         let path = tempfile::tempdir().unwrap().into_path().join("local.json");
-//         std::env::set_var("FIG_DIRECTORIES_SETTINGS_PATH", &path);
-//         test_store_type(&path, JsonType::Settings);
-//     }
-
-//     #[fig_test::test]
-//     fn test_state_raw() {
-//         let path = tempfile::tempdir().unwrap().into_path().join("local.json");
-//         std::env::set_var("FIG_DIRECTORIES_STATE_PATH", &path);
-//         test_store_type(&path, JsonType::State);
-//     }
-// }

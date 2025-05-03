@@ -15,7 +15,7 @@ use rustls::{
 use url::ParseError;
 
 #[derive(Debug)]
-pub enum Error {
+pub enum RequestError {
     Reqwest(reqwest::Error),
     Serde(serde_json::Error),
     Io(std::io::Error),
@@ -24,54 +24,54 @@ pub enum Error {
     UrlParseError(ParseError),
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for RequestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Reqwest(err) => write!(f, "Reqwest error: {err}"),
-            Error::Serde(err) => write!(f, "Serde error: {err}"),
-            Error::Io(err) => write!(f, "Io error: {err}"),
-            Error::Dir(err) => write!(f, "Dir error: {err}"),
-            Error::Settings(err) => write!(f, "Settings error: {err}"),
-            Error::UrlParseError(err) => write!(f, "Url parse error: {err}"),
+            RequestError::Reqwest(err) => write!(f, "Reqwest error: {err}"),
+            RequestError::Serde(err) => write!(f, "Serde error: {err}"),
+            RequestError::Io(err) => write!(f, "Io error: {err}"),
+            RequestError::Dir(err) => write!(f, "Dir error: {err}"),
+            RequestError::Settings(err) => write!(f, "Settings error: {err}"),
+            RequestError::UrlParseError(err) => write!(f, "Url parse error: {err}"),
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for RequestError {}
 
-impl From<reqwest::Error> for Error {
+impl From<reqwest::Error> for RequestError {
     fn from(e: reqwest::Error) -> Self {
-        Error::Reqwest(e)
+        RequestError::Reqwest(e)
     }
 }
 
-impl From<serde_json::Error> for Error {
+impl From<serde_json::Error> for RequestError {
     fn from(e: serde_json::Error) -> Self {
-        Error::Serde(e)
+        RequestError::Serde(e)
     }
 }
 
-impl From<std::io::Error> for Error {
+impl From<std::io::Error> for RequestError {
     fn from(e: std::io::Error) -> Self {
-        Error::Io(e)
+        RequestError::Io(e)
     }
 }
 
-impl From<crate::fig_util::directories::DirectoryError> for Error {
+impl From<crate::fig_util::directories::DirectoryError> for RequestError {
     fn from(e: crate::fig_util::directories::DirectoryError) -> Self {
-        Error::Dir(e)
+        RequestError::Dir(e)
     }
 }
 
-impl From<crate::fig_settings::Error> for Error {
+impl From<crate::fig_settings::Error> for RequestError {
     fn from(e: crate::fig_settings::Error) -> Self {
-        Error::Settings(e)
+        RequestError::Settings(e)
     }
 }
 
-impl From<ParseError> for Error {
+impl From<ParseError> for RequestError {
     fn from(e: ParseError) -> Self {
-        Error::UrlParseError(e)
+        RequestError::UrlParseError(e)
     }
 }
 

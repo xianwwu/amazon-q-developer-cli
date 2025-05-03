@@ -69,14 +69,14 @@ use crate::fig_telemetry_core::{
 #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OAuthFlow {
     DeviceCode,
-    PKCE,
+    Pkce,
 }
 
 impl std::fmt::Display for OAuthFlow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
             OAuthFlow::DeviceCode => write!(f, "DeviceCode"),
-            OAuthFlow::PKCE => write!(f, "PKCE"),
+            OAuthFlow::Pkce => write!(f, "PKCE"),
         }
     }
 }
@@ -472,12 +472,6 @@ impl BuilderIdToken {
             Some(_) => TokenType::IamIdentityCenter,
         }
     }
-
-    /// Check if the token is for the internal amzn start URL (`https://amzn.awsapps.com/start`),
-    /// this implies the user will use midway for private specs
-    pub fn is_amzn_user(&self) -> bool {
-        matches!(&self.start_url, Some(url) if url == AMZN_START_URL)
-    }
 }
 
 pub enum PollCreateToken {
@@ -547,10 +541,6 @@ pub async fn refresh_token() -> Result<Option<BuilderIdToken>> {
     BuilderIdToken::load(&secret_store, true).await
 }
 
-pub async fn is_amzn_user() -> Result<bool> {
-    Ok(builder_id_token().await?.is_some_and(|t| t.is_amzn_user()))
-}
-
 pub async fn is_logged_in() -> bool {
     matches!(builder_id_token().await, Ok(Some(_)))
 }
@@ -617,7 +607,7 @@ mod tests {
     #[test]
     fn test_oauth_flow_ser_deser() {
         test_ser_deser!(OAuthFlow, OAuthFlow::DeviceCode, "DeviceCode");
-        test_ser_deser!(OAuthFlow, OAuthFlow::PKCE, "PKCE");
+        test_ser_deser!(OAuthFlow, OAuthFlow::Pkce, "PKCE");
     }
 
     #[test]
@@ -645,15 +635,12 @@ mod tests {
     fn test_token_type() {
         let mut token = BuilderIdToken::test();
         assert_eq!(token.token_type(), TokenType::BuilderId);
-        assert!(!token.is_amzn_user());
 
         token.start_url = None;
         assert_eq!(token.token_type(), TokenType::BuilderId);
-        assert!(!token.is_amzn_user());
 
-        token.start_url = Some(AMZN_START_URL.into());
+        token.start_url = Some("https://amzn.awsapps.com/start".into());
         assert_eq!(token.token_type(), TokenType::IamIdentityCenter);
-        assert!(token.is_amzn_user());
     }
 
     #[ignore = "not in ci"]
@@ -665,7 +652,7 @@ mod tests {
     #[ignore = "login flow"]
     #[tokio::test]
     async fn test_login() {
-        let start_url = Some(AMZN_START_URL.into());
+        let start_url = Some("https://amzn.awsapps.com/start".into());
         let region = Some("us-east-1".into());
 
         // let start_url = None;

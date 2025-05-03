@@ -124,29 +124,6 @@ pub fn current_exe_origin() -> Result<PathBuf, Error> {
     Ok(std::env::current_exe()?.canonicalize()?)
 }
 
-#[must_use]
-fn app_bundle_path_opt() -> Option<PathBuf> {
-    use consts::macos::BUNDLE_CONTENTS_MACOS_PATH;
-
-    let current_exe = current_exe_origin().ok()?;
-
-    // Verify we have .../Bundle.app/Contents/MacOS/binary-name
-    let mut parts: PathBuf = current_exe.components().rev().skip(1).take(3).collect();
-    parts = parts.iter().rev().collect();
-
-    if parts != Path::new(APP_BUNDLE_NAME).join(BUNDLE_CONTENTS_MACOS_PATH) {
-        return None;
-    }
-
-    // .../Bundle.app/Contents/MacOS/binary-name -> .../Bundle.app
-    current_exe.ancestors().nth(3).map(|s| s.into())
-}
-
-#[must_use]
-pub fn app_bundle_path() -> PathBuf {
-    app_bundle_path_opt().unwrap_or_else(|| Path::new("/Applications").join(APP_BUNDLE_NAME))
-}
-
 pub fn partitioned_compare(lhs: &str, rhs: &str, by: char) -> Ordering {
     let sides = lhs
         .split(by)
@@ -329,14 +306,6 @@ pub fn get_running_app_info(bundle_id: impl AsRef<str>, field: impl AsRef<str>) 
     Ok(value.trim().into())
 }
 
-pub fn get_app_info() -> Result<String> {
-    let output = Command::new("lsappinfo")
-        .args(["info", "-app", APP_BUNDLE_ID])
-        .output()?;
-    let result = String::from_utf8(output.stdout)?;
-    Ok(result.trim().into())
-}
-
 pub fn dialoguer_theme() -> ColorfulTheme {
     ColorfulTheme {
         prompt_prefix: dialoguer::console::style("?".into()).for_stderr().magenta(),
@@ -357,7 +326,7 @@ pub async fn is_brew_reinstall() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::OsString;
+    use std::cmp::Ordering;
 
     use super::*;
 
@@ -388,30 +357,6 @@ mod tests {
         assert!(set.is_match("README.md"));
         assert!(set.is_match("LICENSE.txt"));
     }
-
-    #[ignore]
-    #[test]
-    fn sysinfo_test() {
-        use sysinfo::{
-            ProcessRefreshKind,
-            RefreshKind,
-            System,
-        };
-
-        let app_process_name = OsString::from(APP_PROCESS_NAME);
-        let system = System::new_with_specifics(RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing()));
-        cfg_if! {
-            if #[cfg(windows)] {
-                let mut processes = system.processes_by_name(&app_process_name);
-                assert!(processes.next().is_some());
-            } else {
-                let mut processes = system.processes_by_exact_name(&app_process_name);
-                assert!(processes.next().is_some());
-            }
-        }
-    }
-
-    use std::cmp::Ordering;
 
     #[test]
     fn test_partitioned_compare() {
