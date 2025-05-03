@@ -1,5 +1,5 @@
 [package]
-name = "kiro_cli"
+name = "chat_cli"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
