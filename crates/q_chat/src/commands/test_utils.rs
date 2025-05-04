@@ -12,8 +12,8 @@ use fig_settings::{
 
 use crate::conversation_state::ConversationState;
 use crate::input_source::InputSource;
-use crate::shared_writer::SharedWriter;
 use crate::tools::ToolPermissions;
+use crate::util::shared_writer::SharedWriter;
 use crate::{
     ChatContext,
     ToolUseStatus,
