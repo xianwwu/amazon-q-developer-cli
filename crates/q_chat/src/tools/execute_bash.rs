@@ -33,6 +33,9 @@ const READONLY_COMMANDS: &[&str] = &["ls", "cat", "echo", "pwd", "which", "head"
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExecuteBash {
     pub command: String,
+    /// Optional summary explaining what the command does
+    #[serde(default)]
+    pub summary: Option<String>,
 }
 
 impl ExecuteBash {
@@ -115,13 +118,29 @@ impl ExecuteBash {
             queue!(updates, style::Print("\n"),)?;
         }
 
-        Ok(queue!(
+        queue!(
             updates,
             style::SetForegroundColor(Color::Green),
             style::Print(&self.command),
-            style::Print("\n\n"),
+            style::Print("\n"),
             style::ResetColor
-        )?)
+        )?;
+
+        // Add the summary if available
+        if let Some(summary) = &self.summary {
+            queue!(
+                updates,
+                style::SetForegroundColor(Color::Blue),
+                style::Print("\nPurpose: "),
+                style::ResetColor,
+                style::Print(summary),
+                style::Print("\n"),
+            )?;
+        }
+
+        queue!(updates, style::Print("\n"))?;
+
+        Ok(())
     }
 
     pub async fn validate(&mut self, _ctx: &Context) -> Result<()> {
@@ -316,6 +335,59 @@ mod tests {
         } else {
             panic!("Expected JSON output");
         }
+    }
+
+    #[test]
+    fn test_deserialize_with_summary() {
+        let json = r#"{"command": "ls -la", "summary": "List all files with details"}"#;
+        let tool = serde_json::from_str::<ExecuteBash>(json).unwrap();
+        assert_eq!(tool.command, "ls -la");
+        assert_eq!(tool.summary, Some("List all files with details".to_string()));
+    }
+
+    #[test]
+    fn test_deserialize_without_summary() {
+        let json = r#"{"command": "ls -la"}"#;
+        let tool = serde_json::from_str::<ExecuteBash>(json).unwrap();
+        assert_eq!(tool.command, "ls -la");
+        assert_eq!(tool.summary, None);
+    }
+
+    #[test]
+    fn test_queue_description_with_summary() {
+        let mut buffer = Vec::new();
+
+        let tool = ExecuteBash {
+            command: "ls -la".to_string(),
+            summary: Some("List all files in the current directory with details".to_string()),
+        };
+
+        tool.queue_description(&mut buffer).unwrap();
+
+        // Convert to string and print for debugging
+        let output = String::from_utf8_lossy(&buffer).to_string();
+        println!("Debug output: {:?}", output);
+
+        // Check for command and summary text, ignoring ANSI color codes
+        assert!(output.contains("ls -la"));
+        assert!(output.contains("Purpose:"));
+        assert!(output.contains("List all files in the current directory with details"));
+    }
+
+    #[test]
+    fn test_queue_description_without_summary() {
+        let mut buffer = Vec::new();
+
+        let tool = ExecuteBash {
+            command: "ls -la".to_string(),
+            summary: None,
+        };
+
+        tool.queue_description(&mut buffer).unwrap();
+
+        let output = String::from_utf8(buffer).unwrap();
+        assert!(output.contains("ls -la"));
+        assert!(!output.contains("Purpose:"));
     }
 
     #[test]
