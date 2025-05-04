@@ -18,21 +18,11 @@ use crate::{
     QueuedTool,
 };
 
+/// Static instance of the tools list command handler
+pub static LIST_TOOLS_HANDLER: ListToolsCommand = ListToolsCommand;
+
 /// Handler for the tools list command
 pub struct ListToolsCommand;
-
-impl ListToolsCommand {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for ListToolsCommand {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl CommandHandler for ListToolsCommand {
     fn name(&self) -> &'static str {
         "list"

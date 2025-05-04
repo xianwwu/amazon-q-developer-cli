@@ -23,14 +23,17 @@ pub struct InternalCommand {
     /// - "issue" - Create a GitHub issue
     /// - "compact" - Compact the conversation
     /// - "editor" - Open an editor for input
+    /// - "usage" - Show token usage statistics
     pub command: String,
 
     /// Optional subcommand for commands that support them
     ///
     /// Examples:
-    /// - For context: "add", "rm", "clear", "show"
-    /// - For profile: "list", "create", "delete", "set", "rename"
-    /// - For tools: "list", "enable", "disable", "trust", "untrust", "reset"
+    /// - For context: "add", "rm", "clear", "show", "hooks"
+    /// - For profile: "list", "create", "delete", "set", "rename", "help"
+    /// - For tools: "list", "trust", "untrust", "trustall", "reset", "help"
+    /// - For prompts: "list", "get", "help"
+    /// - For compact: "help"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subcommand: Option<String>,
 

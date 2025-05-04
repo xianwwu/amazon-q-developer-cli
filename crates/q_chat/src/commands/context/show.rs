@@ -1,6 +1,4 @@
-use std::future::Future;
 use std::io::Write;
-use std::pin::Pin;
 
 use crossterm::queue;
 use crossterm::style::{
@@ -11,20 +9,15 @@ use eyre::Result;
 
 use crate::commands::CommandHandler;
 use crate::{
-    ChatContext, ChatState, QueuedTool
+    ChatState,
+    QueuedTool,
 };
 
-/// Handler for the context show command
-pub struct ShowContextCommand {
-    global: bool,
-    expand: bool,
-}
+/// Static instance of the show context command handler
+pub static SHOW_CONTEXT_HANDLER: ShowContextCommand = ShowContextCommand;
 
-impl ShowContextCommand {
-    pub fn new(global: bool, expand: bool) -> Self {
-        Self { global, expand }
-    }
-}
+/// Handler for the context show command
+pub struct ShowContextCommand;
 
 impl CommandHandler for ShowContextCommand {
     fn name(&self) -> &'static str {
@@ -36,26 +29,42 @@ impl CommandHandler for ShowContextCommand {
     }
 
     fn usage(&self) -> &'static str {
-        "/context show [--global] [--expand]"
+        "/context show [--expand]"
     }
 
     fn help(&self) -> String {
-        "Display the current context configuration. Use --global to show only global context. Use --expand to show expanded file contents.".to_string()
+        "Display the current context configuration. Use --expand to show expanded file contents.".to_string()
+    }
+
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command> {
+        let expand = args.contains(&"--expand");
+
+        Ok(crate::command::Command::Context {
+            subcommand: crate::command::ContextSubcommand::Show { expand },
+        })
     }
 
     fn execute<'a>(
         &'a self,
-        _args: Vec<&'a str>,
-        ctx: &'a ChatContext,
+        args: Vec<&'a str>,
+        ctx: &'a mut crate::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Get the conversation state from the context
-            let conversation_state = ctx.get_conversation_state()?;
+            // Parse the command to get the expand parameter
+            let command = self.to_command(args)?;
+
+            // Extract the expand parameter from the command
+            let expand = match command {
+                crate::command::Command::Context {
+                    subcommand: crate::command::ContextSubcommand::Show { expand },
+                } => expand,
+                _ => return Err(eyre::eyre!("Invalid command")),
+            };
 
             // Get the context manager
-            let Some(context_manager) = &conversation_state.context_manager else {
+            let Some(context_manager) = &ctx.conversation_state.context_manager else {
                 queue!(
                     ctx.output,
                     style::SetForegroundColor(Color::Red),
@@ -78,7 +87,7 @@ impl CommandHandler for ShowContextCommand {
                 style::ResetColor
             )?;
 
-            // Always show global context paths
+            // Show global context paths
             queue!(
                 ctx.output,
                 style::SetForegroundColor(Color::Yellow),
@@ -94,7 +103,7 @@ impl CommandHandler for ShowContextCommand {
                 }
 
                 // If expand is requested, show the expanded files
-                if self.expand {
+                if expand {
                     let expanded_files = context_manager.get_global_context_files(true).await?;
                     queue!(
                         ctx.output,
@@ -113,44 +122,42 @@ impl CommandHandler for ShowContextCommand {
                 }
             }
 
-            // Display profile-specific context paths if not showing only global
-            if !self.global {
-                queue!(
-                    ctx.output,
-                    style::SetForegroundColor(Color::Yellow),
-                    style::Print(format!(
-                        "\nProfile '{}' context paths:\n",
-                        context_manager.current_profile
-                    )),
-                    style::ResetColor
-                )?;
+            // Display profile-specific context paths
+            queue!(
+                ctx.output,
+                style::SetForegroundColor(Color::Yellow),
+                style::Print(format!(
+                    "\nProfile '{}' context paths:\n",
+                    context_manager.current_profile
+                )),
+                style::ResetColor
+            )?;
 
-                if context_manager.profile_config.paths.is_empty() {
-                    queue!(ctx.output, style::Print("  (none)\n"))?;
-                } else {
-                    for path in &context_manager.profile_config.paths {
-                        queue!(ctx.output, style::Print(format!("  {}\n", path)))?;
-                    }
+            if context_manager.profile_config.paths.is_empty() {
+                queue!(ctx.output, style::Print("  (none)\n"))?;
+            } else {
+                for path in &context_manager.profile_config.paths {
+                    queue!(ctx.output, style::Print(format!("  {}\n", path)))?;
+                }
 
-                    // If expand is requested, show the expanded files
-                    if self.expand {
-                        let expanded_files = context_manager.get_current_profile_context_files(true).await?;
-                        queue!(
-                            ctx.output,
-                            style::SetForegroundColor(Color::Yellow),
-                            style::Print(format!(
-                                "\nExpanded profile '{}' context files:\n",
-                                context_manager.current_profile
-                            )),
-                            style::ResetColor
-                        )?;
+                // If expand is requested, show the expanded files
+                if expand {
+                    let expanded_files = context_manager.get_current_profile_context_files(true).await?;
+                    queue!(
+                        ctx.output,
+                        style::SetForegroundColor(Color::Yellow),
+                        style::Print(format!(
+                            "\nExpanded profile '{}' context files:\n",
+                            context_manager.current_profile
+                        )),
+                        style::ResetColor
+                    )?;
 
-                        if expanded_files.is_empty() {
-                            queue!(ctx.output, style::Print("  (none)\n"))?;
-                        } else {
-                            for (path, _) in expanded_files {
-                                queue!(ctx.output, style::Print(format!("  {}\n", path)))?;
-                            }
+                    if expanded_files.is_empty() {
+                        queue!(ctx.output, style::Print("  (none)\n"))?;
+                    } else {
+                        for (path, _) in expanded_files {
+                            queue!(ctx.output, style::Print(format!("  {}\n", path)))?;
                         }
                     }
                 }
@@ -167,21 +174,55 @@ impl CommandHandler for ShowContextCommand {
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Show command is read-only and doesn't require confirmation
+        false // Showing context doesn't require confirmation
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::command::{
+        Command,
+        ContextSubcommand,
+    };
 
-    #[tokio::test]
-    async fn test_show_context_command() {
-        let command = ShowContextCommand::new(false, false);
-        assert_eq!(command.name(), "show");
-        assert_eq!(command.description(), "Display current context configuration");
-        assert_eq!(command.usage(), "/context show [--global] [--expand]");
+    #[test]
+    fn test_to_command_with_expand() {
+        let handler = ShowContextCommand;
+        let args = vec!["--expand"];
 
-        // Note: Full testing would require mocking the context manager
+        let command = handler.to_command(args).unwrap();
+
+        match command {
+            Command::Context {
+                subcommand: ContextSubcommand::Show { expand },
+            } => {
+                assert!(expand);
+            },
+            _ => panic!("Expected Context Show command"),
+        }
+    }
+
+    #[test]
+    fn test_to_command_without_expand() {
+        let handler = ShowContextCommand;
+        let args = vec![];
+
+        let command = handler.to_command(args).unwrap();
+
+        match command {
+            Command::Context {
+                subcommand: ContextSubcommand::Show { expand },
+            } => {
+                assert!(!expand);
+            },
+            _ => panic!("Expected Context Show command"),
+        }
+    }
+
+    #[test]
+    fn test_requires_confirmation() {
+        let handler = ShowContextCommand;
+        assert!(!handler.requires_confirmation(&[]));
     }
 }

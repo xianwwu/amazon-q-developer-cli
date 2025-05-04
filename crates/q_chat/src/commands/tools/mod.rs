@@ -24,13 +24,38 @@ mod trust;
 mod trustall;
 mod untrust;
 
-pub use help::HelpToolsCommand;
-pub use list::ListToolsCommand;
-pub use reset::ResetToolsCommand;
-pub use reset_single::ResetSingleToolCommand;
-pub use trust::TrustToolsCommand;
-pub use trustall::TrustAllToolsCommand;
-pub use untrust::UntrustToolsCommand;
+// Static handlers for tools subcommands
+pub use help::{
+    HELP_TOOLS_HANDLER,
+    HelpToolsCommand,
+};
+pub use list::{
+    LIST_TOOLS_HANDLER,
+    ListToolsCommand,
+};
+pub use reset::{
+    RESET_TOOLS_HANDLER,
+    ResetToolsCommand,
+};
+pub use reset_single::{
+    RESET_SINGLE_TOOL_HANDLER,
+    ResetSingleToolCommand,
+};
+pub use trust::{
+    TRUST_TOOLS_HANDLER,
+    TrustToolsCommand,
+};
+pub use trustall::{
+    TRUSTALL_TOOLS_HANDLER,
+    TrustAllToolsCommand,
+};
+pub use untrust::{
+    UNTRUST_TOOLS_HANDLER,
+    UntrustToolsCommand,
+};
+
+/// Static instance of the tools command handler
+pub static TOOLS_HANDLER: ToolsCommand = ToolsCommand;
 
 /// Handler for the tools command
 pub struct ToolsCommand;

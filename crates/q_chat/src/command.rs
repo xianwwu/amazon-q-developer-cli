@@ -10,11 +10,27 @@ use crossterm::{
     queue,
     style,
 };
-use eyre::Result;
+use eyre::{
+    Result,
+    anyhow,
+};
 use serde::{
     Deserialize,
     Serialize,
 };
+
+use crate::commands::CommandHandler;
+use crate::commands::clear::CLEAR_HANDLER;
+use crate::commands::compact::COMPACT_HANDLER;
+use crate::commands::context::CONTEXT_HANDLER;
+use crate::commands::editor::EDITOR_HANDLER;
+// Import static handlers
+use crate::commands::help::HELP_HANDLER;
+use crate::commands::issue::ISSUE_HANDLER;
+use crate::commands::profile::PROFILE_HANDLER;
+use crate::commands::quit::QUIT_HANDLER;
+use crate::commands::tools::TOOLS_HANDLER;
+use crate::commands::usage::USAGE_HANDLER;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -222,6 +238,25 @@ impl ContextSubcommand {
     const REMOVE_USAGE: &str = "/context rm [--global] <path1> [path2...]";
     const SHOW_USAGE: &str = "/context show [--expand]";
 
+    pub fn to_handler(&self) -> &'static dyn CommandHandler {
+        use crate::commands::context::{
+            CONTEXT_HANDLER,
+            add,
+            clear,
+            remove,
+            show,
+        };
+
+        match self {
+            ContextSubcommand::Add { .. } => &add::ADD_CONTEXT_HANDLER,
+            ContextSubcommand::Remove { .. } => &remove::REMOVE_CONTEXT_HANDLER,
+            ContextSubcommand::Clear { .. } => &clear::CLEAR_CONTEXT_HANDLER,
+            ContextSubcommand::Show { .. } => &show::SHOW_CONTEXT_HANDLER,
+            ContextSubcommand::Hooks { .. } => &CONTEXT_HANDLER, // Delegate to main context handler
+            ContextSubcommand::Help => &CONTEXT_HANDLER,         // Delegate to main context handler
+        }
+    }
+
     fn usage_msg(header: impl AsRef<str>) -> String {
         format!("{}\n\n{}", header.as_ref(), Self::AVAILABLE_COMMANDS)
     }
@@ -396,7 +431,8 @@ pub struct PromptsGetParam {
 }
 
 impl Command {
-    pub fn parse(input: &str, output: &mut impl Write) -> Result<Self, String> {
+    // Rename the old parse method to parse_with_output to avoid ambiguity
+    pub fn parse_with_output(input: &str, output: &mut impl Write) -> Result<Self, String> {
         let input = input.trim();
 
         // Check if the input starts with a literal backslash followed by a slash
@@ -859,8 +895,6 @@ mod tests {
 
     #[test]
     fn test_command_parse() {
-        let mut stdout = std::io::stdout();
-
         macro_rules! profile {
             ($subcommand:expr) => {
                 Command::Profile {
@@ -1026,7 +1060,197 @@ mod tests {
         ];
 
         for (input, parsed) in tests {
-            assert_eq!(&Command::parse(input, &mut stdout).unwrap(), parsed, "{}", input);
+            // Use the new parse method instead of the old one with output parameter
+            let result = Command::parse(input).expect(&format!("Failed to parse command: {}", input));
+            assert_eq!(&result, parsed, "{}", input);
         }
+    }
+}
+/// Structure to hold command descriptions
+#[derive(Debug, Clone)]
+pub struct CommandDescription {
+    pub short_description: String,
+    pub full_description: String,
+    #[allow(dead_code)]
+    pub usage: String,
+}
+
+impl Command {
+    /// Get the appropriate handler for this command variant
+    pub fn to_handler(&self) -> &'static dyn CommandHandler {
+        match self {
+            Command::Help { .. } => &HELP_HANDLER,
+            Command::Quit => &QUIT_HANDLER,
+            Command::Clear => &CLEAR_HANDLER,
+            Command::Context { subcommand } => subcommand.to_handler(),
+            Command::Profile { subcommand: _ } => &PROFILE_HANDLER, // All profile subcommands use the same handler
+            Command::Tools { subcommand } => match subcommand {
+                Some(sub) => match sub {
+                    ToolsSubcommand::Schema => &TOOLS_HANDLER,
+                    ToolsSubcommand::Trust { .. } => &TOOLS_HANDLER,
+                    ToolsSubcommand::Untrust { .. } => &TOOLS_HANDLER,
+                    ToolsSubcommand::TrustAll => &TOOLS_HANDLER,
+                    ToolsSubcommand::Reset => &TOOLS_HANDLER,
+                    ToolsSubcommand::ResetSingle { .. } => &TOOLS_HANDLER,
+                    ToolsSubcommand::Help => &TOOLS_HANDLER,
+                },
+                None => &TOOLS_HANDLER,
+            },
+            Command::Compact { .. } => &COMPACT_HANDLER,
+            Command::PromptEditor { .. } => &EDITOR_HANDLER,
+            Command::Usage => &USAGE_HANDLER,
+            Command::Issue { .. } => &ISSUE_HANDLER,
+            // These commands are not handled through the command system
+            Command::Ask { .. } => &HELP_HANDLER,     // Fallback to help handler
+            Command::Execute { .. } => &HELP_HANDLER, // Fallback to help handler
+            Command::Prompts { .. } => &HELP_HANDLER, // Fallback to help handler
+        }
+    }
+
+    /// Parse a command string into a Command enum
+    pub fn parse(command_str: &str) -> Result<Self> {
+        // Create a null output buffer for parse_with_output
+        let mut null_output = std::io::sink();
+
+        // Use the existing parse_with_output method to handle all command variants
+        match Self::parse_with_output(command_str, &mut null_output) {
+            Ok(command) => Ok(command),
+            Err(err) => Err(anyhow!(err)),
+        }
+    }
+
+    /// Parse a command from components (for use by internal_command tool)
+    pub fn parse_from_components(
+        command: &str,
+        subcommand: Option<&String>,
+        args: Option<&Vec<String>>,
+        flags: Option<&std::collections::HashMap<String, String>>,
+    ) -> Result<Self> {
+        // Format the command string
+        let mut cmd_str = if !command.starts_with('/') {
+            format!("/{}", command)
+        } else {
+            command.to_string()
+        };
+
+        // Add subcommand if present
+        if let Some(subcommand) = subcommand {
+            cmd_str.push_str(&format!(" {}", subcommand));
+        }
+
+        // Add arguments if present
+        if let Some(args) = args {
+            for arg in args {
+                cmd_str.push_str(&format!(" {}", arg));
+            }
+        }
+
+        // Add flags if present
+        if let Some(flags) = flags {
+            for (flag, value) in flags {
+                if value.is_empty() {
+                    cmd_str.push_str(&format!(" --{}", flag));
+                } else {
+                    cmd_str.push_str(&format!(" --{}={}", flag, value));
+                }
+            }
+        }
+
+        // Parse the formatted command string
+        Self::parse(&cmd_str)
+    }
+
+    /// Execute the command directly with ChatContext
+    pub async fn execute<'a>(
+        &'a self,
+        chat_context: &'a mut crate::ChatContext,
+        tool_uses: Option<Vec<crate::QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Result<crate::ChatState> {
+        // Get the appropriate handler and delegate to it
+        let handler = self.to_handler();
+
+        // Create a CommandContextAdapter from the ChatContext
+        let mut adapter = crate::commands::CommandContextAdapter::new(
+            &chat_context.ctx,
+            &mut chat_context.output,
+            &mut chat_context.conversation_state,
+            &mut chat_context.tool_permissions,
+            chat_context.interactive,
+            &mut chat_context.input_source,
+            &chat_context.settings,
+        );
+
+        handler
+            .execute_command(self, &mut adapter, tool_uses, pending_tool_index)
+            .await
+    }
+
+    /// Generate descriptions for all commands for LLM tool descriptions
+    pub fn generate_llm_descriptions() -> std::collections::HashMap<String, CommandDescription> {
+        let mut descriptions = std::collections::HashMap::new();
+
+        // Add descriptions for all implemented commands
+        descriptions.insert("help".to_string(), CommandDescription {
+            short_description: HELP_HANDLER.description().to_string(),
+            full_description: HELP_HANDLER.llm_description(),
+            usage: HELP_HANDLER.usage().to_string(),
+        });
+
+        descriptions.insert("quit".to_string(), CommandDescription {
+            short_description: QUIT_HANDLER.description().to_string(),
+            full_description: QUIT_HANDLER.llm_description(),
+            usage: QUIT_HANDLER.usage().to_string(),
+        });
+
+        descriptions.insert("clear".to_string(), CommandDescription {
+            short_description: CLEAR_HANDLER.description().to_string(),
+            full_description: CLEAR_HANDLER.llm_description(),
+            usage: CLEAR_HANDLER.usage().to_string(),
+        });
+
+        descriptions.insert("context".to_string(), CommandDescription {
+            short_description: CONTEXT_HANDLER.description().to_string(),
+            full_description: CONTEXT_HANDLER.llm_description(),
+            usage: CONTEXT_HANDLER.usage().to_string(),
+        });
+
+        descriptions.insert("profile".to_string(), CommandDescription {
+            short_description: PROFILE_HANDLER.description().to_string(),
+            full_description: PROFILE_HANDLER.llm_description(),
+            usage: PROFILE_HANDLER.usage().to_string(),
+        });
+
+        descriptions.insert("tools".to_string(), CommandDescription {
+            short_description: TOOLS_HANDLER.description().to_string(),
+            full_description: TOOLS_HANDLER.llm_description(),
+            usage: TOOLS_HANDLER.usage().to_string(),
+        });
+
+        descriptions.insert("compact".to_string(), CommandDescription {
+            short_description: COMPACT_HANDLER.description().to_string(),
+            full_description: COMPACT_HANDLER.llm_description(),
+            usage: COMPACT_HANDLER.usage().to_string(),
+        });
+
+        descriptions.insert("usage".to_string(), CommandDescription {
+            short_description: USAGE_HANDLER.description().to_string(),
+            full_description: USAGE_HANDLER.llm_description(),
+            usage: USAGE_HANDLER.usage().to_string(),
+        });
+
+        descriptions.insert("editor".to_string(), CommandDescription {
+            short_description: EDITOR_HANDLER.description().to_string(),
+            full_description: EDITOR_HANDLER.llm_description(),
+            usage: EDITOR_HANDLER.usage().to_string(),
+        });
+
+        descriptions.insert("issue".to_string(), CommandDescription {
+            short_description: ISSUE_HANDLER.description().to_string(),
+            full_description: ISSUE_HANDLER.llm_description(),
+            usage: ISSUE_HANDLER.usage().to_string(),
+        });
+
+        descriptions
     }
 }

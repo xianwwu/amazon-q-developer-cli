@@ -13,15 +13,37 @@ mod list;
 mod rename;
 mod set;
 
-pub use create::CreateProfileCommand;
-pub use delete::DeleteProfileCommand;
-pub use help::HelpProfileCommand;
-pub use list::ListProfileCommand;
-pub use rename::RenameProfileCommand;
-pub use set::SetProfileCommand;
+// Static handlers for profile subcommands
+pub use create::{
+    CREATE_PROFILE_HANDLER,
+    CreateProfileCommand,
+};
+pub use delete::{
+    DELETE_PROFILE_HANDLER,
+    DeleteProfileCommand,
+};
+pub use help::{
+    HELP_PROFILE_HANDLER,
+    HelpProfileCommand,
+};
+pub use list::{
+    LIST_PROFILE_HANDLER,
+    ListProfileCommand,
+};
+pub use rename::{
+    RENAME_PROFILE_HANDLER,
+    RenameProfileCommand,
+};
+pub use set::{
+    SET_PROFILE_HANDLER,
+    SetProfileCommand,
+};
 
 /// Profile command handler
 pub struct ProfileCommand;
+
+/// Static instance of the profile command handler
+pub static PROFILE_HANDLER: ProfileCommand = ProfileCommand;
 
 impl ProfileCommand {
     /// Create a new profile command handler
@@ -62,39 +84,33 @@ impl CommandHandler for ProfileCommand {
     }
 
     fn llm_description(&self) -> String {
-        r#"The profile command manages Amazon Q profiles.
+        r#"The profile command manages different profiles for organizing context files.
 
 Subcommands:
 - list: List all available profiles
-- create <n>: Create a new profile
-- delete <n>: Delete an existing profile
-- set <n>: Switch to a different profile
-- rename <old_name> <new_name>: Rename an existing profile
+- create <name>: Create a new profile
+- delete <name>: Delete a profile
+- set <name>: Switch to a different profile
+- rename <old_name> <new_name>: Rename a profile
 
 Examples:
 - "/profile list" - Lists all available profiles
 - "/profile create work" - Creates a new profile named "work"
-- "/profile set personal" - Switches to the "personal" profile
-- "/profile delete test" - Deletes the "test" profile
+- "/profile set work" - Switches to the "work" profile
+- "/profile delete old_profile" - Deletes the profile named "old_profile"
+- "/profile rename work work_new" - Renames the "work" profile to "work_new"
 
-To get the current profiles, use the command "/profile list" which will display all available profiles with the current one marked."#.to_string()
+Profiles allow you to organize context files for different projects or tasks. The "global" profile contains context files that are available in all profiles."#
+            .to_string()
     }
 
     fn to_command(&self, args: Vec<&str>) -> Result<Command> {
         // Parse arguments to determine the subcommand
         let subcommand = if args.is_empty() {
-            ProfileSubcommand::List
+            ProfileSubcommand::Help
         } else if let Some(first_arg) = args.first() {
             match *first_arg {
                 "list" => ProfileSubcommand::List,
-                "set" => {
-                    if args.len() < 2 {
-                        return Err(eyre::eyre!("Missing profile name for set command"));
-                    }
-                    ProfileSubcommand::Set {
-                        name: args[1].to_string(),
-                    }
-                },
                 "create" => {
                     if args.len() < 2 {
                         return Err(eyre::eyre!("Missing profile name for create command"));
@@ -111,9 +127,17 @@ To get the current profiles, use the command "/profile list" which will display 
                         name: args[1].to_string(),
                     }
                 },
+                "set" => {
+                    if args.len() < 2 {
+                        return Err(eyre::eyre!("Missing profile name for set command"));
+                    }
+                    ProfileSubcommand::Set {
+                        name: args[1].to_string(),
+                    }
+                },
                 "rename" => {
                     if args.len() < 3 {
-                        return Err(eyre::eyre!("Missing old or new profile name for rename command"));
+                        return Err(eyre::eyre!("Missing profile names for rename command"));
                     }
                     ProfileSubcommand::Rename {
                         old_name: args[1].to_string(),
@@ -124,7 +148,7 @@ To get the current profiles, use the command "/profile list" which will display 
                 _ => ProfileSubcommand::Help,
             }
         } else {
-            ProfileSubcommand::List // Fallback, should not happen
+            ProfileSubcommand::Help // Fallback, should not happen
         };
 
         Ok(Command::Profile { subcommand })
@@ -132,12 +156,12 @@ To get the current profiles, use the command "/profile list" which will display 
 
     fn requires_confirmation(&self, args: &[&str]) -> bool {
         if args.is_empty() {
-            return false; // Default list doesn't require confirmation
+            return false; // Default help doesn't require confirmation
         }
 
         match args[0] {
             "list" | "help" => false, // Read-only commands don't require confirmation
-            "delete" => true,         // Delete always requires confirmation
+            "delete" => true,         // Delete requires confirmation
             _ => false,               // Other commands don't require confirmation
         }
     }

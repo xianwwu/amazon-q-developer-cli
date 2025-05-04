@@ -16,6 +16,9 @@ use crate::{
 /// Compact command handler
 pub struct CompactCommand;
 
+// Create a static instance of the handler
+pub static COMPACT_HANDLER: CompactCommand = CompactCommand;
+
 impl CompactCommand {
     /// Create a new compact command handler
     pub fn new() -> Self {
@@ -73,6 +76,34 @@ impl CommandHandler for CompactCommand {
         })
     }
 
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        _ctx: &'a mut CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+        Box::pin(async move {
+            if let Command::Compact {
+                prompt,
+                show_summary,
+                help,
+            } = command
+            {
+                // Return CompactHistory state directly
+                Ok(ChatState::CompactHistory {
+                    tool_uses,
+                    pending_tool_index,
+                    prompt: prompt.clone(),
+                    show_summary: *show_summary,
+                    help: *help,
+                })
+            } else {
+                Err(eyre::anyhow!("CompactCommand can only execute Compact commands"))
+            }
+        })
+    }
+
     // Override the default execute implementation because compact command
     // needs to return ChatState::CompactHistory instead of ChatState::ExecuteCommand
     fn execute<'a>(
@@ -108,6 +139,6 @@ impl CommandHandler for CompactCommand {
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Compact command doesn't require confirmation
+        true // Compact command requires confirmation as it's mutative
     }
 }

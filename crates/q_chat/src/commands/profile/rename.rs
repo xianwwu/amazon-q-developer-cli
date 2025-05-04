@@ -1,34 +1,26 @@
-use std::future::Future;
-use std::io::Write;
-use std::pin::Pin;
-
-use crossterm::queue;
-use crossterm::style::{
-    self,
-    Color,
-};
 use eyre::Result;
 
 use crate::command::{
     Command,
     ProfileSubcommand,
 };
-use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
-use crate::{
-    ChatState,
-    QueuedTool,
-};
+
+/// Static instance of the profile rename command handler
+pub static RENAME_PROFILE_HANDLER: RenameProfileCommand = RenameProfileCommand;
 
 /// Handler for the profile rename command
-pub struct RenameProfileCommand {
-    old_name: String,
-    new_name: String,
+pub struct RenameProfileCommand;
+
+impl Default for RenameProfileCommand {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RenameProfileCommand {
-    pub fn new(old_name: String, new_name: String) -> Self {
-        Self { old_name, new_name }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -49,70 +41,20 @@ impl CommandHandler for RenameProfileCommand {
         "Rename a profile from <old_name> to <new_name>.".to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        if args.len() != 2 {
+            return Err(eyre::eyre!("Expected old_name and new_name arguments"));
+        }
+
+        let old_name = args[0].to_string();
+        let new_name = args[1].to_string();
+
         Ok(Command::Profile {
-            subcommand: ProfileSubcommand::Rename {
-                old_name: self.old_name.clone(),
-                new_name: self.new_name.clone(),
-            },
-        })
-    }
-
-    fn execute<'a>(
-        &'a self,
-        _args: Vec<&'a str>,
-        ctx: &'a mut CommandContextAdapter<'a>,
-        tool_uses: Option<Vec<QueuedTool>>,
-        pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
-        Box::pin(async move {
-            // Get the context manager
-            if let Some(context_manager) = &mut ctx.conversation_state.context_manager {
-                // Rename the profile
-                match context_manager.rename_profile(&self.old_name, &self.new_name).await {
-                    Ok(_) => {
-                        queue!(
-                            ctx.output,
-                            style::Print("\nProfile '"),
-                            style::SetForegroundColor(Color::Green),
-                            style::Print(&self.old_name),
-                            style::ResetColor,
-                            style::Print("' renamed to '"),
-                            style::SetForegroundColor(Color::Green),
-                            style::Print(&self.new_name),
-                            style::ResetColor,
-                            style::Print("'.\n\n")
-                        )?;
-                    },
-                    Err(e) => {
-                        queue!(
-                            ctx.output,
-                            style::SetForegroundColor(Color::Red),
-                            style::Print(format!("\nError renaming profile: {}\n\n", e)),
-                            style::ResetColor
-                        )?;
-                    },
-                }
-                ctx.output.flush()?;
-            } else {
-                queue!(
-                    ctx.output,
-                    style::SetForegroundColor(Color::Red),
-                    style::Print("\nContext manager is not available.\n\n"),
-                    style::ResetColor
-                )?;
-                ctx.output.flush()?;
-            }
-
-            Ok(ChatState::PromptUser {
-                tool_uses,
-                pending_tool_index,
-                skip_printing_tools: false,
-            })
+            subcommand: ProfileSubcommand::Rename { old_name, new_name },
         })
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Rename command doesn't require confirmation
+        false
     }
 }

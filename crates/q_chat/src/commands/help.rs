@@ -1,27 +1,25 @@
+use std::future::Future;
+use std::io::Write;
+use std::pin::Pin;
+
 use eyre::Result;
 
 use super::CommandHandler;
+use super::clear::CLEAR_HANDLER;
+use super::context_adapter::CommandContextAdapter;
+use super::quit::QUIT_HANDLER;
 use crate::command::Command;
+use crate::{
+    ChatState,
+    QueuedTool,
+};
+
+/// Static instance of the help command handler
+pub static HELP_HANDLER: HelpCommand = HelpCommand {};
 
 /// Help command handler
-pub struct HelpCommand {
-    help_text: String,
-}
-
-impl HelpCommand {
-    /// Create a new help command handler
-    pub fn new() -> Self {
-        Self {
-            help_text: crate::HELP_TEXT.to_string(),
-        }
-    }
-}
-
-impl Default for HelpCommand {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+#[derive(Clone, Copy)]
+pub struct HelpCommand;
 
 impl CommandHandler for HelpCommand {
     fn name(&self) -> &'static str {
@@ -51,14 +49,50 @@ Examples:
             .to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
-        Ok(Command::Help {
-            help_text: Some(self.help_text.clone()),
-        })
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        let help_text = if args.is_empty() { None } else { Some(args.join(" ")) };
+
+        Ok(Command::Help { help_text })
     }
 
-    // Using the default implementation from the trait that calls to_command
-    // No need to override execute anymore
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        ctx: &'a mut CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+        Box::pin(async move {
+            if let Command::Help { help_text } = command {
+                // Get the help text to display
+                let text = if let Some(topic) = help_text {
+                    // If a specific topic was requested, try to get help for that command
+                    // Use the Command enum's to_handler method to get the appropriate handler
+                    match topic.as_str() {
+                        "clear" => CLEAR_HANDLER.help(),
+                        "quit" => QUIT_HANDLER.help(),
+                        "help" => self.help(),
+                        // Add other commands as needed
+                        _ => format!("Unknown command: {}", topic),
+                    }
+                } else {
+                    // Otherwise, show general help
+                    crate::HELP_TEXT.to_string()
+                };
+
+                // Display the help text
+                writeln!(ctx.output, "{}", text)?;
+                Ok(ChatState::PromptUser {
+                    tool_uses,
+                    pending_tool_index,
+                    skip_printing_tools: true,
+                })
+            } else {
+                // This should never happen if the command system is working correctly
+                Err(eyre::anyhow!("HelpCommand can only execute Help commands"))
+            }
+        })
+    }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
         false // Help command doesn't require confirmation

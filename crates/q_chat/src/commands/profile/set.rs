@@ -20,16 +20,11 @@ use crate::{
     QueuedTool,
 };
 
-/// Handler for the profile set command
-pub struct SetProfileCommand {
-    name: String,
-}
+/// Static instance of the profile set command handler
+pub static SET_PROFILE_HANDLER: SetProfileCommand = SetProfileCommand;
 
-impl SetProfileCommand {
-    pub fn new(name: String) -> Self {
-        Self { name }
-    }
-}
+/// Handler for the profile set command
+pub struct SetProfileCommand;
 
 impl CommandHandler for SetProfileCommand {
     fn name(&self) -> &'static str {
@@ -48,32 +43,47 @@ impl CommandHandler for SetProfileCommand {
         "Switch to the specified profile.".to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        if args.len() != 1 {
+            return Err(eyre::eyre!("Expected profile name argument"));
+        }
+
         Ok(Command::Profile {
             subcommand: ProfileSubcommand::Set {
-                name: self.name.clone(),
+                name: args[0].to_string(),
             },
         })
     }
 
     fn execute<'a>(
         &'a self,
-        _args: Vec<&'a str>,
+        args: Vec<&'a str>,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
+            // Parse the command to get the profile name
+            let command = self.to_command(args)?;
+
+            // Extract the profile name from the command
+            let name = match command {
+                Command::Profile {
+                    subcommand: ProfileSubcommand::Set { name },
+                } => name,
+                _ => return Err(eyre::eyre!("Invalid command")),
+            };
+
             // Get the context manager
             if let Some(context_manager) = &mut ctx.conversation_state.context_manager {
                 // Switch to the profile
-                match context_manager.switch_profile(&self.name).await {
+                match context_manager.switch_profile(&name).await {
                     Ok(_) => {
                         queue!(
                             ctx.output,
                             style::Print("\nSwitched to profile '"),
                             style::SetForegroundColor(Color::Green),
-                            style::Print(&self.name),
+                            style::Print(&name),
                             style::ResetColor,
                             style::Print("'.\n\n")
                         )?;

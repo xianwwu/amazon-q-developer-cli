@@ -13,21 +13,12 @@ use crate::{
     QueuedTool,
 };
 
+/// Static instance of the quit command handler
+pub static QUIT_HANDLER: QuitCommand = QuitCommand;
+
 /// Quit command handler
+#[derive(Clone, Copy)]
 pub struct QuitCommand;
-
-impl QuitCommand {
-    /// Create a new quit command handler
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for QuitCommand {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl CommandHandler for QuitCommand {
     fn name(&self) -> &'static str {
@@ -75,6 +66,22 @@ Common quit commands from other tools that users might try:
 
     fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
         Ok(Command::Quit)
+    }
+
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        _ctx: &'a mut CommandContextAdapter<'a>,
+        _tool_uses: Option<Vec<QueuedTool>>,
+        _pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+        Box::pin(async move {
+            if let Command::Quit = command {
+                Ok(ChatState::Exit)
+            } else {
+                Err(eyre::anyhow!("QuitCommand can only execute Quit commands"))
+            }
+        })
     }
 
     // Override the default execute implementation since this command

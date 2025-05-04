@@ -1,23 +1,23 @@
+use std::future::Future;
+use std::io::Write;
+use std::pin::Pin;
+
 use eyre::Result;
 
 use super::CommandHandler;
+use super::context_adapter::CommandContextAdapter;
 use crate::command::Command;
+use crate::{
+    ChatState,
+    QueuedTool,
+};
+
+/// Static instance of the clear command handler
+pub static CLEAR_HANDLER: ClearCommand = ClearCommand;
 
 /// Clear command handler
+#[derive(Clone, Copy)]
 pub struct ClearCommand;
-
-impl ClearCommand {
-    /// Create a new clear command handler
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for ClearCommand {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl CommandHandler for ClearCommand {
     fn name(&self) -> &'static str {
@@ -62,8 +62,28 @@ Examples of statements that may trigger this command:
         Ok(Command::Clear)
     }
 
-    // Using the default implementation from the trait that calls to_command
-    // No need to override execute anymore
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        ctx: &'a mut CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+        Box::pin(async move {
+            if let Command::Clear = command {
+                // Clear the conversation history
+                ctx.conversation_state.clear(false);
+                writeln!(ctx.output, "Conversation history cleared.")?;
+                Ok(ChatState::PromptUser {
+                    tool_uses,
+                    pending_tool_index,
+                    skip_printing_tools: true,
+                })
+            } else {
+                Err(eyre::anyhow!("ClearCommand can only execute Clear commands"))
+            }
+        })
+    }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
         true // Clear command requires confirmation

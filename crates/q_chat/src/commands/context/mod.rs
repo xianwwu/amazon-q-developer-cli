@@ -6,8 +6,17 @@ use crate::command::{
     ContextSubcommand,
 };
 
+// Import modules
+pub mod add;
+pub mod clear;
+pub mod remove;
+pub mod show;
+
 /// Context command handler
 pub struct ContextCommand;
+
+/// Static instance of the context command handler
+pub static CONTEXT_HANDLER: ContextCommand = ContextCommand;
 
 impl ContextCommand {
     /// Create a new context command handler

@@ -23,16 +23,11 @@ use crate::{
     QueuedTool,
 };
 
-/// Handler for the tools trust command
-pub struct TrustToolsCommand {
-    tool_names: Vec<String>,
-}
+/// Static instance of the tools trust command handler
+pub static TRUST_TOOLS_HANDLER: TrustToolsCommand = TrustToolsCommand;
 
-impl TrustToolsCommand {
-    pub fn new(tool_names: Vec<String>) -> Self {
-        Self { tool_names }
-    }
-}
+/// Handler for the tools trust command
+pub struct TrustToolsCommand;
 
 impl CommandHandler for TrustToolsCommand {
     fn name(&self) -> &'static str {
@@ -51,8 +46,12 @@ impl CommandHandler for TrustToolsCommand {
         "Trust specific tools for the session. Trusted tools will not require confirmation before running.".to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
-        let tool_names: HashSet<String> = self.tool_names.iter().cloned().collect();
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        if args.is_empty() {
+            return Err(eyre::eyre!("Expected at least one tool name"));
+        }
+
+        let tool_names: HashSet<String> = args.iter().map(|s| (*s).to_string()).collect();
         Ok(Command::Tools {
             subcommand: Some(ToolsSubcommand::Trust { tool_names }),
         })
@@ -60,14 +59,25 @@ impl CommandHandler for TrustToolsCommand {
 
     fn execute<'a>(
         &'a self,
-        _args: Vec<&'a str>,
+        args: Vec<&'a str>,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
+            // Parse the command to get the tool names
+            let command = self.to_command(args)?;
+
+            // Extract the tool names from the command
+            let tool_names = match command {
+                Command::Tools {
+                    subcommand: Some(ToolsSubcommand::Trust { tool_names }),
+                } => tool_names,
+                _ => return Err(eyre::eyre!("Invalid command")),
+            };
+
             // Trust the specified tools
-            for tool_name in &self.tool_names {
+            for tool_name in tool_names {
                 // Check if the tool exists
                 if !Tool::all_tool_names().contains(&tool_name.as_str()) {
                     queue!(
@@ -80,7 +90,7 @@ impl CommandHandler for TrustToolsCommand {
                 }
 
                 // Trust the tool
-                ctx.tool_permissions.trust_tool(tool_name);
+                ctx.tool_permissions.trust_tool(&tool_name);
 
                 queue!(
                     ctx.output,

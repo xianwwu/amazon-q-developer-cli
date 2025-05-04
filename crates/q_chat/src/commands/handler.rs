@@ -22,13 +22,17 @@
 /// - `to_command`: Converts string arguments to a Command enum variant
 /// - `execute`: Default implementation that delegates to `to_command` and wraps the result in a
 ///   ChatState
+/// - `execute_command`: Works directly with Command objects for type-safe execution
 ///
 /// This separation allows tools like internal_command to leverage the parsing logic
 /// without duplicating code, while preserving the execution flow for direct command invocation.
 use std::future::Future;
 use std::pin::Pin;
 
-use eyre::Result;
+use eyre::{
+    Result,
+    anyhow,
+};
 
 use super::context_adapter::CommandContextAdapter;
 use crate::QueuedTool;
@@ -91,6 +95,22 @@ pub(crate) trait CommandHandler: Send + Sync {
                 pending_tool_index,
             })
         })
+    }
+
+    /// Execute a command directly with the Command object
+    ///
+    /// This method works directly with Command objects for type-safe execution.
+    /// Each handler should implement this method to handle its specific Command variant.
+    ///
+    /// The default implementation returns an error for unexpected command types.
+    fn execute_command<'a>(
+        &'a self,
+        _command: &'a Command,
+        _ctx: &'a mut CommandContextAdapter<'a>,
+        _tool_uses: Option<Vec<QueuedTool>>,
+        _pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<crate::ChatState>> + Send + 'a>> {
+        Box::pin(async move { Err(anyhow!("Unexpected command type for this handler")) })
     }
 
     /// Check if this command requires confirmation before execution

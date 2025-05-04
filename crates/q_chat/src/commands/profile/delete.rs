@@ -20,16 +20,11 @@ use crate::{
     QueuedTool,
 };
 
-/// Handler for the profile delete command
-pub struct DeleteProfileCommand {
-    name: String,
-}
+/// Static instance of the profile delete command handler
+pub static DELETE_PROFILE_HANDLER: DeleteProfileCommand = DeleteProfileCommand;
 
-impl DeleteProfileCommand {
-    pub fn new(name: String) -> Self {
-        Self { name }
-    }
-}
+/// Handler for the profile delete command
+pub struct DeleteProfileCommand;
 
 impl CommandHandler for DeleteProfileCommand {
     fn name(&self) -> &'static str {
@@ -48,32 +43,47 @@ impl CommandHandler for DeleteProfileCommand {
         "Delete the specified profile.".to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        if args.len() != 1 {
+            return Err(eyre::eyre!("Expected profile name argument"));
+        }
+
         Ok(Command::Profile {
             subcommand: ProfileSubcommand::Delete {
-                name: self.name.clone(),
+                name: args[0].to_string(),
             },
         })
     }
 
     fn execute<'a>(
         &'a self,
-        _args: Vec<&'a str>,
+        args: Vec<&'a str>,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
+            // Parse the command to get the profile name
+            let command = self.to_command(args)?;
+
+            // Extract the profile name from the command
+            let name = match command {
+                Command::Profile {
+                    subcommand: ProfileSubcommand::Delete { name },
+                } => name,
+                _ => return Err(eyre::eyre!("Invalid command")),
+            };
+
             // Get the context manager
             if let Some(context_manager) = &ctx.conversation_state.context_manager {
                 // Delete the profile
-                match context_manager.delete_profile(&self.name).await {
+                match context_manager.delete_profile(&name).await {
                     Ok(_) => {
                         queue!(
                             ctx.output,
                             style::Print("\nProfile '"),
                             style::SetForegroundColor(Color::Green),
-                            style::Print(&self.name),
+                            style::Print(&name),
                             style::ResetColor,
                             style::Print("' deleted successfully.\n\n")
                         )?;

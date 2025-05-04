@@ -21,17 +21,11 @@ use crate::{
     QueuedTool,
 };
 
+/// Static instance of the tools reset single command handler
+pub static RESET_SINGLE_TOOL_HANDLER: ResetSingleToolCommand = ResetSingleToolCommand;
+
 /// Handler for the tools reset single command
-pub struct ResetSingleToolCommand {
-    tool_name: String,
-}
-
-impl ResetSingleToolCommand {
-    pub fn new(tool_name: String) -> Self {
-        Self { tool_name }
-    }
-}
-
+pub struct ResetSingleToolCommand;
 impl CommandHandler for ResetSingleToolCommand {
     fn name(&self) -> &'static str {
         "reset"
@@ -49,41 +43,53 @@ impl CommandHandler for ResetSingleToolCommand {
         "Reset a specific tool to its default permission level.".to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+        if args.len() != 1 {
+            return Err(eyre::eyre!("Expected tool name argument"));
+        }
+
         Ok(Command::Tools {
             subcommand: Some(ToolsSubcommand::ResetSingle {
-                tool_name: self.tool_name.clone(),
+                tool_name: args[0].to_string(),
             }),
         })
     }
 
     fn execute<'a>(
         &'a self,
-        _args: Vec<&'a str>,
+        args: Vec<&'a str>,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
+            // Parse the command to get the tool name
+            let command = self.to_command(args)?;
+
+            // Extract the tool name from the command
+            let tool_name = match command {
+                Command::Tools {
+                    subcommand: Some(ToolsSubcommand::ResetSingle { tool_name }),
+                } => tool_name,
+                _ => return Err(eyre::eyre!("Invalid command")),
+            };
+
             // Check if the tool exists
-            if !Tool::all_tool_names().contains(&self.tool_name.as_str()) {
+            if !Tool::all_tool_names().contains(&tool_name.as_str()) {
                 queue!(
                     ctx.output,
                     style::SetForegroundColor(Color::Red),
-                    style::Print(format!("\nUnknown tool: '{}'\n\n", self.tool_name)),
+                    style::Print(format!("\nUnknown tool: '{}'\n\n", tool_name)),
                     style::ResetColor
                 )?;
             } else {
                 // Reset the tool permission
-                ctx.tool_permissions.reset_tool(&self.tool_name);
+                ctx.tool_permissions.reset_tool(&tool_name);
 
                 queue!(
                     ctx.output,
                     style::SetForegroundColor(Color::Green),
-                    style::Print(format!(
-                        "\nReset tool '{}' to default permission level.\n\n",
-                        self.tool_name
-                    )),
+                    style::Print(format!("\nReset tool '{}' to default permission level.\n\n", tool_name)),
                     style::ResetColor
                 )?;
             }

@@ -20,20 +20,11 @@ use crate::{
     QueuedTool,
 };
 
+/// Static instance of the profile list command handler
+pub static LIST_PROFILE_HANDLER: ListProfileCommand = ListProfileCommand;
+
 /// Handler for the profile list command
 pub struct ListProfileCommand;
-
-impl ListProfileCommand {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for ListProfileCommand {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl CommandHandler for ListProfileCommand {
     fn name(&self) -> &'static str {
@@ -122,50 +113,80 @@ impl CommandHandler for ListProfileCommand {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::command::{
+        Command,
+        ProfileSubcommand,
+    };
+
+    #[test]
+    fn test_to_command() {
+        let handler = ListProfileCommand;
+        let args = vec![];
+
+        let command = handler.to_command(args).unwrap();
+
+        match command {
+            Command::Profile {
+                subcommand: ProfileSubcommand::List,
+            } => {
+                // Command parsed correctly
+            },
+            _ => panic!("Expected Profile List command"),
+        }
+    }
+
+    #[test]
+    fn test_requires_confirmation() {
+        let handler = ListProfileCommand;
+        assert!(!handler.requires_confirmation(&[]));
+    }
+}
+
+#[tokio::test]
+async fn test_list_profile_command() {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use fig_os_shim::Context;
+    use fig_settings::Settings;
 
-    use super::*;
-    use crate::Settings;
-    use crate::conversation_state::ConversationState;
-    use crate::input_source::InputSource;
-    use crate::shared_writer::SharedWriter;
-    use crate::tools::ToolPermissions;
+    use crate::{
+        Context,
+        ConversationState,
+        InputSource,
+        SharedWriter,
+        ToolPermissions,
+    };
 
-    #[tokio::test]
-    async fn test_list_profile_command() {
-        let handler = ListProfileCommand::new();
+    let handler = &LIST_PROFILE_HANDLER;
 
-        // Create a minimal context
-        let context = Arc::new(Context::new_fake());
-        let output = SharedWriter::null();
-        let mut conversation_state = ConversationState::new(
-            Arc::clone(&context),
-            "test-conversation",
-            HashMap::new(),
-            None,
-            Some(SharedWriter::null()),
-        )
-        .await;
-        let mut tool_permissions = ToolPermissions::new(0);
-        let mut input_source = InputSource::new_mock(vec![]);
-        let settings = Settings::new_fake();
+    // Create a minimal context
+    let context = Arc::new(Context::new_fake());
+    let mut output = SharedWriter::null();
+    let mut conversation_state = ConversationState::new(
+        Arc::clone(&context),
+        "test-conversation",
+        HashMap::new(),
+        None,
+        Some(SharedWriter::null()),
+    )
+    .await;
+    let mut tool_permissions = ToolPermissions::new(0);
+    let mut input_source = InputSource::new_mock(vec![]);
+    let settings = Settings::new_fake();
 
-        let mut ctx = CommandContextAdapter {
-            context: &context,
-            output: &mut output.clone(),
-            conversation_state: &mut conversation_state,
-            tool_permissions: &mut tool_permissions,
-            interactive: true,
-            input_source: &mut input_source,
-            settings: &settings,
-        };
+    let mut ctx = CommandContextAdapter {
+        context: &context,
+        output: &mut output,
+        conversation_state: &mut conversation_state,
+        tool_permissions: &mut tool_permissions,
+        interactive: true,
+        input_source: &mut input_source,
+        settings: &settings,
+    };
 
-        // Execute the list command
-        let result = handler.execute(vec![], &mut ctx, None, None).await;
+    // Execute the list command
+    let result = handler.execute(vec![], &mut ctx, None, None).await;
 
-        assert!(result.is_ok());
-    }
+    assert!(result.is_ok());
 }

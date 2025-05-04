@@ -2,22 +2,28 @@
 
 ## Overview
 
-This document outlines the plan for replacing the CommandRegistry with a command-centric architecture that leverages the bidirectional relationship between Commands and Handlers. The Command enum will become the central point for command-related functionality, making the code more maintainable and reducing indirection.
+This document outlines the plan for replacing the CommandRegistry with a command-centric architecture that leverages the bidirectional relationship between Commands and Handlers. The Command enum will become the central point for command-related functionality, making the code more maintainable and reducing indirection, while keeping implementation details in separate files.
 
 ## Key Changes
 
 1. **Command Enum Enhancement**:
+   - Keep the existing `to_handler()` method that returns the appropriate handler for each Command variant
    - Add `parse()` static method to parse command strings into Command enums
-   - Add `execute()` method for direct command execution
+   - Add `execute()` method for direct command execution that delegates to the handler
    - Add `generate_llm_descriptions()` static method for LLM integration
-   - Use a static HashMap for command name to handler mapping
 
 2. **CommandHandler Trait Enhancement**:
+   - Keep the existing `to_command()` method that converts arguments to Command enums
    - Add `execute_command()` method that works directly with Command objects
    - Each handler implements this method to handle its specific Command variant
    - Handlers return errors for unexpected command types
 
-3. **CommandRegistry Removal**:
+3. **Static Handler Instances**:
+   - Define static instances of each handler in their respective files
+   - Use these static instances in the Command enum's `to_handler()` method
+   - Maintain the bidirectional relationship between Commands and Handlers
+
+4. **CommandRegistry Removal**:
    - Replace all CommandRegistry calls with direct Command enum calls
    - Remove the CommandRegistry class entirely
 
@@ -31,19 +37,6 @@ This document outlines the plan for replacing the CommandRegistry with a command
 pub trait CommandHandler {
     // Existing methods
     fn to_command<'a>(&self, args: Vec<&'a str>) -> Result<Command>;
-    
-    fn execute<'a>(&self, args: Vec<&'a str>, ctx: &'a mut CommandContextAdapter<'a>, 
-                 tool_uses: Option<Vec<QueuedTool>>, 
-                 pending_tool_index: Option<usize>) -> Pin<Box<dyn Future<Output = Result<ChatState>> + 'a>> {
-        Box::pin(async move {
-            let command = self.to_command(args)?;
-            Ok(ChatState::ExecuteCommand {
-                command,
-                tool_uses,
-                pending_tool_index,
-            })
-        })
-    }
     
     // New method that works directly with Command objects
     fn execute_command<'a>(&'a self, 
@@ -61,32 +54,40 @@ pub trait CommandHandler {
 }
 ```
 
-### 2. Enhance Command Enum
+### 2. Define Static Handler Instances
+
+```rust
+// In crates/q_chat/src/commands/help.rs
+pub static HELP_HANDLER: HelpCommandHandler = HelpCommandHandler;
+
+// In crates/q_chat/src/commands/quit.rs
+pub static QUIT_HANDLER: QuitCommandHandler = QuitCommandHandler;
+
+// And so on for other commands...
+```
+
+### 3. Enhance Command Enum
 
 ```rust
 // In crates/q_chat/src/command.rs
 
-use std::collections::HashMap;
-use std::sync::OnceLock;
-
 impl Command {
-    // Static HashMap for command name to handler mapping
-    fn command_handlers() -> &'static HashMap<&'static str, &'static dyn CommandHandler> {
-        static HANDLERS: OnceLock<HashMap<&'static str, &'static dyn CommandHandler>> = OnceLock::new();
-        HANDLERS.get_or_init(|| {
-            let mut map = HashMap::new();
-            map.insert("help", &HELP_HANDLER as &dyn CommandHandler);
-            map.insert("quit", &QUIT_HANDLER as &dyn CommandHandler);
-            map.insert("clear", &CLEAR_HANDLER as &dyn CommandHandler);
-            map.insert("context", &CONTEXT_HANDLER as &dyn CommandHandler);
-            map.insert("profile", &PROFILE_HANDLER as &dyn CommandHandler);
-            map.insert("tools", &TOOLS_HANDLER as &dyn CommandHandler);
-            map.insert("issue", &ISSUE_HANDLER as &dyn CommandHandler);
-            map.insert("compact", &COMPACT_HANDLER as &dyn CommandHandler);
-            map.insert("editor", &EDITOR_HANDLER as &dyn CommandHandler);
-            map.insert("usage", &USAGE_HANDLER as &dyn CommandHandler);
-            map
-        })
+    // Get the appropriate handler for this command variant
+    pub fn to_handler(&self) -> &'static dyn CommandHandler {
+        match self {
+            Command::Help { .. } => &HELP_HANDLER,
+            Command::Quit => &QUIT_HANDLER,
+            Command::Clear => &CLEAR_HANDLER,
+            Command::Context { subcommand } => subcommand.to_handler(),
+            Command::Profile { subcommand } => subcommand.to_handler(),
+            Command::Tools { subcommand } => match subcommand {
+                Some(sub) => sub.to_handler(),
+                None => &TOOLS_LIST_HANDLER,
+            },
+            Command::Compact { .. } => &COMPACT_HANDLER,
+            Command::Usage => &USAGE_HANDLER,
+            // Other commands...
+        }
     }
 
     // Parse a command string into a Command enum
@@ -104,12 +105,19 @@ impl Command {
         let command_name = parts.next().ok_or_else(|| anyhow!("Empty command"))?;
         let args: Vec<&str> = parts.collect();
         
-        // Look up handler in the static HashMap
-        let handler = Self::command_handlers().get(command_name)
-            .ok_or_else(|| anyhow!("Unknown command: {}", command_name))?;
-        
-        // Use the handler to create the command
-        handler.to_command(args)
+        // Match on command name and use the handler to parse arguments
+        match command_name {
+            "help" => HELP_HANDLER.to_command(args),
+            "quit" => QUIT_HANDLER.to_command(args),
+            "clear" => CLEAR_HANDLER.to_command(args),
+            "context" => CONTEXT_HANDLER.to_command(args),
+            "profile" => PROFILE_HANDLER.to_command(args),
+            "tools" => TOOLS_HANDLER.to_command(args),
+            "compact" => COMPACT_HANDLER.to_command(args),
+            "usage" => USAGE_HANDLER.to_command(args),
+            // Other commands...
+            _ => Err(anyhow!("Unknown command: {}", command_name)),
+        }
     }
     
     // Execute the command directly
@@ -124,42 +132,47 @@ impl Command {
         handler.execute_command(self, ctx, tool_uses, pending_tool_index).await
     }
     
-    // to_args is only for display purposes
-    pub fn to_args(&self) -> Vec<String> {
-        match self {
-            Command::Help { help_text } => {
-                let mut args = vec!["help".to_string()];
-                if let Some(text) = help_text {
-                    args.push(text.clone());
-                }
-                args
-            },
-            Command::Quit => vec!["quit".to_string()],
-            Command::Clear => vec!["clear".to_string()],
-            // Implement for other commands...
-            _ => vec![],
-        }
-    }
-    
     // Generate LLM descriptions for all commands
     pub fn generate_llm_descriptions() -> serde_json::Value {
         let mut descriptions = json!({});
         
-        // Use the same static HashMap to generate descriptions
-        for (command_name, handler) in Self::command_handlers().iter() {
-            descriptions[command_name] = handler.llm_description();
-        }
+        // Use the static handlers to generate descriptions
+        descriptions["help"] = HELP_HANDLER.llm_description();
+        descriptions["quit"] = QUIT_HANDLER.llm_description();
+        descriptions["clear"] = CLEAR_HANDLER.llm_description();
+        descriptions["context"] = CONTEXT_HANDLER.llm_description();
+        descriptions["profile"] = PROFILE_HANDLER.llm_description();
+        descriptions["tools"] = TOOLS_HANDLER.llm_description();
+        descriptions["compact"] = COMPACT_HANDLER.llm_description();
+        descriptions["usage"] = USAGE_HANDLER.llm_description();
+        // Other commands...
         
         descriptions
     }
 }
 ```
 
-### 3. Update Command Handlers
+### 4. Update Subcommand Enums
+
+```rust
+// In crates/q_chat/src/commands/context/mod.rs
+impl ContextSubcommand {
+    pub fn to_handler(&self) -> &'static dyn CommandHandler {
+        match self {
+            ContextSubcommand::Add { .. } => &CONTEXT_ADD_HANDLER,
+            ContextSubcommand::Remove { .. } => &CONTEXT_REMOVE_HANDLER,
+            ContextSubcommand::Clear => &CONTEXT_CLEAR_HANDLER,
+            ContextSubcommand::Show => &CONTEXT_SHOW_HANDLER,
+            ContextSubcommand::Hooks => &CONTEXT_HOOKS_HANDLER,
+        }
+    }
+}
+```
+
+### 5. Update Command Handlers
 
 ```rust
 // In crates/q_chat/src/commands/help.rs
-
 impl CommandHandler for HelpCommandHandler {
     // Existing to_command implementation
     
@@ -184,7 +197,7 @@ impl CommandHandler for HelpCommandHandler {
 }
 ```
 
-### 4. Update Integration Points
+### 6. Update Integration Points
 
 ```rust
 // In crates/q_chat/src/tools/internal_command/tool.rs
@@ -236,7 +249,7 @@ async fn process_tool_response(&mut self, response: InvokeOutput) -> Result<Chat
 }
 ```
 
-### 5. Update LLM Integration
+### 7. Update LLM Integration
 
 ```rust
 // In crates/q_chat/src/tools/internal_command/schema.rs or wherever LLM descriptions are generated
@@ -247,7 +260,7 @@ fn generate_command_descriptions() -> serde_json::Value {
 }
 ```
 
-### 6. Remove CommandRegistry
+### 8. Remove CommandRegistry
 
 After making these changes, we can remove the CommandRegistry class entirely:
 
@@ -258,14 +271,15 @@ After making these changes, we can remove the CommandRegistry class entirely:
 ## Implementation Steps
 
 1. Update the CommandHandler trait with the new execute_command method
-2. Enhance the Command enum with static methods
-3. Update each command handler to implement execute_command
-4. Update integration points to use Command directly
-5. Remove the CommandRegistry class
-6. Run tests to ensure everything works correctly
-7. Run clippy to check for any issues
-8. Format the code with cargo fmt
-9. Commit the changes
+2. Define static handler instances in each command file
+3. Enhance the Command enum with static methods
+4. Update each command handler to implement execute_command
+5. Update integration points to use Command directly
+6. Remove the CommandRegistry class
+7. Run tests to ensure everything works correctly
+8. Run clippy to check for any issues
+9. Format the code with cargo fmt
+10. Commit the changes
 
 ## Testing Plan
 
@@ -284,13 +298,14 @@ After making these changes, we can remove the CommandRegistry class entirely:
    - Test with unknown commands
    - Test with malformed commands
 
-## Benefits
+## Benefits of This Approach
 
-1. **Simplified Architecture**: Removes the need for a separate CommandRegistry class
-2. **Reduced Indirection**: Direct access to commands without going through a registry
-3. **Type Safety**: Each handler works directly with its specific Command variant
-4. **Maintainability**: Adding a new command only requires updating the Command enum and adding a handler
-5. **Consistency**: Commands behave the same whether invoked directly or through the tool
+1. **Code Organization**: Maintains separation of concerns with each command in its own file
+2. **Type Safety**: Preserves the static typing between Command variants and their handlers
+3. **Bidirectional Relationship**: Maintains the bidirectional relationship between Commands and Handlers
+4. **Reduced Indirection**: Eliminates the need for a separate CommandRegistry
+5. **Maintainability**: Makes it easier to add new commands by following a consistent pattern
+6. **Consistency**: Ensures consistent behavior between direct command execution and tool-based execution
 
 ## Commit Message
 

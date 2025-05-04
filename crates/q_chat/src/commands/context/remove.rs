@@ -1,6 +1,4 @@
-use std::future::Future;
 use std::io::Write;
-use std::pin::Pin;
 
 use crossterm::queue;
 use crossterm::style::{
@@ -11,27 +9,18 @@ use eyre::{
     Result,
     eyre,
 };
-use fig_os_shim::Context;
 
 use crate::commands::CommandHandler;
 use crate::{
-    ChatContext, ChatState, QueuedTool
+    ChatState,
+    QueuedTool,
 };
 
-/// Handler for the context remove command
-pub struct RemoveContextCommand {
-    global: bool,
-    paths: Vec<String>,
-}
+/// Static instance of the remove context command handler
+pub static REMOVE_CONTEXT_HANDLER: RemoveContextCommand = RemoveContextCommand;
 
-impl RemoveContextCommand {
-    pub fn new(global: bool, paths: Vec<&str>) -> Self {
-        Self {
-            global,
-            paths: paths.iter().map(|p| (*p).to_string()).collect(),
-        }
-    }
-}
+/// Handler for the context remove command
+pub struct RemoveContextCommand;
 
 impl CommandHandler for RemoveContextCommand {
     fn name(&self) -> &'static str {
@@ -50,24 +39,48 @@ impl CommandHandler for RemoveContextCommand {
         "Remove files from the context. Use --global to remove from global context.".to_string()
     }
 
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command> {
+        let mut global = false;
+        let mut paths = Vec::new();
+
+        for arg in args {
+            match arg {
+                "--global" => global = true,
+                _ => paths.push(arg.to_string()),
+            }
+        }
+
+        Ok(crate::command::Command::Context {
+            subcommand: crate::command::ContextSubcommand::Remove { global, paths },
+        })
+    }
+
     fn execute<'a>(
         &'a self,
-        _args: Vec<&'a str>,
-        ctx: &'a ChatContext,
+        args: Vec<&'a str>,
+        ctx: &'a mut crate::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
+            // Parse the command to get the parameters
+            let command = self.to_command(args)?;
+
+            // Extract the parameters from the command
+            let (global, paths) = match command {
+                crate::command::Command::Context {
+                    subcommand: crate::command::ContextSubcommand::Remove { global, paths },
+                } => (global, paths),
+                _ => return Err(eyre!("Invalid command")),
+            };
+
             // Check if paths are provided
-            if self.paths.is_empty() {
+            if paths.is_empty() {
                 return Err(eyre!("No paths specified. Usage: {}", self.usage()));
             }
 
-            // Get the conversation state from the context
-            let conversation_state = ctx.get_conversation_state()?;
-
             // Get the context manager
-            let Some(context_manager) = &mut conversation_state.context_manager else {
+            let Some(context_manager) = &mut ctx.conversation_state.context_manager else {
                 queue!(
                     ctx.output,
                     style::SetForegroundColor(Color::Red),
@@ -83,10 +96,10 @@ impl CommandHandler for RemoveContextCommand {
             };
 
             // Remove the paths from the context
-            match context_manager.remove_paths(self.paths.clone(), self.global).await {
+            match context_manager.remove_paths(paths, global).await {
                 Ok(_) => {
                     // Success message
-                    let scope = if self.global { "global" } else { "profile" };
+                    let scope = if global { "global" } else { "profile" };
                     queue!(
                         ctx.output,
                         style::SetForegroundColor(Color::Green),
@@ -123,14 +136,68 @@ impl CommandHandler for RemoveContextCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::command::{
+        Command,
+        ContextSubcommand,
+    };
 
-    #[tokio::test]
-    async fn test_remove_context_command_no_paths() {
-        let command = RemoveContextCommand::new(false, vec![]);
-        // We'll need to implement test_utils later
-        // let ctx = create_test_context();
-        let ctx = ChatContext::default();
-        let result = command.execute(vec![], &ctx, None, None).await;
-        assert!(result.is_err());
+    #[test]
+    fn test_to_command_with_global() {
+        let handler = RemoveContextCommand;
+        let args = vec!["--global", "path1", "path2"];
+
+        let command = handler.to_command(args).unwrap();
+
+        match command {
+            Command::Context {
+                subcommand: ContextSubcommand::Remove { global, paths },
+            } => {
+                assert!(global);
+                assert_eq!(paths, vec!["path1".to_string(), "path2".to_string()]);
+            },
+            _ => panic!("Expected Context Remove command"),
+        }
+    }
+
+    #[test]
+    fn test_to_command_without_global() {
+        let handler = RemoveContextCommand;
+        let args = vec!["path1", "path2"];
+
+        let command = handler.to_command(args).unwrap();
+
+        match command {
+            Command::Context {
+                subcommand: ContextSubcommand::Remove { global, paths },
+            } => {
+                assert!(!global);
+                assert_eq!(paths, vec!["path1".to_string(), "path2".to_string()]);
+            },
+            _ => panic!("Expected Context Remove command"),
+        }
+    }
+
+    #[test]
+    fn test_to_command_no_paths() {
+        let handler = RemoveContextCommand;
+        let args = vec!["--global"];
+
+        let command = handler.to_command(args).unwrap();
+
+        match command {
+            Command::Context {
+                subcommand: ContextSubcommand::Remove { global, paths },
+            } => {
+                assert!(global);
+                assert!(paths.is_empty());
+            },
+            _ => panic!("Expected Context Remove command"),
+        }
+    }
+
+    #[test]
+    fn test_requires_confirmation() {
+        let handler = RemoveContextCommand;
+        assert!(handler.requires_confirmation(&[]));
     }
 }

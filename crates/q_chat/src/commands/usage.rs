@@ -19,6 +19,9 @@ use crate::{
 /// Command handler for the `/usage` command
 pub struct UsageCommand;
 
+// Create a static instance of the handler
+pub static USAGE_HANDLER: UsageCommand = UsageCommand;
+
 impl Default for UsageCommand {
     fn default() -> Self {
         Self
@@ -123,6 +126,95 @@ No arguments or options are needed for this command.
 
     fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
         Ok(Command::Usage)
+    }
+
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        ctx: &'a mut CommandContextAdapter<'a>,
+        _tool_uses: Option<Vec<QueuedTool>>,
+        _pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+        Box::pin(async move {
+            if let Command::Usage = command {
+                // Calculate token usage statistics
+                let char_count = ctx.conversation_state.calculate_char_count().await;
+                let total_chars = *char_count;
+
+                // Get conversation size details
+                let backend_state = ctx.conversation_state.backend_conversation_state(false, true).await;
+                let conversation_size = backend_state.calculate_conversation_size();
+
+                // Get character counts
+                let history_chars = *conversation_size.user_messages + *conversation_size.assistant_messages;
+                let context_chars = *conversation_size.context_messages;
+
+                // Convert to token counts using the TokenCounter ratio
+                let max_chars = crate::consts::MAX_CHARS;
+                let max_tokens = max_chars / 3;
+                let history_tokens = history_chars / 3;
+                let context_tokens = context_chars / 3;
+                let total_tokens = total_chars / 3;
+                let remaining_tokens = max_tokens.saturating_sub(total_tokens);
+
+                // Calculate percentages
+                let history_percentage = (history_chars as f64 / max_chars as f64) * 100.0;
+                let context_percentage = (context_chars as f64 / max_chars as f64) * 100.0;
+                let total_percentage = (total_chars as f64 / max_chars as f64) * 100.0;
+
+                // Format progress bars
+                let bar_width = 30;
+                let history_bar = Self::format_progress_bar(history_percentage, bar_width);
+                let context_bar = Self::format_progress_bar(context_percentage, bar_width);
+                let total_bar = Self::format_progress_bar(total_percentage, bar_width);
+
+                // Get colors based on usage
+                let history_color = Self::get_color_for_percentage(history_percentage);
+                let context_color = Self::get_color_for_percentage(context_percentage);
+                let total_color = Self::get_color_for_percentage(total_percentage);
+
+                // Display the usage statistics
+                queue!(
+                    ctx.output,
+                    style::Print("\n📊 Token Usage Statistics\n\n"),
+                    style::Print("Conversation History: "),
+                    style::SetForegroundColor(history_color),
+                    style::Print(format!("{} ", history_bar)),
+                    style::ResetColor,
+                    style::Print(format!("{} tokens ({:.1}%)\n", history_tokens, history_percentage)),
+                    style::Print("Context Files:       "),
+                    style::SetForegroundColor(context_color),
+                    style::Print(format!("{} ", context_bar)),
+                    style::ResetColor,
+                    style::Print(format!("{} tokens ({:.1}%)\n", context_tokens, context_percentage)),
+                    style::Print("Total Usage:         "),
+                    style::SetForegroundColor(total_color),
+                    style::Print(format!("{} ", total_bar)),
+                    style::ResetColor,
+                    style::Print(format!("{} tokens ({:.1}%)\n", total_tokens, total_percentage)),
+                    style::Print(format!("\nRemaining Capacity:   {} tokens\n", remaining_tokens)),
+                    style::Print(format!("Maximum Capacity:     {} tokens\n\n", max_tokens))
+                )?;
+
+                // Add a tip if usage is high
+                if total_percentage > 75.0 {
+                    queue!(
+                        ctx.output,
+                        style::SetForegroundColor(Color::Yellow),
+                        style::Print("Tip: Use /compact to summarize conversation history and free up space.\n"),
+                        style::ResetColor
+                    )?;
+                }
+
+                Ok(ChatState::PromptUser {
+                    tool_uses: None,
+                    pending_tool_index: None,
+                    skip_printing_tools: false,
+                })
+            } else {
+                Err(eyre::anyhow!("UsageCommand can only execute Usage commands"))
+            }
+        })
     }
 
     // Keep the original execute implementation since it has custom logic

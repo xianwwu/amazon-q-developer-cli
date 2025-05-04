@@ -5,7 +5,7 @@ pub mod tool;
 
 pub use schema::InternalCommand;
 
-use crate::commands::registry::CommandRegistry;
+use crate::command::Command;
 use crate::tools::ToolSpec;
 
 /// Get the tool specification for internal_command
@@ -19,28 +19,18 @@ pub fn get_tool_spec() -> ToolSpec {
     description.push_str("when a user's natural language query indicates they want to perform a specific action.\n\n");
     description.push_str("Available commands:\n");
 
-    // Get detailed command descriptions from the command registry
-    let command_registry = CommandRegistry::global();
-    let llm_descriptions = command_registry.generate_llm_descriptions();
+    // Get detailed command descriptions from the Command enum
+    let command_descriptions = Command::generate_llm_descriptions();
 
-    // Add each command to the description with its LLM description
-    if let Some(commands) = llm_descriptions.as_object() {
-        for (name, cmd_info) in commands {
-            if let Some(cmd_desc) = cmd_info.get("description").and_then(|d| d.as_str()) {
-                // Add a summary line for each command
-                description.push_str(&format!("- {}: {}\n", name, cmd_desc.lines().next().unwrap_or("")));
-            }
-        }
+    // Add each command to the description with its short description
+    for (name, cmd_info) in &command_descriptions {
+        description.push_str(&format!("- {}: {}\n", name, cmd_info.short_description));
     }
 
     // Add detailed command information
     description.push_str("\nDetailed command information:\n");
-    if let Some(commands) = llm_descriptions.as_object() {
-        for (name, cmd_info) in commands {
-            if let Some(cmd_desc) = cmd_info.get("description").and_then(|d| d.as_str()) {
-                description.push_str(&format!("\n## {}\n{}\n", name, cmd_desc));
-            }
-        }
+    for (name, cmd_info) in &command_descriptions {
+        description.push_str(&format!("\n## {}\n{}\n", name, cmd_info.full_description));
     }
 
     // Add information about how to access list data for commands that manage lists
@@ -81,6 +71,7 @@ pub fn get_tool_spec() -> ToolSpec {
     );
     description.push_str("- \"I want to compact the conversation\" -> internal_command with command=\"compact\"\n");
     description.push_str("- \"Show me the help for context commands\" -> internal_command with command=\"context\", subcommand=\"help\"\n");
+    description.push_str("- \"Show me my token usage\" -> internal_command with command=\"usage\"\n");
 
     // Create the tool specification
     serde_json::from_value(serde_json::json!({
@@ -91,11 +82,11 @@ pub fn get_tool_spec() -> ToolSpec {
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The command to execute (without the leading slash). Available commands: quit, clear, help, context, profile, tools, issue, compact, editor"
+                    "description": "The command to execute (without the leading slash). Available commands: quit, clear, help, context, profile, tools, issue, compact, editor, usage"
                 },
                 "subcommand": {
                     "type": "string",
-                    "description": "Optional subcommand for commands that support them (context, profile, tools)"
+                    "description": "Optional subcommand for commands that support them (context, profile, tools, prompts)"
                 },
                 "args": {
                     "type": "array",

@@ -11,7 +11,6 @@ use tracing::debug;
 
 use crate::ChatState;
 use crate::command::Command;
-use crate::commands::registry::CommandRegistry;
 use crate::tools::internal_command::schema::InternalCommand;
 use crate::tools::{
     InvokeOutput,
@@ -21,24 +20,34 @@ use crate::tools::{
 impl InternalCommand {
     /// Validate that the command exists
     pub fn validate_simple(&self) -> Result<()> {
-        // Validate that the command is one of the known commands
-        let cmd = self.command.trim_start_matches('/');
+        // Format a simple command string
+        let cmd_str = if !self.command.starts_with('/') {
+            format!("/{}", self.command)
+        } else {
+            self.command.clone()
+        };
 
-        // Check if the command exists in the command registry
-        if CommandRegistry::global().command_exists(cmd) {
-            return Ok(());
+        // Try to parse the command using the Command::parse method
+        match Command::parse(&cmd_str) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(eyre::eyre!("Unknown command: {} - {}", self.command, e)),
         }
-
-        // For commands not in the registry, return an error
-        Err(eyre::eyre!("Unknown command: {}", self.command))
     }
 
     /// Check if the command requires user acceptance
     pub fn requires_acceptance_simple(&self) -> bool {
-        let cmd = self.command.trim_start_matches('/');
+        // Format a simple command string
+        let cmd_str = if !self.command.starts_with('/') {
+            format!("/{}", self.command)
+        } else {
+            self.command.clone()
+        };
 
-        // Try to get the handler from the registry
-        if let Some(handler) = CommandRegistry::global().get(cmd) {
+        // Try to parse the command
+        if let Ok(command) = Command::parse(&cmd_str) {
+            // Get the handler for this command using to_handler()
+            let handler = command.to_handler();
+
             // Convert args to string slices for the handler
             let args: Vec<&str> = match &self.subcommand {
                 Some(subcommand) => vec![subcommand.as_str()],
@@ -48,7 +57,7 @@ impl InternalCommand {
             return handler.requires_confirmation(&args);
         }
 
-        // For commands not in the registry, default to requiring confirmation
+        // For commands not recognized, default to requiring confirmation
         true
     }
 
@@ -89,14 +98,21 @@ impl InternalCommand {
 
     /// Get a description for the command
     pub fn get_command_description(&self) -> String {
-        let cmd = self.command.trim_start_matches('/');
+        // Format a simple command string
+        let cmd_str = if !self.command.starts_with('/') {
+            format!("/{}", self.command)
+        } else {
+            self.command.clone()
+        };
 
-        // Try to get the description from the command registry
-        if let Some(handler) = CommandRegistry::global().get(cmd) {
+        // Try to parse the command
+        if let Ok(command) = Command::parse(&cmd_str) {
+            // Get the handler for this command using to_handler()
+            let handler = command.to_handler();
             return handler.description().to_string();
         }
 
-        // For commands not in the registry, return a generic description
+        // For commands not recognized, return a generic description
         "Execute a command in the Q chat system".to_string()
     }
 
@@ -120,8 +136,8 @@ impl InternalCommand {
     /// Invoke the internal command tool
     ///
     /// This method executes the internal command and returns an InvokeOutput with the result.
-    /// It formats the command string and returns a ChatState::ExecuteCommand state that will
-    /// be handled by the chat loop.
+    /// It uses Command::parse_from_components to get the Command enum and then uses execute
+    /// to execute the command.
     ///
     /// # Arguments
     ///
@@ -145,61 +161,31 @@ impl InternalCommand {
         // Log the command string
         debug!("Executing command: {}", command_str);
 
-        // Get the command handler from the registry
-        let cmd = self.command.trim_start_matches('/');
-        let command_registry = CommandRegistry::global();
-
-        if let Some(handler) = command_registry.get(cmd) {
-            // Convert args to a Vec<&str>
-            let args = self
-                .args
-                .as_ref()
-                .map(|args| args.iter().map(|s| s.as_str()).collect())
-                .unwrap_or_default();
-
-            // Use to_command to get the Command enum
-            match handler.to_command(args) {
-                Ok(command) => {
-                    // Return an InvokeOutput with the response and next state
-                    Ok(InvokeOutput {
-                        output: OutputKind::Text(response),
-                        next_state: Some(ChatState::ExecuteCommand {
-                            command,
-                            tool_uses: None,
-                            pending_tool_index: None,
-                        }),
-                    })
-                },
-                Err(e) => {
-                    // Return an InvokeOutput with the error message from e and no next state
-                    Ok(InvokeOutput {
-                        output: OutputKind::Text(e.to_string()),
-                        next_state: None,
-                    })
-                },
-            }
-        } else {
-            // Try to parse the command using the old method as fallback
-            match Command::parse(&command_str, &mut std::io::stdout()) {
-                Ok(command) => {
-                    // Return an InvokeOutput with the response and next state
-                    Ok(InvokeOutput {
-                        output: OutputKind::Text(response),
-                        next_state: Some(ChatState::ExecuteCommand {
-                            command,
-                            tool_uses: None,
-                            pending_tool_index: None,
-                        }),
-                    })
-                },
-                Err(e) => {
-                    // Return an InvokeOutput with the error message from e and no next state
-                    Ok(InvokeOutput {
-                        output: OutputKind::Text(e),
-                        next_state: None,
-                    })
-                },
-            }
+        // Parse the command using Command::parse_from_components
+        match Command::parse_from_components(
+            &self.command,
+            self.subcommand.as_ref(),
+            self.args.as_ref(),
+            self.flags.as_ref(),
+        ) {
+            Ok(command) => {
+                // Return an InvokeOutput with the response and next state
+                Ok(InvokeOutput {
+                    output: OutputKind::Text(response),
+                    next_state: Some(ChatState::ExecuteCommand {
+                        command,
+                        tool_uses: None,
+                        pending_tool_index: None,
+                    }),
+                })
+            },
+            Err(e) => {
+                // Return an InvokeOutput with the error message and no next state
+                Ok(InvokeOutput {
+                    output: OutputKind::Text(e.to_string()),
+                    next_state: None,
+                })
+            },
         }
     }
 }

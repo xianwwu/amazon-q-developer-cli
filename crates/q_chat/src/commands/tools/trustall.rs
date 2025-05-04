@@ -21,20 +21,11 @@ use crate::{
     QueuedTool,
 };
 
+/// Static instance of the tools trustall command handler
+pub static TRUSTALL_TOOLS_HANDLER: TrustAllToolsCommand = TrustAllToolsCommand;
+
 /// Handler for the tools trustall command
 pub struct TrustAllToolsCommand;
-
-impl TrustAllToolsCommand {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for TrustAllToolsCommand {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl CommandHandler for TrustAllToolsCommand {
     fn name(&self) -> &'static str {

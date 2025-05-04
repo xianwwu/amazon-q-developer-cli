@@ -1,6 +1,4 @@
-use std::future::Future;
 use std::io::Write;
-use std::pin::Pin;
 
 use crossterm::queue;
 use crossterm::style::{
@@ -11,19 +9,15 @@ use eyre::Result;
 
 use crate::commands::CommandHandler;
 use crate::{
-    ChatContext, ChatState, QueuedTool
+    ChatState,
+    QueuedTool,
 };
 
-/// Handler for the context clear command
-pub struct ClearContextCommand {
-    global: bool,
-}
+/// Static instance of the clear context command handler
+pub static CLEAR_CONTEXT_HANDLER: ClearContextCommand = ClearContextCommand;
 
-impl ClearContextCommand {
-    pub fn new(global: bool) -> Self {
-        Self { global }
-    }
-}
+/// Handler for the context clear command
+pub struct ClearContextCommand;
 
 impl CommandHandler for ClearContextCommand {
     fn name(&self) -> &'static str {
@@ -42,19 +36,35 @@ impl CommandHandler for ClearContextCommand {
         "Clear all files from the current context. Use --global to clear global context.".to_string()
     }
 
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command> {
+        let global = args.contains(&"--global");
+
+        Ok(crate::command::Command::Context {
+            subcommand: crate::command::ContextSubcommand::Clear { global },
+        })
+    }
+
     fn execute<'a>(
         &'a self,
-        _args: Vec<&'a str>,
-        ctx: &'a ChatContext,
+        args: Vec<&'a str>,
+        ctx: &'a mut crate::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Get the conversation state from the context
-            let conversation_state = ctx.get_conversation_state()?;
+            // Parse the command to get the parameters
+            let command = self.to_command(args)?;
+
+            // Extract the parameters from the command
+            let global = match command {
+                crate::command::Command::Context {
+                    subcommand: crate::command::ContextSubcommand::Clear { global },
+                } => global,
+                _ => return Err(eyre::eyre!("Invalid command")),
+            };
 
             // Get the context manager
-            let Some(context_manager) = &mut conversation_state.context_manager else {
+            let Some(context_manager) = &mut ctx.conversation_state.context_manager else {
                 queue!(
                     ctx.output,
                     style::SetForegroundColor(Color::Red),
@@ -70,10 +80,10 @@ impl CommandHandler for ClearContextCommand {
             };
 
             // Clear the context
-            match context_manager.clear(self.global).await {
+            match context_manager.clear(global).await {
                 Ok(_) => {
                     // Success message
-                    let scope = if self.global { "global" } else { "profile" };
+                    let scope = if global { "global" } else { "profile" };
                     queue!(
                         ctx.output,
                         style::SetForegroundColor(Color::Green),
@@ -110,14 +120,48 @@ impl CommandHandler for ClearContextCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::command::{
+        Command,
+        ContextSubcommand,
+    };
 
-    #[tokio::test]
-    async fn test_clear_context_command() {
-        let command = ClearContextCommand::new(false);
-        assert_eq!(command.name(), "clear");
-        assert_eq!(command.description(), "Clear all files from current context");
-        assert_eq!(command.usage(), "/context clear [--global]");
+    #[test]
+    fn test_to_command_with_global() {
+        let handler = ClearContextCommand;
+        let args = vec!["--global"];
 
-        // Note: Full testing would require mocking the context manager
+        let command = handler.to_command(args).unwrap();
+
+        match command {
+            Command::Context {
+                subcommand: ContextSubcommand::Clear { global },
+            } => {
+                assert!(global);
+            },
+            _ => panic!("Expected Context Clear command"),
+        }
+    }
+
+    #[test]
+    fn test_to_command_without_global() {
+        let handler = ClearContextCommand;
+        let args = vec![];
+
+        let command = handler.to_command(args).unwrap();
+
+        match command {
+            Command::Context {
+                subcommand: ContextSubcommand::Clear { global },
+            } => {
+                assert!(!global);
+            },
+            _ => panic!("Expected Context Clear command"),
+        }
+    }
+
+    #[test]
+    fn test_requires_confirmation() {
+        let handler = ClearContextCommand;
+        assert!(handler.requires_confirmation(&[]));
     }
 }

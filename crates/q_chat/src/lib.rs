@@ -926,7 +926,7 @@ impl ChatContext {
                     command,
                     tool_uses,
                     pending_tool_index,
-                } => Ok(self.execute_command(command, tool_uses, pending_tool_index).await?),
+                } => Ok(self.execute(command, tool_uses, pending_tool_index).await?),
                 ChatState::Exit => return Ok(()),
             };
 
@@ -1335,24 +1335,50 @@ impl ChatContext {
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Result<ChatState, ChatError> {
-        let command_result = Command::parse(&user_input, &mut self.output);
+        // Check if the input is a command (starts with /)
+        if user_input.trim_start().starts_with('/') {
+            // Use Command::parse to parse the command
+            match Command::parse(&user_input) {
+                Ok(command) => {
+                    // Use Command::execute to execute the command with self
+                    match command.execute(self, tool_uses.clone(), pending_tool_index).await {
+                        Ok(state) => return Ok(state),
+                        Err(e) => {
+                            execute!(
+                                self.output,
+                                style::SetForegroundColor(Color::Red),
+                                style::Print(format!("\nError: {}\n\n", e)),
+                                style::SetForegroundColor(Color::Reset)
+                            )?;
 
-        if let Err(error_message) = &command_result {
-            // Display error message for command parsing errors
-            execute!(
-                self.output,
-                style::SetForegroundColor(Color::Red),
-                style::Print(format!("\nError: {}\n\n", error_message)),
-                style::SetForegroundColor(Color::Reset)
-            )?;
+                            return Ok(ChatState::PromptUser {
+                                tool_uses,
+                                pending_tool_index,
+                                skip_printing_tools: true,
+                            });
+                        },
+                    }
+                },
+                Err(error_message) => {
+                    // Display error message for command parsing errors
+                    execute!(
+                        self.output,
+                        style::SetForegroundColor(Color::Red),
+                        style::Print(format!("\nError: {}\n\n", error_message)),
+                        style::SetForegroundColor(Color::Reset)
+                    )?;
 
-            return Ok(ChatState::PromptUser {
-                tool_uses,
-                pending_tool_index,
-                skip_printing_tools: true,
-            });
+                    return Ok(ChatState::PromptUser {
+                        tool_uses,
+                        pending_tool_index,
+                        skip_printing_tools: true,
+                    });
+                },
+            }
         }
 
+        // If it's not a command, handle as a regular message
+        let command_result = Command::parse(&user_input);
         let command = command_result.unwrap();
 
         // For Ask commands, handle them directly
@@ -1415,7 +1441,7 @@ impl ChatContext {
         }
     }
 
-    async fn execute_command(
+    async fn execute(
         &mut self,
         command: Command,
         tool_uses: Option<Vec<QueuedTool>>,

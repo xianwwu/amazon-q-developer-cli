@@ -1,7 +1,6 @@
 //! Test utilities for command tests
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use eyre::Result;
 use fig_api_client::StreamingClient;
@@ -35,7 +34,7 @@ pub async fn create_test_chat_context() -> Result<ChatContext> {
     let tool_config = HashMap::new();
 
     // Create a conversation state
-    let conversation_state = ConversationState::new(ctx.clone(), tool_config, None, None).await;
+    let conversation_state = ConversationState::new(ctx.clone(), "test-conversation", tool_config, None, None).await;
 
     // Create the chat context
     let chat_context = ChatContext {
@@ -53,14 +52,25 @@ pub async fn create_test_chat_context() -> Result<ChatContext> {
         tool_permissions: ToolPermissions::new(10),
         tool_use_telemetry_events: HashMap::new(),
         tool_use_status: ToolUseStatus::Idle,
+        tool_manager: crate::tool_manager::ToolManager::default(),
         failed_request_ids: Vec::new(),
+        pending_prompts: std::collections::VecDeque::new(),
     };
 
     Ok(chat_context)
 }
 
 /// Create a test command context adapter for unit tests
-pub async fn create_test_command_context() -> Result<crate::commands::CommandContextAdapter> {
-    let mut chat_context = create_test_chat_context().await?;
-    Ok(crate::commands::CommandContextAdapter::new(&mut chat_context))
+pub async fn create_test_command_context(
+    chat_context: &mut ChatContext,
+) -> Result<crate::commands::CommandContextAdapter<'_>> {
+    Ok(crate::commands::CommandContextAdapter::new(
+        &chat_context.ctx,
+        &mut chat_context.output,
+        &mut chat_context.conversation_state,
+        &mut chat_context.tool_permissions,
+        chat_context.interactive,
+        &mut chat_context.input_source,
+        &chat_context.settings,
+    ))
 }

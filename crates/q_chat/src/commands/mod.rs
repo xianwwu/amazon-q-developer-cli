@@ -1,15 +1,16 @@
-mod clear;
-mod compact;
+pub mod clear;
+pub mod compact;
 pub mod context;
 pub mod context_adapter;
-mod editor;
+pub mod editor;
 pub mod handler;
 pub mod help;
+pub mod issue;
 pub mod profile;
-mod quit;
-pub mod registry;
+pub mod quit;
+pub mod test_utils;
 pub mod tools;
-mod usage;
+pub mod usage;
 
 pub use clear::ClearCommand;
 pub use compact::CompactCommand;
@@ -19,8 +20,8 @@ pub use editor::EditorCommand;
 // Keep CommandHandler as crate-only visibility
 pub(crate) use handler::CommandHandler;
 pub use help::HelpCommand;
+pub use issue::IssueCommand;
 pub use profile::ProfileCommand;
 pub use quit::QuitCommand;
-pub use registry::CommandRegistry;
 pub use tools::ToolsCommand;
 pub use usage::UsageCommand;

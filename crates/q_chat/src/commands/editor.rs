@@ -29,6 +29,9 @@ use crate::{
 /// Command handler for the `/editor` command
 pub struct EditorCommand;
 
+// Create a static instance of the handler
+pub static EDITOR_HANDLER: EditorCommand = EditorCommand;
+
 impl Default for EditorCommand {
     fn default() -> Self {
         Self
@@ -144,6 +147,169 @@ Examples:
         let initial_text = if !args.is_empty() { Some(args.join(" ")) } else { None };
 
         Ok(crate::command::Command::PromptEditor { initial_text })
+    }
+
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a crate::command::Command,
+        ctx: &'a mut CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+        Box::pin(async move {
+            if let crate::command::Command::PromptEditor { initial_text } = command {
+                // Create a temporary file for editing
+                let mut temp_file = match NamedTempFile::new() {
+                    Ok(file) => file,
+                    Err(e) => {
+                        error!("Failed to create temporary file: {}", e);
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print("Error: Failed to create temporary file for editor.\n"),
+                            style::ResetColor
+                        )?;
+                        return Ok(ChatState::PromptUser {
+                            tool_uses,
+                            pending_tool_index,
+                            skip_printing_tools: false,
+                        });
+                    },
+                };
+
+                // Write initial text to the file if provided
+                if let Some(text) = initial_text {
+                    if let Err(e) = temp_file.write_all(text.as_bytes()) {
+                        error!("Failed to write initial text to temporary file: {}", e);
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print("Error: Failed to write initial text to editor.\n"),
+                            style::ResetColor
+                        )?;
+                        return Ok(ChatState::PromptUser {
+                            tool_uses,
+                            pending_tool_index,
+                            skip_printing_tools: false,
+                        });
+                    }
+                    // Flush to ensure content is written before editor opens
+                    if let Err(e) = temp_file.flush() {
+                        error!("Failed to flush temporary file: {}", e);
+                    }
+                }
+
+                // Get the path to the temporary file
+                let temp_path = temp_file.path().to_path_buf();
+
+                // Get the editor command
+                let editor = Self::get_default_editor();
+
+                // Inform the user about the editor being opened
+                queue!(
+                    ctx.output,
+                    style::Print("\nOpening external editor ("),
+                    style::SetForegroundColor(Color::Cyan),
+                    style::Print(&editor),
+                    style::ResetColor,
+                    style::Print(")...\n")
+                )?;
+
+                // Close the file to allow the editor to access it
+                drop(temp_file);
+
+                // Open the editor
+                debug!("Opening editor {} with file {:?}", editor, temp_path);
+                let status = std::process::Command::new(&editor).arg(&temp_path).status();
+
+                match status {
+                    Ok(exit_status) if exit_status.success() => {
+                        // Read the content from the file
+                        match fs::read_to_string(&temp_path) {
+                            Ok(content) if !content.trim().is_empty() => {
+                                // Inform the user that the content is being sent
+                                queue!(
+                                    ctx.output,
+                                    style::Print("\nSending content from editor to Amazon Q...\n\n")
+                                )?;
+
+                                // Return the content as a prompt
+                                Ok(ChatState::HandleInput {
+                                    input: content,
+                                    tool_uses,
+                                    pending_tool_index,
+                                })
+                            },
+                            Ok(_) => {
+                                // Empty content
+                                queue!(
+                                    ctx.output,
+                                    style::SetForegroundColor(Color::Yellow),
+                                    style::Print("\nEditor content was empty. No prompt sent.\n"),
+                                    style::ResetColor
+                                )?;
+
+                                Ok(ChatState::PromptUser {
+                                    tool_uses,
+                                    pending_tool_index,
+                                    skip_printing_tools: false,
+                                })
+                            },
+                            Err(e) => {
+                                error!("Failed to read content from temporary file: {}", e);
+                                queue!(
+                                    ctx.output,
+                                    style::SetForegroundColor(Color::Red),
+                                    style::Print("\nError: Failed to read content from editor.\n"),
+                                    style::ResetColor
+                                )?;
+
+                                Ok(ChatState::PromptUser {
+                                    tool_uses,
+                                    pending_tool_index,
+                                    skip_printing_tools: false,
+                                })
+                            },
+                        }
+                    },
+                    Ok(_) => {
+                        // Editor exited with non-zero status
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Yellow),
+                            style::Print("\nEditor closed without saving or encountered an error.\n"),
+                            style::ResetColor
+                        )?;
+
+                        Ok(ChatState::PromptUser {
+                            tool_uses,
+                            pending_tool_index,
+                            skip_printing_tools: false,
+                        })
+                    },
+                    Err(e) => {
+                        error!("Failed to open editor: {}", e);
+                        queue!(
+                            ctx.output,
+                            style::SetForegroundColor(Color::Red),
+                            style::Print(format!(
+                                "\nError: Failed to open editor ({}). Make sure it's installed and in your PATH.\n",
+                                editor
+                            )),
+                            style::ResetColor
+                        )?;
+
+                        Ok(ChatState::PromptUser {
+                            tool_uses,
+                            pending_tool_index,
+                            skip_printing_tools: false,
+                        })
+                    },
+                }
+            } else {
+                Err(eyre::anyhow!("EditorCommand can only execute PromptEditor commands"))
+            }
+        })
     }
 
     fn execute<'a>(
