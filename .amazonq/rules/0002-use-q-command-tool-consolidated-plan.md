@@ -13,6 +13,7 @@ The `internal_command` tool enables the AI assistant to directly execute interna
 - **Phase 3: Command Implementation** - Implemented handlers for basic commands and many complex commands
 - **Phase 4: Integration and Security** - Added confirmation prompts, permission persistence, and AI integration features
 - **Phase 6: Complete Command Registry Migration** - Migrated all commands to the new registry system with proper handlers
+- **Phase 7: Code Quality and Architecture Refinement** - Removed CommandRegistry in favor of command-centric architecture with bidirectional relationship between Commands and Handlers
 
 ### Current Phase 🟡
 
@@ -21,10 +22,6 @@ The `internal_command` tool enables the AI assistant to directly execute interna
   - Refine error messages
   - Improve help text
   - Add examples to documentation
-
-### Future Phases ⚪
-
-- **Phase 7: Code Quality and Architecture Refinement**
 
 ## Command Migration Status
 
@@ -43,13 +40,28 @@ The `internal_command` tool enables the AI assistant to directly execute interna
 
 ## Implementation Approach
 
-After evaluating various options, we selected a Command Result approach that leverages the existing `Command` enum:
+We implemented a command-centric architecture that leverages the bidirectional relationship between Commands and Handlers:
 
-1. The `internal_command` tool parses input parameters into the existing `Command` enum structure
-2. The tool returns a `CommandResult` containing the parsed command
-3. The chat loop extracts the command from the result and executes it using existing command execution logic
+1. **CommandHandler Trait Enhancement**:
+   - Added `to_command()` method that returns a `Command`/`Subcommand` enum with values
+   - Refactored `execute` method as a default implementation that delegates to `to_command`
 
-This approach minimizes changes to the codebase while ensuring consistent behavior between direct command execution and tool-based execution.
+2. **Command Enum Enhancement**:
+   - Added `to_handler()` method that returns the appropriate CommandHandler for a Command variant
+   - Implemented static handler instances for each command
+   - Created bidirectional relationship between Commands and Handlers
+
+3. **CommandRegistry Removal**:
+   - Replaced CommandRegistry with direct Command enum functionality
+   - Added static methods to Command enum for parsing and LLM descriptions
+   - Updated all handlers to work directly with Command objects
+
+This approach:
+- Makes the command system more type-safe by using enum variants
+- Separates command parsing from execution
+- Creates a command-centric architecture with bidirectional relationships
+- Reduces dependency on the CommandRegistry
+- Ensures consistent behavior between direct command execution and tool-based execution
 
 ## Critical Issues Resolved
 
@@ -61,80 +73,31 @@ The issue was in how the `ChatState::ExecuteCommand` state was processed in the 
 
 The fix ensures that the `ChatState::Exit` state is correctly returned and processed when the `/quit` command is executed through the `internal_command` tool. Comprehensive tests have been added to verify that the fix works correctly.
 
+### Clippy Warnings in Command System ✅ FIXED
+
+We identified and fixed several clippy warnings in the command system:
+
+1. Added `#[allow(dead_code)]` to the unused `usage` field in `CommandDescription` struct
+2. Elided unnecessary explicit lifetimes in the `create_test_command_context` function
+3. Moved imports inside test functions to avoid unused import warnings
+
 ## Next Steps
 
-1. **Fix Profile and Tools Command Handlers**
-   - Fix compilation errors in the profile and tools command handlers
-   - Update the handlers to use the correct context_manager access pattern
-   - Fix the execute method signature to match the CommandHandler trait
-   - Add proper imports for Bold and NoBold attributes
-
-2. **Complete Profile Command Migration**
-   - Test profile management operations
-   - Verify proper error handling for edge cases
-   - Add comprehensive tests for all profile operations
-
-3. **Complete Tools Command Migration**
-   - Test tool permission management
-   - Verify trust/untrust functionality works as expected
-   - Add tests for permission management
-
-4. **Complete Documentation**
+1. **Complete Documentation**
    - Ensure all implemented commands have dedicated documentation pages
    - Update SUMMARY.md with links to all command documentation
    - Verify documentation accuracy and completeness
    - Include examples and use cases for each command
 
-## CommandHandler Trait Enhancement
+2. **Improve Error Messages**
+   - Standardize error message format
+   - Make error messages more user-friendly
+   - Add suggestions for fixing common errors
 
-We have enhanced the `CommandHandler` trait to better separate command parsing from execution and created a bidirectional relationship with the Command enum:
-
-1. **New `to_command` Method**: Added a method that returns a `Command`/`Subcommand` enum with values:
-   ```rust
-   fn to_command<'a>(&self, args: Vec<&'a str>) -> Result<Command>;
-   ```
-
-2. **Refactored `execute` Method**: The existing `execute` method has been preserved as a default implementation that delegates to `to_command`:
-   ```rust
-   fn execute<'a>(&self, args: Vec<&'a str>, ctx: &'a mut CommandContextAdapter<'a>, 
-                 tool_uses: Option<Vec<QueuedTool>>, 
-                 pending_tool_index: Option<usize>) -> Pin<Box<dyn Future<Output = Result<ChatState>> + 'a>> {
-       Box::pin(async move {
-           let command = self.to_command(args)?;
-           Ok(ChatState::ExecuteCommand {
-               command,
-               tool_uses,
-               pending_tool_index,
-           })
-       })
-   }
-   ```
-
-3. **New `to_handler` Method in Command Enum**: Added a method that returns the appropriate CommandHandler for a Command variant:
-   ```rust
-   fn to_handler(&self) -> &'static dyn CommandHandler;
-   ```
-
-4. **Updated `internal_command` Tool**: The tool now uses the bidirectional relationship between Commands and Handlers.
-
-This enhancement:
-- Makes the command system more type-safe by using enum variants
-- Separates command parsing (`to_command`) from execution (`execute`)
-- Creates a command-centric architecture with bidirectional relationships
-- Reduces dependency on the CommandRegistry
-- Prepares for future refactoring where `execute` will be used for a different purpose
-
-## Future Architecture Refinement
-
-For future refactoring, we plan to implement a Command enum with embedded CommandHandlers to reduce the number of places that need modification when adding new commands while maintaining separation of concerns.
-
-This approach will:
-- Provide a single point of modification for adding new commands
-- Maintain separation of concerns with encapsulated command logic
-- Ensure type safety with enum variants for command parameters
-- Maintain consistent behavior between direct and tool-based execution
-
-Detailed plans for this refactoring are documented in `docs/development/command-system-refactoring.md`.
+3. **Enhance Help Text**
+   - Improve command help text with more examples
+   - Add more detailed descriptions of command options
+   - Include common use cases in help text
 
 ## Success Metrics
 
@@ -144,7 +107,7 @@ Detailed plans for this refactoring are documented in `docs/development/command-
 - Reduction in the number of steps required to complete common tasks
 - Consistent behavior between direct command execution and tool-based execution
 - 100% test coverage for AI command interpretation across all commands
-- Simplified and maintainable architecture after Phase 7 refinement
+- Simplified and maintainable architecture
 - Comprehensive documentation for all implemented commands
 
 ## Additional Documentation
