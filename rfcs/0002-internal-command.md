@@ -1,5 +1,6 @@
 - Feature Name: internal_command_tool
 - Start Date: 2025-03-28
+- Implementation Status: Completed
 
 # Summary
 
@@ -59,43 +60,39 @@ This feature makes the Amazon Q Developer CLI more intuitive and responsive to u
 
 ## Tool Interface
 
-The `internal_command` tool will be implemented as part of the existing tools framework in the `q_chat` crate. It will have the following interface:
+The `internal_command` tool is implemented as part of the existing tools framework in the `q_chat` crate. It has the following interface:
 
 ```rust
 pub struct InternalCommand {
     /// The command to execute (e.g., "quit", "context", "settings")
     pub command: String,
     
-    /// Optional subcommand (e.g., "list", "add", "remove")
-    pub subcommand: Option<String>,
-    
     /// Optional arguments for the command
-    pub args: Option<Vec<String>>,
+    pub args: Vec<String>,
     
     /// Optional flags for the command
-    pub flags: Option<HashMap<String, String>>,
+    pub flags: HashMap<String, String>,
 }
 ```
 
 ## Implementation Details
 
-The tool will be implemented in the `q_chat` crate under `src/tools/internal_command/`. The implementation will:
+The tool is implemented in the `q_chat` crate under `src/tools/internal_command/`. The implementation:
 
-1. Parse the incoming request into the appropriate internal command format
-2. Validate the command and arguments
-3. Execute the command using the command registry infrastructure
-4. Capture the output/results
-5. Return the results to the AI assistant
+1. Parses the incoming request into the appropriate internal command format
+2. Validates the command and arguments
+3. Executes the command using the command registry infrastructure
+4. Captures the output/results
+5. Returns the results to the AI assistant
 
-### Project Structure Changes
+### Project Structure
 
-To improve organization and maintainability, we will restructure the command-related code:
+The command-related code is organized as follows:
 
 ```
 src/
-├── commands/           # New directory for all command-related code
-│   ├── mod.rs          # Exports the CommandRegistry and CommandHandler trait
-│   ├── registry.rs     # CommandRegistry implementation
+├── commands/           # Directory for all command-related code
+│   ├── mod.rs          # Exports the CommandHandler trait
 │   ├── handler.rs      # CommandHandler trait definition
 │   ├── quit.rs         # QuitCommand implementation
 │   ├── clear.rs        # ClearCommand implementation
@@ -103,7 +100,7 @@ src/
 │   ├── context/        # Context command and subcommands
 │   ├── profile/        # Profile command and subcommands
 │   └── tools/          # Tools command and subcommands
-├── tools/              # Existing directory for tools
+├── tools/              # Directory for tools
 │   ├── mod.rs
 │   ├── execute_bash.rs
 │   ├── fs_read.rs
@@ -114,87 +111,53 @@ src/
 └── mod.rs
 ```
 
-This structure parallels the existing `tools/` directory, creating a clear separation between tools (which are used by the AI) and commands (which are used by both users and the AI via the `internal_command` tool).
+### Command-Centric Architecture
 
-### Command Registry Pattern
+The implementation uses a command-centric architecture with a bidirectional relationship between Commands and Handlers:
 
-To improve maintainability and reduce the reliance on match statements, we will introduce a new command registry pattern that directly integrates with the existing `ChatState` enum. The registry will be implemented as a singleton to avoid redundant initialization:
+1. **CommandHandler Trait**:
+   - Includes a `to_command()` method that returns a `Command` enum with values
+   - Has a default implementation of `execute` that delegates to `to_command`
+
+2. **Command Enum**:
+   - Includes a `to_handler()` method that returns the appropriate CommandHandler for a Command variant
+   - Implements static handler instances for each command
+   - Creates a bidirectional relationship between Commands and Handlers
+
+3. **Static Handler Instances**:
+   - Each command handler is defined as a static instance
+   - These static instances are referenced by the Command enum's `to_handler()` method
+
+This approach:
+- Makes the command system more type-safe by using enum variants
+- Separates command parsing from execution
+- Creates a command-centric architecture with bidirectional relationships
+- Reduces dependency on a central registry
+- Ensures consistent behavior between direct command execution and tool-based execution
+
+### Separation of Parsing and Output
+
+A key architectural principle is the strict separation between parsing and output/display logic:
+
+1. **Command Parsing**:
+   - The `parse` method in the Command enum and the `to_command` method in CommandHandler implementations should only handle converting input strings to structured data.
+   - These methods should not produce any output or display messages.
+   - Error handling in parsing should focus on returning structured errors, not formatting user-facing messages.
+
+2. **Command Execution**:
+   - All output-related code (like displaying usage hints, deprecation warnings, or help text) belongs in the execution phase.
+   - The `execute_command` method in CommandHandler implementations is responsible for displaying messages and producing output.
+   - User-facing messages should be generated during execution, not during parsing.
+
+This separation ensures:
+- Clean, testable parsing logic that focuses solely on input validation and structure conversion
+- Consistent user experience regardless of how commands are invoked (directly or via the internal_command tool)
+- Centralized output handling that can be easily styled and formatted
+- Better testability of both parsing and execution logic independently
+
+### CommandHandler Trait
 
 ```rust
-/// A registry of available commands that can be executed
-pub struct CommandRegistry {
-    /// Map of command names to their handlers
-    commands: HashMap<String, Box<dyn CommandHandler>>,
-}
-
-impl CommandRegistry {
-    /// Create a new command registry with all built-in commands
-    pub fn new() -> Self {
-        let mut registry = Self {
-            commands: HashMap::new(),
-        };
-        
-        // Register built-in commands
-        registry.register("quit", Box::new(QuitCommand::new()));
-        registry.register("clear", Box::new(ClearCommand::new()));
-        registry.register("help", Box::new(HelpCommand::new()));
-        registry.register("context", Box::new(ContextCommand::new()));
-        registry.register("profile", Box::new(ProfileCommand::new()));
-        registry.register("tools", Box::new(ToolsCommand::new()));
-        
-        registry
-    }
-    
-    /// Get the global instance of the command registry
-    pub fn global() -> &'static CommandRegistry {
-        static INSTANCE: OnceCell<CommandRegistry> = OnceCell::new();
-        INSTANCE.get_or_init(CommandRegistry::new)
-    }
-    
-    /// Register a new command handler
-    pub fn register(&mut self, name: &str, handler: Box<dyn CommandHandler>) {
-        self.commands.insert(name.to_string(), handler);
-    }
-    
-    /// Get a command handler by name
-    pub fn get(&self, name: &str) -> Option<&dyn CommandHandler> {
-        self.commands.get(name).map(|h| h.as_ref())
-    }
-    
-    /// Check if a command exists
-    pub fn command_exists(&self, name: &str) -> bool {
-        self.commands.contains_key(name)
-    }
-    
-    /// Get all command names
-    pub fn command_names(&self) -> Vec<&String> {
-        self.commands.keys().collect()
-    }
-    
-    /// Parse and execute a command string
-    pub fn parse_and_execute(
-        &self, 
-        input: &str, 
-        ctx: &ChatContext,
-        tool_uses: Option<Vec<QueuedTool>>,
-        pending_tool_index: Option<usize>,
-    ) -> Result<ChatState> {
-        let (name, args) = self.parse_command_string(input)?;
-        
-        if let Some(handler) = self.get(name) {
-            handler.execute(args, ctx, tool_uses, pending_tool_index)
-        } else {
-            // If not a registered command, treat as a question to the AI
-            Ok(ChatState::HandleInput {
-                input: input.to_string(),
-                tool_uses,
-                pending_tool_index,
-            })
-        }
-    }
-}
-
-/// Trait for command handlers
 pub trait CommandHandler: Send + Sync {
     /// Returns the name of the command
     fn name(&self) -> &'static str;
@@ -214,25 +177,44 @@ pub trait CommandHandler: Send + Sync {
         self.help()
     }
     
+    /// Convert arguments to a Command enum
+    fn to_command<'a>(&self, args: Vec<&'a str>) -> Result<Command>;
+    
     /// Execute the command with the given arguments
-    fn execute(
+    fn execute<'a>(
         &self, 
-        args: Vec<&str>, 
-        ctx: &ChatContext,
+        args: Vec<&'a str>, 
+        ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Result<ChatState>;
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + 'a>> {
+        Box::pin(async move {
+            let command = self.to_command(args)?;
+            Ok(ChatState::ExecuteCommand {
+                command,
+                tool_uses,
+                pending_tool_index,
+            })
+        })
+    }
+    
+    /// Execute a command directly
+    fn execute_command<'a>(
+        &'a self, 
+        command: &'a Command, 
+        ctx: &'a mut CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + 'a>> {
+        // Default implementation that returns an error for unexpected command types
+        Box::pin(async move {
+            Err(anyhow!("Unexpected command type for this handler"))
+        })
+    }
     
     /// Check if this command requires confirmation before execution
     fn requires_confirmation(&self, args: &[&str]) -> bool {
         false // Most commands don't require confirmation by default
-    }
-    
-    /// Convert arguments to a Command enum
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
-        // This method allows each command handler to parse its arguments
-        // and return the appropriate Command enum instance
-        unimplemented!("Command handlers must implement to_command")
     }
     
     /// Parse arguments for this command
@@ -240,113 +222,97 @@ pub trait CommandHandler: Send + Sync {
         Ok(args)
     }
 }
-
-/// Function to convert a Command enum to its corresponding CommandHandler
-pub fn command_to_handler(command: &Command) -> Option<&dyn CommandHandler> {
-    let registry = CommandRegistry::global();
-    match command {
-        Command::Quit => registry.get("quit"),
-        Command::Clear => registry.get("clear"),
-        Command::Help => registry.get("help"),
-        Command::Context { .. } => registry.get("context"),
-        Command::Profile { .. } => registry.get("profile"),
-        Command::Tools { .. } => registry.get("tools"),
-        Command::Compact { .. } => registry.get("compact"),
-        // Handle other command types...
-        _ => None,
-    }
-}
 ```
 
-Example implementation of a command:
+### Command Enum Enhancement
 
 ```rust
-/// Handler for the quit command
-pub struct QuitCommand;
+impl Command {
+    // Get the appropriate handler for this command variant
+    pub fn to_handler(&self) -> &'static dyn CommandHandler {
+        match self {
+            Command::Help { .. } => &HELP_HANDLER,
+            Command::Quit => &QUIT_HANDLER,
+            Command::Clear => &CLEAR_HANDLER,
+            Command::Context { subcommand } => subcommand.to_handler(),
+            Command::Profile { subcommand } => subcommand.to_handler(),
+            Command::Tools { subcommand } => match subcommand {
+                Some(sub) => sub.to_handler(),
+                None => &TOOLS_LIST_HANDLER,
+            },
+            Command::Compact { .. } => &COMPACT_HANDLER,
+            Command::Usage => &USAGE_HANDLER,
+            // Other commands...
+        }
+    }
 
-impl QuitCommand {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl CommandHandler for QuitCommand {
-    fn name(&self) -> &'static str {
-        "quit"
+    // Parse a command string into a Command enum
+    pub fn parse(command_str: &str) -> Result<Self> {
+        // Skip the leading slash if present
+        let command_str = command_str.trim_start();
+        let command_str = if command_str.starts_with('/') {
+            &command_str[1..]
+        } else {
+            command_str
+        };
+        
+        // Split into command and arguments
+        let mut parts = command_str.split_whitespace();
+        let command_name = parts.next().ok_or_else(|| anyhow!("Empty command"))?;
+        let args: Vec<&str> = parts.collect();
+        
+        // Match on command name and use the handler to parse arguments
+        match command_name {
+            "help" => HELP_HANDLER.to_command(args),
+            "quit" => QUIT_HANDLER.to_command(args),
+            "clear" => CLEAR_HANDLER.to_command(args),
+            "context" => CONTEXT_HANDLER.to_command(args),
+            "profile" => PROFILE_HANDLER.to_command(args),
+            "tools" => TOOLS_HANDLER.to_command(args),
+            "compact" => COMPACT_HANDLER.to_command(args),
+            "usage" => USAGE_HANDLER.to_command(args),
+            // Other commands...
+            _ => Err(anyhow!("Unknown command: {}", command_name)),
+        }
     }
     
-    fn description(&self) -> &'static str {
-        "Exit the application"
-    }
-    
-    fn usage(&self) -> &'static str {
-        "/quit"
-    }
-    
-    fn help(&self) -> String {
-        "Exits the Amazon Q CLI application.".to_string()
-    }
-    
-    fn execute(
-        &self, 
-        _args: Vec<&str>, 
-        _ctx: &ChatContext,
-        _tool_uses: Option<Vec<QueuedTool>>,
-        _pending_tool_index: Option<usize>,
+    // Execute the command directly
+    pub async fn execute<'a>(
+        &'a self,
+        ctx: &'a mut CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
     ) -> Result<ChatState> {
-        // Return Exit state directly
-        Ok(ChatState::Exit)
+        // Get the appropriate handler and execute the command
+        let handler = self.to_handler();
+        handler.execute_command(self, ctx, tool_uses, pending_tool_index).await
     }
     
-    fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        true // Quitting should require confirmation
-    }
-    
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
-        // Convert to Command::Quit
-        Ok(Command::Quit)
+    // Generate LLM descriptions for all commands
+    pub fn generate_llm_descriptions() -> serde_json::Value {
+        let mut descriptions = json!({});
+        
+        // Use the static handlers to generate descriptions
+        descriptions["help"] = HELP_HANDLER.llm_description();
+        descriptions["quit"] = QUIT_HANDLER.llm_description();
+        descriptions["clear"] = CLEAR_HANDLER.llm_description();
+        descriptions["context"] = CONTEXT_HANDLER.llm_description();
+        descriptions["profile"] = PROFILE_HANDLER.llm_description();
+        descriptions["tools"] = TOOLS_HANDLER.llm_description();
+        descriptions["compact"] = COMPACT_HANDLER.llm_description();
+        descriptions["usage"] = USAGE_HANDLER.llm_description();
+        // Other commands...
+        
+        descriptions
     }
 }
 ```
 
-Integration with the `InternalCommand` tool:
+### Integration with the `InternalCommand` Tool
 
 ```rust
 impl Tool for InternalCommand {
-    fn validate(&self, ctx: &Context) -> Result<(), ToolResult> {
-        // Validate command exists and is allowed
-        let registry = CommandRegistry::global();
-        if !registry.command_exists(&self.command) {
-            return Err(ToolResult::error(
-                self.tool_use_id.clone(),
-                format!("Unknown command: {}", self.command),
-            ));
-        }
-        Ok(())
-    }
-    
-    fn requires_acceptance(&self, _ctx: &Context) -> bool {
-        // Get the command handler
-        let cmd = self.command.trim_start_matches('/');
-        if let Some(handler) = CommandRegistry::global().get(cmd) {
-            // Convert args to string slices for the handler
-            let args: Vec<&str> = match &self.subcommand {
-                Some(subcommand) => vec![subcommand.as_str()],
-                None => vec![],
-            };
-            
-            return handler.requires_confirmation(&args);
-        }
-        
-        // For commands not in the registry, default to requiring confirmation
-        true
-    }
-    
-    // Other trait implementations...
-}
-
-impl InternalCommand {
-    pub async fn invoke(&self, context: &Context, updates: &mut impl Write) -> Result<InvokeOutput> {
+    async fn invoke(&self, context: &Context, output: &mut impl Write) -> Result<InvokeOutput> {
         // Format the command string for execution
         let command_str = self.format_command_string();
         let description = self.get_command_description();
@@ -354,77 +320,35 @@ impl InternalCommand {
         // Create a response with the command and description
         let response = format!("Executing command for you: `{}` - {}", command_str, description);
 
-        // Get the command name and arguments
-        let cmd = self.command.trim_start_matches('/');
-        let args: Vec<&str> = match (&self.subcommand, &self.args) {
-            (Some(subcommand), Some(args)) => {
-                let mut result = vec![subcommand.as_str()];
-                result.extend(args.iter().map(|s| s.as_str()));
-                result
-            },
-            (Some(subcommand), None) => vec![subcommand.as_str()],
-            (None, Some(args)) => args.iter().map(|s| s.as_str()).collect(),
-            (None, None) => vec![],
-        };
-
-        // Get the command handler and convert to Command enum
-        let parsed_command = if let Some(handler) = CommandRegistry::global().get(cmd) {
-            handler.to_command(args)?
-        } else {
-            // Special case handling for commands not in the registry
-            match cmd {
-                "issue" => {
-                    let prompt = if let Some(args) = &self.args {
-                        if !args.is_empty() { Some(args.join(" ")) } else { None }
-                    } else {
-                        None
-                    };
-                    Command::Issue { prompt }
-                },
-                "editor" => {
-                    let initial_text = if let Some(args) = &self.args {
-                        if !args.is_empty() { Some(args.join(" ")) } else { None }
-                    } else {
-                        None
-                    };
-                    Command::PromptEditor { initial_text }
-                },
-                "usage" => Command::Usage,
-                _ => return Err(eyre::eyre!("Unknown command: {}", self.command)),
-            }
-        };
-
+        // Parse the command string into a Command enum directly
+        let command = Command::parse(&command_str)?;
+        
         // Log the parsed command
-        debug!("Parsed command: {:?}", parsed_command);
+        debug!("Parsed command: {:?}", command);
 
         // Return an InvokeOutput with the response and next state
         Ok(InvokeOutput {
             output: crate::tools::OutputKind::Text(response),
             next_state: Some(ChatState::ExecuteCommand {
-                command: parsed_command,
+                command,
                 tool_uses: None,
                 pending_tool_index: None,
             }),
         })
     }
     
-    pub fn get_usage_description(&self) -> String {
-        let registry = CommandRegistry::global();
-        let mut description = String::from("Execute internal commands within the q chat system.\n\n");
-        description.push_str("Available commands:\n");
-        
-        for command_name in registry.command_names() {
-            if let Some(handler) = registry.get(command_name) {
-                description.push_str(&format!(
-                    "- {} - {}\n  Usage: {}\n\n",
-                    command_name,
-                    handler.description(),
-                    handler.usage()
-                ));
-            }
+    fn requires_acceptance(&self, _ctx: &Context) -> bool {
+        // Get the command handler
+        let cmd = self.command.trim_start_matches('/');
+        if let Ok(command) = Command::parse(&format!("{} {}", cmd, self.args.join(" "))) {
+            // Check if the command requires confirmation
+            let handler = command.to_handler();
+            let args: Vec<&str> = self.args.iter().map(|s| s.as_str()).collect();
+            return handler.requires_confirmation(&args);
         }
         
-        description
+        // For commands not in the registry, default to requiring confirmation
+        true
     }
 }
 ```
@@ -433,54 +357,51 @@ impl InternalCommand {
 
 To ensure security when allowing AI to execute commands:
 
-1. **Default to Requiring Confirmation**: All commands executed through `internal_command` will require user confirmation by default if they are mutative, or will automatically proceed if read-only.
+1. **Default to Requiring Confirmation**: All commands executed through `internal_command` require user confirmation by default if they are mutative, or automatically proceed if read-only.
 2. **Permission Persistence**: Users can choose to trust specific commands using the existing permission system
-3. **Command Auditing**: All commands executed by the AI will be logged for audit purposes
-4. **Scope Limitation**: Commands will only have access to the same resources as when executed directly by the user
-5. **Input Sanitization**: All command arguments will be sanitized to prevent injection attacks
-6. **Execution Context**: Commands will run in the same security context as the application
+3. **Command Auditing**: All commands executed by the AI are logged for audit purposes
+4. **Scope Limitation**: Commands only have access to the same resources as when executed directly by the user
+5. **Input Sanitization**: All command arguments are sanitized to prevent injection attacks
+6. **Execution Context**: Commands run in the same security context as the application
 
-## Command Categories
+## Implemented Commands
 
-The tool will support the following categories of internal commands:
+The following commands have been successfully implemented:
 
-1. **Slashcommands**
+1. **Basic Commands**
+   - `/help` - Show the help dialogue
    - `/quit` - Quit the application
    - `/clear` - Clear the conversation history
-   - `/help` - Show the help dialogue
-   - `/profile` - Manage profiles (with subcommands: help, list, set, create, delete, rename)
-   - `/context` - Manage context files (with subcommands: help, show, add, rm, clear)
 
 2. **Context Management**
-   - `context query` - Search through conversation history
-   - `context prune` - Remove specific portions of the conversation history
-   - `context rollback` - Revert to a previous point in the conversation
-   - `context summarize` - Generate a summary of the conversation or portions of it
-   - `context export` - Export conversation history to a file
-   - `context import` - Import conversation history from a file
+   - `/context add` - Add a file to the context
+   - `/context rm` - Remove a file from the context
+   - `/context clear` - Clear all context files
+   - `/context show` - Show all context files
+   - `/context hooks` - Manage context hooks
 
-3. **Tools Management**
-   - `tools list` - List available tools
-   - `tools enable` - Enable a tool
-   - `tools disable` - Disable a tool
-   - `tools install` - Install MCP-compatible tools
-   - `tools uninstall` - Uninstall MCP-compatible tools
-   - `tools update` - Update MCP-compatible tools
-   - `tools info` - Show information about installed tools
+3. **Profile Management**
+   - `/profile list` - List available profiles
+   - `/profile create` - Create a new profile
+   - `/profile delete` - Delete a profile
+   - `/profile set` - Switch to a different profile
+   - `/profile rename` - Rename a profile
+   - `/profile help` - Show profile help
 
-4. **Settings Management**
-   - `settings list` - List current settings
-   - `settings set` - Change a setting
-   - `settings reset` - Reset settings to default
+4. **Tools Management**
+   - `/tools list` - List available tools
+   - `/tools trust` - Trust a specific tool
+   - `/tools untrust` - Untrust a specific tool
+   - `/tools trustall` - Trust all tools
+   - `/tools reset` - Reset all tool permissions
+   - `/tools reset_single` - Reset a single tool's permissions
+   - `/tools help` - Show tools help
 
-5. **Controls**
-   - Read-only access to system state
-   - Check if acceptall mode is enabled
-   - Check if `--non-interactive` mode is active
-   - View current conversation mode
-   - Access other runtime configuration information
-
-The Tools Management category will include support for Model Context Protocol (MCP) tools (https://modelcontextprotocol.io/introduction), allowing users to extend the functionality of Amazon Q Developer CLI with third-party tools that follow the MCP specification.
+5. **Additional Commands**
+   - `/issue` - Report an issue (using the existing report_issue tool)
+   - `/compact` - Summarize conversation history
+   - `/editor` - Open an external editor for composing prompts
+   - `/usage` - Display token usage statistics
 
 ## Security Considerations
 
@@ -521,6 +442,13 @@ To ensure security:
 3. Add `command_to_handler` function to convert Command enums to handlers
 4. Update the internal_command tool to use these new methods
 5. Add tests to verify bidirectional conversion between Commands and Handlers
+
+### Phase 5: Separation of Parsing and Output
+
+1. Remove all output-related code from parsing functions
+2. Move output-related code to execution functions
+3. Update tests to verify the separation
+4. Document the separation principle in the codebase
 
 # Drawbacks
 
@@ -587,8 +515,6 @@ Without this feature:
 2. What level of confirmation should be required for potentially destructive operations?
 3. How should we handle commands that require interactive input?
 4. Should there be a way for users to disable this feature if they prefer to execute commands manually?
-5. How will this feature interact with future enhancements to the command system?
-6. Should the Command enum and CommandRegistry be merged in a future iteration?
 
 # Future possibilities
 
@@ -602,4 +528,45 @@ Without this feature:
 6. **Natural Language Command Builder**: Develop a more sophisticated natural language understanding system to convert complex requests into command sequences.
 7. **Command Explanation**: Add the ability for the AI to explain what a command does before executing it, enhancing user understanding.
 8. **Command Undo**: Implement the ability to undo commands executed by the AI.
-9. **Unified Command System**: Merge the Command enum and CommandRegistry to create a more cohesive command system where each command type is directly associated with its handler.
+
+# Implementation Status
+
+The implementation has been completed with the following key differences from the original RFC:
+
+1. **Command-Centric Architecture**: Instead of using a central CommandRegistry, the implementation uses a command-centric architecture with a bidirectional relationship between Commands and Handlers. This approach:
+   - Makes the command system more type-safe by using enum variants
+   - Separates command parsing from execution
+   - Creates a command-centric architecture with bidirectional relationships
+   - Reduces dependency on a central registry
+   - Ensures consistent behavior between direct command execution and tool-based execution
+
+2. **Static Handler Instances**: Each command handler is defined as a static instance, which is referenced by the Command enum's `to_handler()` method. This approach:
+   - Eliminates the need for a separate CommandRegistry
+   - Provides a single point of modification for adding new commands
+   - Maintains separation of concerns with encapsulated command logic
+   - Ensures type safety with enum variants for command parameters
+
+3. **Bidirectional Relationship**: The implementation establishes a bidirectional relationship between Commands and Handlers:
+   - `handler.to_command(args)` converts arguments to Command enums
+   - `command.to_handler()` gets the appropriate handler for a Command
+
+4. **Additional Commands**: The implementation includes several commands not explicitly mentioned in the original RFC:
+   - `/compact` - Summarize conversation history
+   - `/editor` - Open an external editor for composing prompts
+   - `/usage` - Display token usage statistics
+
+5. **Issue Command Implementation**: Instead of implementing a separate command handler for the `/issue` command, the implementation leverages the existing `report_issue` tool functionality. This approach:
+   - Reuses existing code
+   - Ensures consistent behavior
+   - Reduces the maintenance burden
+
+6. **Command Execution Flow**: The command execution flow has been simplified:
+   - The `internal_command` tool parses the command string into a Command enum
+   - The Command enum is passed to the ChatState::ExecuteCommand state
+   - The Command's `to_handler()` method is used to get the appropriate handler
+   - The handler's `execute_command()` method is called to execute the command
+
+7. **Separation of Parsing and Output**: A strict separation between parsing and output/display logic has been implemented:
+   - Parsing functions only handle converting input strings to structured data
+   - Output-related code (like displaying usage hints or deprecation warnings) is moved to the execution phase
+   - This ensures clean, testable parsing logic and consistent user experience
