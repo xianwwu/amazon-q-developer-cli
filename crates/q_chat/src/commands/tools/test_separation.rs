@@ -51,7 +51,7 @@ mod tests {
         let result = TRUSTALL_TOOLS_HANDLER.to_command(vec![]);
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), Command::Tools {
-            subcommand: Some(ToolsSubcommand::TrustAll)
+            subcommand: Some(ToolsSubcommand::TrustAll { from_deprecated: false })
         }));
     }
 

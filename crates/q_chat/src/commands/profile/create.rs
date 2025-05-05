@@ -117,6 +117,6 @@ impl CommandHandler for CreateProfileCommand {
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Create command doesn't require confirmation
+        true // Create command requires confirmation as it's a mutative operation
     }
 }

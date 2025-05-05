@@ -85,7 +85,7 @@ impl CommandHandler for UntrustToolsCommand {
                 }
 
                 // Untrust the tool
-                ctx.tool_permissions.untrust_tool(&tool_name);
+                ctx.tool_permissions.untrust_tool(tool_name);
 
                 queue!(
                     ctx.output,
@@ -107,6 +107,6 @@ impl CommandHandler for UntrustToolsCommand {
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Untrust command doesn't require confirmation
+        true // Untrust command requires confirmation as it's a mutative operation
     }
 }

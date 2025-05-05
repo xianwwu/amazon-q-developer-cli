@@ -61,6 +61,6 @@ This command helps users report bugs, request features, or provide feedback abou
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false
+        true // Issue command requires confirmation as it's a mutative operation
     }
 }

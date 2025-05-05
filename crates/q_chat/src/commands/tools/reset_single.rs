@@ -85,7 +85,7 @@ impl CommandHandler for ResetSingleToolCommand {
                 )?;
             } else {
                 // Reset the tool permission
-                ctx.tool_permissions.reset_tool(&tool_name);
+                ctx.tool_permissions.reset_tool(tool_name);
 
                 queue!(
                     ctx.output,
@@ -105,6 +105,6 @@ impl CommandHandler for ResetSingleToolCommand {
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Reset single command doesn't require confirmation
+        true // Reset single command requires confirmation as it's a mutative operation
     }
 }

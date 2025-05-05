@@ -132,7 +132,7 @@ impl CommandHandler for AddContextCommand {
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Adding context files doesn't require confirmation
+        true // Adding context files requires confirmation as it's a mutative operation
     }
 }
 
@@ -242,6 +242,6 @@ mod tests {
     #[test]
     fn test_requires_confirmation() {
         let handler = AddContextCommand;
-        assert!(!handler.requires_confirmation(&[]));
+        assert!(handler.requires_confirmation(&[]));
     }
 }

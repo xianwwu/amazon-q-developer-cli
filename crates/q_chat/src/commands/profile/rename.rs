@@ -55,6 +55,6 @@ impl CommandHandler for RenameProfileCommand {
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false
+        true // Rename command requires confirmation as it's a mutative operation
     }
 }

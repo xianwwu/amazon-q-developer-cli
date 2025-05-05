@@ -87,7 +87,7 @@ impl CommandHandler for TrustToolsCommand {
                 }
 
                 // Trust the tool
-                ctx.tool_permissions.trust_tool(&tool_name);
+                ctx.tool_permissions.trust_tool(tool_name);
 
                 queue!(
                     ctx.output,
@@ -113,6 +113,6 @@ impl CommandHandler for TrustToolsCommand {
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Trust command doesn't require confirmation
+        true // Trust command requires confirmation as it's a mutative operation
     }
 }

@@ -117,6 +117,6 @@ impl CommandHandler for SetProfileCommand {
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
-        false // Set command doesn't require confirmation
+        true // Set command requires confirmation as it's a mutative operation
     }
 }
