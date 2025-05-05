@@ -2337,7 +2337,7 @@ impl ChatContext {
                             )?;
                         }
                     },
-                    Some(ToolsSubcommand::TrustAll) => {
+                    Some(ToolsSubcommand::TrustAll { .. }) => {
                         self.conversation_state.tools.values().flatten().for_each(
                             |FigTool::ToolSpecification(spec)| {
                                 self.tool_permissions.trust_tool(spec.name.as_str());

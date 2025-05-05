@@ -57,23 +57,20 @@ impl CommandHandler for TrustToolsCommand {
         })
     }
 
-    fn execute<'a>(
+    fn execute_command<'a>(
         &'a self,
-        args: Vec<&'a str>,
+        command: &'a Command,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Parse the command to get the tool names
-            let command = self.to_command(args)?;
-
             // Extract the tool names from the command
             let tool_names = match command {
                 Command::Tools {
                     subcommand: Some(ToolsSubcommand::Trust { tool_names }),
                 } => tool_names,
-                _ => return Err(eyre::eyre!("Invalid command")),
+                _ => return Err(eyre::eyre!("TrustToolsCommand can only execute Trust commands")),
             };
 
             // Trust the specified tools

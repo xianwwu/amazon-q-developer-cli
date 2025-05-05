@@ -1,10 +1,24 @@
+use std::future::Future;
+use std::io::Write;
+use std::pin::Pin;
+
+use crossterm::queue;
+use crossterm::style::{
+    self,
+    Color,
+};
 use eyre::Result;
 
 use crate::command::{
     Command,
     ToolsSubcommand,
 };
+use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
+use crate::{
+    ChatState,
+    QueuedTool,
+};
 
 /// Static instance of the tools reset command handler
 pub static RESET_TOOLS_HANDLER: ResetToolsCommand = ResetToolsCommand;
@@ -39,6 +53,40 @@ impl CommandHandler for ResetToolsCommand {
     fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
         Ok(Command::Tools {
             subcommand: Some(ToolsSubcommand::Reset),
+        })
+    }
+
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        ctx: &'a mut CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+        Box::pin(async move {
+            if let Command::Tools {
+                subcommand: Some(ToolsSubcommand::Reset),
+            } = command
+            {
+                // Reset all tool permissions
+                ctx.tool_permissions.reset();
+
+                queue!(
+                    ctx.output,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print("\nAll tool permissions have been reset to their default state.\n\n"),
+                    style::ResetColor
+                )?;
+                ctx.output.flush()?;
+
+                Ok(ChatState::PromptUser {
+                    tool_uses,
+                    pending_tool_index,
+                    skip_printing_tools: false,
+                })
+            } else {
+                Err(eyre::anyhow!("ResetToolsCommand can only execute Reset commands"))
+            }
         })
     }
 

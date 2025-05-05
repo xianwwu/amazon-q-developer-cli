@@ -316,7 +316,7 @@ pub enum ToolsSubcommand {
     Schema,
     Trust { tool_names: HashSet<String> },
     Untrust { tool_names: HashSet<String> },
-    TrustAll,
+    TrustAll { from_deprecated: bool },
     Reset,
     ResetSingle { tool_name: String },
     Help,
@@ -473,9 +473,9 @@ impl Command {
                     }
                 },
                 "acceptall" => {
-                    // Deprecated command - output message should be handled elsewhere
+                    // Deprecated command - set flag to show deprecation message
                     Self::Tools {
-                        subcommand: Some(ToolsSubcommand::TrustAll),
+                        subcommand: Some(ToolsSubcommand::TrustAll { from_deprecated: true }),
                     }
                 },
                 "editor" => {
@@ -729,7 +729,7 @@ impl Command {
                             }
                         },
                         "trustall" => Self::Tools {
-                            subcommand: Some(ToolsSubcommand::TrustAll),
+                            subcommand: Some(ToolsSubcommand::TrustAll { from_deprecated: false }),
                         },
                         "reset" => {
                             let tool_name = parts.get(2);
@@ -1052,14 +1052,14 @@ impl Command {
             Command::Tools { subcommand } => match subcommand {
                 Some(sub) => match sub {
                     ToolsSubcommand::Schema => &TOOLS_HANDLER,
-                    ToolsSubcommand::Trust { .. } => &TOOLS_HANDLER,
-                    ToolsSubcommand::Untrust { .. } => &TOOLS_HANDLER,
-                    ToolsSubcommand::TrustAll => &TOOLS_HANDLER,
-                    ToolsSubcommand::Reset => &TOOLS_HANDLER,
-                    ToolsSubcommand::ResetSingle { .. } => &TOOLS_HANDLER,
-                    ToolsSubcommand::Help => &TOOLS_HANDLER,
+                    ToolsSubcommand::Trust { .. } => &crate::commands::tools::TRUST_TOOLS_HANDLER,
+                    ToolsSubcommand::Untrust { .. } => &crate::commands::tools::UNTRUST_TOOLS_HANDLER,
+                    ToolsSubcommand::TrustAll { .. } => &crate::commands::tools::TRUSTALL_TOOLS_HANDLER,
+                    ToolsSubcommand::Reset => &crate::commands::tools::RESET_TOOLS_HANDLER,
+                    ToolsSubcommand::ResetSingle { .. } => &crate::commands::tools::RESET_SINGLE_TOOL_HANDLER,
+                    ToolsSubcommand::Help => &crate::commands::tools::HELP_TOOLS_HANDLER,
                 },
-                None => &TOOLS_HANDLER,
+                None => &crate::commands::tools::LIST_TOOLS_HANDLER, // Default to list handler when no subcommand
             },
             Command::Compact { .. } => &COMPACT_HANDLER,
             Command::PromptEditor { .. } => &EDITOR_HANDLER,

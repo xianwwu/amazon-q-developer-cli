@@ -55,23 +55,24 @@ impl CommandHandler for ResetSingleToolCommand {
         })
     }
 
-    fn execute<'a>(
+    fn execute_command<'a>(
         &'a self,
-        args: Vec<&'a str>,
+        command: &'a Command,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Parse the command to get the tool name
-            let command = self.to_command(args)?;
-
             // Extract the tool name from the command
             let tool_name = match command {
                 Command::Tools {
                     subcommand: Some(ToolsSubcommand::ResetSingle { tool_name }),
                 } => tool_name,
-                _ => return Err(eyre::eyre!("Invalid command")),
+                _ => {
+                    return Err(eyre::eyre!(
+                        "ResetSingleToolCommand can only execute ResetSingle commands"
+                    ));
+                },
             };
 
             // Check if the tool exists

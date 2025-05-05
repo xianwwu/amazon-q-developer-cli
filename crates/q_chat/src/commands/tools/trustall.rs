@@ -42,7 +42,7 @@ impl CommandHandler for TrustAllToolsCommand {
 
     fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
         Ok(Command::Tools {
-            subcommand: Some(ToolsSubcommand::TrustAll),
+            subcommand: Some(ToolsSubcommand::TrustAll { from_deprecated: false }),
         })
     }
 
@@ -50,40 +50,58 @@ impl CommandHandler for TrustAllToolsCommand {
         "Trust all tools for the session. This will allow all tools to run without confirmation.".to_string()
     }
 
-    fn execute<'a>(
+    fn execute_command<'a>(
         &'a self,
-        _args: Vec<&'a str>,
+        command: &'a Command,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Trust all tools
-            ctx.tool_permissions.trust_all_tools();
+            if let Command::Tools {
+                subcommand: Some(ToolsSubcommand::TrustAll { from_deprecated }),
+            } = command
+            {
+                // Show deprecation message if needed
+                if *from_deprecated {
+                    queue!(
+                        ctx.output,
+                        style::SetForegroundColor(Color::Yellow),
+                        style::Print("\n/acceptall is deprecated. Use /tools instead.\n\n"),
+                        style::SetForegroundColor(Color::Reset)
+                    )?;
+                    ctx.output.flush()?;
+                }
 
-            queue!(
-                ctx.output,
-                style::SetForegroundColor(Color::Green),
-                style::Print("\nAll tools are now trusted ("),
-                style::SetForegroundColor(Color::Red),
-                style::Print("!"),
-                style::SetForegroundColor(Color::Green),
-                style::Print("). Amazon Q will execute tools "),
-                style::SetAttribute(Attribute::Bold),
-                style::Print("without"),
-                style::SetAttribute(Attribute::NoBold),
-                style::Print(" asking for confirmation.\n"),
-                style::Print("Agents can sometimes do unexpected things so understand the risks.\n"),
-                style::ResetColor,
-                style::Print("\n")
-            )?;
-            ctx.output.flush()?;
+                // Trust all tools
+                ctx.tool_permissions.trust_all_tools();
 
-            Ok(ChatState::PromptUser {
-                tool_uses,
-                pending_tool_index,
-                skip_printing_tools: false,
-            })
+                queue!(
+                    ctx.output,
+                    style::SetForegroundColor(Color::Green),
+                    style::Print("\nAll tools are now trusted ("),
+                    style::SetForegroundColor(Color::Red),
+                    style::Print("!"),
+                    style::SetForegroundColor(Color::Green),
+                    style::Print("). Amazon Q will execute tools "),
+                    style::SetAttribute(Attribute::Bold),
+                    style::Print("without"),
+                    style::SetAttribute(Attribute::NoBold),
+                    style::Print(" asking for confirmation.\n"),
+                    style::Print("Agents can sometimes do unexpected things so understand the risks.\n"),
+                    style::ResetColor,
+                    style::Print("\n")
+                )?;
+                ctx.output.flush()?;
+
+                Ok(ChatState::PromptUser {
+                    tool_uses,
+                    pending_tool_index,
+                    skip_printing_tools: false,
+                })
+            } else {
+                Err(eyre::anyhow!("TrustAllToolsCommand can only execute TrustAll commands"))
+            }
         })
     }
 

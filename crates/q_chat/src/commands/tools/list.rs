@@ -45,56 +45,62 @@ impl CommandHandler for ListToolsCommand {
         Ok(Command::Tools { subcommand: None })
     }
 
-    fn execute<'a>(
+    fn execute_command<'a>(
         &'a self,
-        _args: Vec<&'a str>,
+        command: &'a Command,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // List all tools and their status
-            queue!(
-                ctx.output,
-                style::Print("\nTrusted tools can be run without confirmation\n\n")
-            )?;
-
-            // Get all tool names
-            let tool_names = Tool::all_tool_names();
-
-            // Display each tool with its permission status
-            for tool_name in tool_names {
-                let permission_label = ctx.tool_permissions.display_label(tool_name);
-
+            if let Command::Tools { subcommand: None } = command {
+                // List all tools and their status
                 queue!(
                     ctx.output,
-                    style::Print("- "),
-                    style::Print(format!("{:<20} ", tool_name)),
-                    style::Print(permission_label),
+                    style::Print("\nTrusted tools can be run without confirmation\n\n")
+                )?;
+
+                // Get all tool names
+                let tool_names = Tool::all_tool_names();
+
+                // Display each tool with its permission status
+                for tool_name in tool_names {
+                    let permission_label = ctx.tool_permissions.display_label(tool_name);
+
+                    queue!(
+                        ctx.output,
+                        style::Print("- "),
+                        style::Print(format!("{:<20} ", tool_name)),
+                        style::Print(permission_label),
+                        style::Print("\n")
+                    )?;
+                }
+
+                // Add a note about default settings
+                queue!(
+                    ctx.output,
+                    style::SetForegroundColor(Color::DarkGrey),
+                    style::Print("\n* Default settings\n\n"),
+                    style::Print("💡 Use "),
+                    style::SetForegroundColor(Color::Green),
+                    style::Print("/tools help"),
+                    style::SetForegroundColor(Color::DarkGrey),
+                    style::Print(" to edit permissions.\n"),
+                    style::ResetColor,
                     style::Print("\n")
                 )?;
+                ctx.output.flush()?;
+
+                Ok(ChatState::PromptUser {
+                    tool_uses,
+                    pending_tool_index,
+                    skip_printing_tools: false,
+                })
+            } else {
+                Err(eyre::anyhow!(
+                    "ListToolsCommand can only execute Tools commands with no subcommand"
+                ))
             }
-
-            // Add a note about default settings
-            queue!(
-                ctx.output,
-                style::SetForegroundColor(Color::DarkGrey),
-                style::Print("\n* Default settings\n\n"),
-                style::Print("💡 Use "),
-                style::SetForegroundColor(Color::Green),
-                style::Print("/tools help"),
-                style::SetForegroundColor(Color::DarkGrey),
-                style::Print(" to edit permissions.\n"),
-                style::ResetColor,
-                style::Print("\n")
-            )?;
-            ctx.output.flush()?;
-
-            Ok(ChatState::PromptUser {
-                tool_uses,
-                pending_tool_index,
-                skip_printing_tools: false,
-            })
         })
     }
 
