@@ -23,6 +23,7 @@ pub static LIST_TOOLS_HANDLER: ListToolsCommand = ListToolsCommand;
 
 /// Handler for the tools list command
 pub struct ListToolsCommand;
+
 impl CommandHandler for ListToolsCommand {
     fn name(&self) -> &'static str {
         "list"
@@ -37,7 +38,7 @@ impl CommandHandler for ListToolsCommand {
     }
 
     fn help(&self) -> String {
-        "List all available tools and their trust status.".to_string()
+        "List all available tools and their current permission status.".to_string()
     }
 
     fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
@@ -99,5 +100,55 @@ impl CommandHandler for ListToolsCommand {
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {
         false // List command doesn't require confirmation
+    }
+}
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use fig_os_shim::Context;
+
+    use super::*;
+    use crate::Settings;
+    use crate::conversation_state::ConversationState;
+    use crate::input_source::InputSource;
+    use crate::tools::ToolPermissions;
+    use crate::util::shared_writer::SharedWriter;
+
+    #[tokio::test]
+    async fn test_tools_list_command() {
+        let handler = ListToolsCommand;
+
+        // Create a minimal context
+        let context = Arc::new(Context::new_fake());
+        let output = SharedWriter::null();
+        let mut conversation_state = ConversationState::new(
+            Arc::clone(&context),
+            "test-conversation",
+            HashMap::new(),
+            None,
+            Some(SharedWriter::null()),
+        )
+        .await;
+        let mut tool_permissions = ToolPermissions::new(0);
+        let mut input_source = InputSource::new_mock(vec![]);
+        let settings = Settings::new_fake();
+
+        let mut ctx = CommandContextAdapter {
+            context: &context,
+            output: &mut output.clone(),
+            conversation_state: &mut conversation_state,
+            tool_permissions: &mut tool_permissions,
+            interactive: true,
+            input_source: &mut input_source,
+            settings: &settings,
+        };
+
+        // Execute the list subcommand
+        let args = vec![];
+        let result = handler.execute(args, &mut ctx, None, None).await;
+
+        assert!(result.is_ok());
     }
 }

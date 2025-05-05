@@ -1,3 +1,7 @@
+// This file is deprecated and should be removed.
+// The functionality has been moved to individual command handlers in the tools directory.
+// See tools/mod.rs for the new implementation.
+
 use std::future::Future;
 use std::pin::Pin;
 
@@ -92,46 +96,56 @@ Examples:
 To get the current tool status, use the command "/tools list" which will display all available tools with their current permission status."#.to_string()
     }
 
-    fn execute<'a>(
+    fn to_command<'a>(&self, args: Vec<&'a str>) -> Result<crate::command::Command> {
+        // Parse arguments to determine the subcommand
+        let subcommand = if args.is_empty() {
+            None // Default to list
+        } else if let Some(first_arg) = args.first() {
+            match *first_arg {
+                "list" => None, // Default is to list tools
+                "trust" => {
+                    let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
+                    Some(ToolsSubcommand::Trust { tool_names })
+                },
+                "untrust" => {
+                    let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
+                    Some(ToolsSubcommand::Untrust { tool_names })
+                },
+                "trustall" => Some(ToolsSubcommand::TrustAll),
+                "reset" => {
+                    if args.len() > 1 {
+                        Some(ToolsSubcommand::ResetSingle {
+                            tool_name: args[1].to_string(),
+                        })
+                    } else {
+                        Some(ToolsSubcommand::Reset)
+                    }
+                },
+                "help" => Some(ToolsSubcommand::Help),
+                _ => {
+                    // For unknown subcommands, show help
+                    Some(ToolsSubcommand::Help)
+                },
+            }
+        } else {
+            None // Default to list if no arguments (should not happen due to earlier check)
+        };
+
+        Ok(crate::command::Command::Tools { subcommand })
+    }
+
+    fn execute_command<'a>(
         &'a self,
-        args: Vec<&'a str>,
+        command: &'a crate::command::Command,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
         Box::pin(async move {
-            // Parse arguments to determine the subcommand
-            let subcommand = if args.is_empty() {
-                None // Default to list
-            } else if let Some(first_arg) = args.first() {
-                match *first_arg {
-                    "list" => None, // Default is to list tools
-                    "trust" => {
-                        let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
-                        Some(ToolsSubcommand::Trust { tool_names })
-                    },
-                    "untrust" => {
-                        let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
-                        Some(ToolsSubcommand::Untrust { tool_names })
-                    },
-                    "trustall" => Some(ToolsSubcommand::TrustAll),
-                    "reset" => {
-                        if args.len() > 1 {
-                            Some(ToolsSubcommand::ResetSingle {
-                                tool_name: args[1].to_string(),
-                            })
-                        } else {
-                            Some(ToolsSubcommand::Reset)
-                        }
-                    },
-                    "help" => Some(ToolsSubcommand::Help),
-                    _ => {
-                        // For unknown subcommands, show help
-                        Some(ToolsSubcommand::Help)
-                    },
-                }
-            } else {
-                None // Default to list if no arguments (should not happen due to earlier check)
+            // Extract the subcommand from the command
+            let subcommand = match command {
+                crate::command::Command::Tools { subcommand } => subcommand,
+                _ => return Err(eyre::eyre!("Unexpected command type for this handler")),
             };
 
             match subcommand {
@@ -293,6 +307,13 @@ To get the current tool status, use the command "/tools list" which will display
                         style::Print("\n")
                     )?;
                 },
+                Some(ToolsSubcommand::Schema) => {
+                    // This is handled elsewhere
+                    queue!(
+                        ctx.output,
+                        style::Print("\nShowing tool schemas is not implemented in this handler.\n\n")
+                    )?;
+                },
             }
 
             Ok(ChatState::PromptUser {
@@ -327,7 +348,7 @@ mod tests {
     use crate::Settings;
     use crate::conversation_state::ConversationState;
     use crate::input_source::InputSource;
-    use crate::shared_writer::SharedWriter;
+    use crate::util::shared_writer::SharedWriter;
     use crate::tools::ToolPermissions;
 
     #[tokio::test]

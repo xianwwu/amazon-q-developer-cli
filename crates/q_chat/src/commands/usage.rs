@@ -321,8 +321,8 @@ mod tests {
     use crate::commands::context_adapter::CommandContextAdapter;
     use crate::conversation_state::ConversationState;
     use crate::input_source::InputSource;
-    use crate::shared_writer::SharedWriter;
     use crate::tools::ToolPermissions;
+    use crate::util::shared_writer::SharedWriter;
 
     #[tokio::test]
     async fn test_usage_command() {
