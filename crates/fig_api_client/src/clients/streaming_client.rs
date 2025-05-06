@@ -3,9 +3,11 @@ use amzn_qdeveloper_streaming_client::Client as QDeveloperStreamingClient;
 use aws_types::request_id::RequestId;
 use fig_auth::builder_id::BearerResolver;
 use fig_aws_common::{
+    SdkErrorDisplay,
     UserAgentOverrideInterceptor,
     app_name,
 };
+use tracing::debug;
 
 use super::shared::{
     bearer_sdk_config,
@@ -127,13 +129,21 @@ impl StreamingClient {
                             .transpose()?,
                     );
 
-                Ok(SendMessageOutput::QDeveloper(
-                    client
-                        .send_message()
-                        .conversation_state(conversation_state_builder.build().expect("fix me"))
-                        .send()
-                        .await?,
-                ))
+                debug!("sending request now");
+                let res = client
+                    .send_message()
+                    .conversation_state(conversation_state_builder.build().expect("fix me"))
+                    .send()
+                    .await;
+                debug!(?res, "got response");
+                match res {
+                    Ok(res) => Ok(SendMessageOutput::QDeveloper(res)),
+                    Err(err) => {
+                        let e = SdkErrorDisplay(&err);
+                        debug!(?e, "sdk error display");
+                        Err(err.into())
+                    },
+                }
             },
             inner::Inner::Mock(events) => {
                 let mut new_events = events.clone();

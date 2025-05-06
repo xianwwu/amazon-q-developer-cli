@@ -316,7 +316,7 @@ pub(super) async fn send_message(
 
     tokio::spawn(async move {
         if let Err(err) = try_send_message(client, &tx, conversation_state).await {
-            error!(%err, "try_send_message failed");
+            error!(?err, "try_send_message failed");
             if let Err(err) = tx.send(ApiResponse::Error(None)) {
                 error!(%err, "tx failed to send ApiResponse::Error");
             };
