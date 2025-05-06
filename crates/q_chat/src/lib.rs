@@ -183,7 +183,12 @@ use winnow::Partial;
 use winnow::stream::Offset;
 
 use crate::util::shared_writer::SharedWriter;
-use crate::util::ui::draw_box;
+use crate::util::ui::{
+    cursor_beam,
+    cursor_block,
+    cursor_reset,
+    draw_box,
+};
 
 const WELCOME_TEXT: &str = color_print::cstr! {"
 <em>Welcome to </em>
@@ -274,6 +279,7 @@ const HELP_TEXT: &str = color_print::cstr! {"
 <em>Ctrl(^) + j</em>           <black!>Insert new-line to provide multi-line prompt. Alternatively, [Alt(⌥) + Enter(⏎)]</black!>
 <em>Ctrl(^) + s</em>           <black!>Fuzzy search commands and context files. Use Tab to select multiple items.</black!>
                       <black!>Change the keybind to ctrl+x with: q settings chat.skimCommandKey x (where x is any key)</black!>
+<em>q settings chat.editMode vi/emacs</em> <black!>Switch to vim or emacs-style editing experience</black!>
 
 "};
 
@@ -3251,8 +3257,19 @@ impl ChatContext {
     /// Helper function to read user input with a prompt and Ctrl+C handling
     fn read_user_input(&mut self, prompt: &str, exit_on_single_ctrl_c: bool) -> Option<String> {
         let mut ctrl_c = false;
+        let vi_mode = matches!(
+            fig_settings::settings::get_string_opt("chat.editMode").as_deref(),
+            Some("vi") | Some("vim")
+        );
         loop {
-            match (self.input_source.read_line(Some(prompt)), ctrl_c) {
+            if vi_mode {
+                cursor_beam(&mut self.output);
+            }
+            let read = self.input_source.read_line(Some(prompt));
+            if vi_mode {
+                cursor_block(&mut self.output);
+            }
+            match (read, ctrl_c) {
                 (Ok(Some(line)), _) => {
                     if line.trim().is_empty() {
                         continue; // Reprompt if the input is empty
