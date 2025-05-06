@@ -17,6 +17,7 @@ use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::tools::Tool;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -61,7 +62,7 @@ impl CommandHandler for ResetSingleToolCommand {
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Extract the tool name from the command
             let tool_name = match command {
@@ -69,8 +70,8 @@ impl CommandHandler for ResetSingleToolCommand {
                     subcommand: Some(ToolsSubcommand::ResetSingle { tool_name }),
                 } => tool_name,
                 _ => {
-                    return Err(eyre::eyre!(
-                        "ResetSingleToolCommand can only execute ResetSingle commands"
+                    return Err(ChatError::Custom(
+                        "ResetSingleToolCommand can only execute ResetSingle commands".into()
                     ));
                 },
             };

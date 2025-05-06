@@ -17,6 +17,7 @@ use crate::command::{
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -56,7 +57,7 @@ impl CommandHandler for TrustAllToolsCommand {
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             if let Command::Tools {
                 subcommand: Some(ToolsSubcommand::TrustAll { from_deprecated }),
@@ -100,7 +101,7 @@ impl CommandHandler for TrustAllToolsCommand {
                     skip_printing_tools: false,
                 })
             } else {
-                Err(eyre::anyhow!("TrustAllToolsCommand can only execute TrustAll commands"))
+                Err(ChatError::Custom("TrustAllToolsCommand can only execute TrustAll commands".into()))
             }
         })
     }
