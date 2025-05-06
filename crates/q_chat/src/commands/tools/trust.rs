@@ -19,6 +19,7 @@ use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::tools::Tool;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -63,14 +64,14 @@ impl CommandHandler for TrustToolsCommand {
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Extract the tool names from the command
             let tool_names = match command {
                 Command::Tools {
                     subcommand: Some(ToolsSubcommand::Trust { tool_names }),
                 } => tool_names,
-                _ => return Err(eyre::eyre!("TrustToolsCommand can only execute Trust commands")),
+                _ => return Err(ChatError::Custom("TrustToolsCommand can only execute Trust commands".into())),
             };
 
             // Trust the specified tools

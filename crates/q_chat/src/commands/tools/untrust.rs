@@ -18,6 +18,7 @@ use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::tools::Tool;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -61,14 +62,14 @@ impl CommandHandler for UntrustToolsCommand {
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Extract the tool names from the command
             let tool_names = match command {
                 Command::Tools {
                     subcommand: Some(ToolsSubcommand::Untrust { tool_names }),
                 } => tool_names,
-                _ => return Err(eyre::eyre!("UntrustToolsCommand can only execute Untrust commands")),
+                _ => return Err(ChatError::Custom("UntrustToolsCommand can only execute Untrust commands".into())),
             };
 
             // Untrust the specified tools
