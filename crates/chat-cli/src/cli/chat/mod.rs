@@ -553,7 +553,7 @@ impl ChatContext {
     ///
     /// This method provides a clean interface for command handlers to access
     /// only the components they need without exposing the entire ChatContext.
-    pub fn command_context_adapter<'a>(&'a mut self) -> commands::context_adapter::CommandContextAdapter<'a> {
+    pub fn command_context_adapter(&mut self) -> commands::context_adapter::CommandContextAdapter<'_> {
         commands::context_adapter::CommandContextAdapter::new(
             &self.ctx,
             &mut self.output,
@@ -1260,7 +1260,7 @@ impl ChatContext {
 
     async fn handle_input(
         &mut self,
-        mut user_input: String,
+        user_input: String,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Result<ChatState, ChatError> {
@@ -1293,7 +1293,7 @@ impl ChatContext {
 
         // Use Command::execute to execute the command with self
         match command.execute(self, tool_uses.clone(), pending_tool_index).await {
-            Ok(state) => return Ok(state),
+            Ok(state) => Ok(state),
             Err(e) => {
                 execute!(
                     self.output,
@@ -1302,11 +1302,11 @@ impl ChatContext {
                     style::SetForegroundColor(Color::Reset)
                 )?;
 
-                return Ok(ChatState::PromptUser {
+                Ok(ChatState::PromptUser {
                     tool_uses,
                     pending_tool_index,
                     skip_printing_tools: true,
-                });
+                })
             },
         }
     }

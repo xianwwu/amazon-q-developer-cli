@@ -1049,12 +1049,3 @@ mod tests {
         }
     }
 }
-
-impl ConversationState {
-    /// Clear the conversation history
-    pub fn clear_history(&mut self) {
-        self.history.clear();
-        self.valid_history_range = (0, 0);
-        self.transcript.clear();
-    }
-}

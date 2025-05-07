@@ -5,7 +5,6 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::anyhow;
 
 use crate::cli::chat::commands::CommandHandler;
 use crate::cli::chat::{
@@ -45,17 +44,14 @@ impl CommandHandler for ShowContextCommand {
         })
     }
 
-    fn execute<'a>(
+    fn execute_command<'a>(
         &'a self,
-        args: Vec<&'a str>,
+        command: &'a crate::cli::chat::command::Command,
         ctx: &'a mut crate::cli::chat::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
-            // Parse the command to get the expand parameter
-            let command = self.to_command(args)?;
-
             // Extract the expand parameter from the command
             let expand = match command {
                 crate::cli::chat::command::Command::Context {
@@ -104,7 +100,7 @@ impl CommandHandler for ShowContextCommand {
                 }
 
                 // If expand is requested, show the expanded files
-                if expand {
+                if *expand {
                     let expanded_files = match context_manager.get_global_context_files(true).await {
                         Ok(files) => files,
                         Err(e) => {
@@ -149,7 +145,7 @@ impl CommandHandler for ShowContextCommand {
                 }
 
                 // If expand is requested, show the expanded files
-                if expand {
+                if *expand {
                     let expanded_files = match context_manager.get_current_profile_context_files(true).await {
                         Ok(files) => files,
                         Err(e) => {

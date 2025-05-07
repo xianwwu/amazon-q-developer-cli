@@ -24,34 +24,13 @@ mod trustall;
 mod untrust;
 
 // Static handlers for tools subcommands
-pub use help::{
-    HELP_TOOLS_HANDLER,
-    HelpToolsCommand,
-};
-pub use list::{
-    LIST_TOOLS_HANDLER,
-    ListToolsCommand,
-};
-pub use reset::{
-    RESET_TOOLS_HANDLER,
-    ResetToolsCommand,
-};
-pub use reset_single::{
-    RESET_SINGLE_TOOL_HANDLER,
-    ResetSingleToolCommand,
-};
-pub use trust::{
-    TRUST_TOOLS_HANDLER,
-    TrustToolsCommand,
-};
-pub use trustall::{
-    TRUSTALL_TOOLS_HANDLER,
-    TrustAllToolsCommand,
-};
-pub use untrust::{
-    UNTRUST_TOOLS_HANDLER,
-    UntrustToolsCommand,
-};
+pub use help::HELP_TOOLS_HANDLER;
+pub use list::LIST_TOOLS_HANDLER;
+pub use reset::RESET_TOOLS_HANDLER;
+pub use reset_single::RESET_SINGLE_TOOL_HANDLER;
+pub use trust::TRUST_TOOLS_HANDLER;
+pub use trustall::TRUSTALL_TOOLS_HANDLER;
+pub use untrust::UNTRUST_TOOLS_HANDLER;
 
 /// Static instance of the tools command handler
 pub static TOOLS_HANDLER: ToolsCommand = ToolsCommand;
@@ -133,6 +112,13 @@ To get the current tool status, use the command "/tools list" which will display
             return Ok(Command::Tools { subcommand: None });
         }
 
+        // Check if this is a help request
+        if args.len() == 1 && args[0] == "help" {
+            return Ok(Command::Help {
+                help_text: Some(ToolsSubcommand::help_text()),
+            });
+        }
+
         // Parse arguments to determine the subcommand
         let subcommand = if let Some(first_arg) = args.first() {
             match *first_arg {
@@ -155,10 +141,17 @@ To get the current tool status, use the command "/tools list" which will display
                         Some(ToolsSubcommand::Reset)
                     }
                 },
-                "help" => Some(ToolsSubcommand::Help),
+                "help" => {
+                    // This case is handled above, but we'll include it here for completeness
+                    return Ok(Command::Help {
+                        help_text: Some(ToolsSubcommand::help_text()),
+                    });
+                },
                 _ => {
                     // For unknown subcommands, show help
-                    Some(ToolsSubcommand::Help)
+                    return Ok(Command::Help {
+                        help_text: Some(ToolsSubcommand::help_text()),
+                    });
                 },
             }
         } else {
@@ -168,23 +161,32 @@ To get the current tool status, use the command "/tools list" which will display
         Ok(Command::Tools { subcommand })
     }
 
-    fn execute<'a>(
+    fn execute_command<'a>(
         &'a self,
-        args: Vec<&'a str>,
-        _ctx: &'a mut CommandContextAdapter<'a>,
+        command: &'a Command,
+        ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
-            // Use to_command to parse arguments and avoid duplication
-            let command = self.to_command(args)?;
-
-            // Return the command wrapped in ExecuteCommand state
-            Ok(ChatState::ExecuteCommand {
-                command,
-                tool_uses,
-                pending_tool_index,
-            })
+            match command {
+                Command::Tools { subcommand: None } => {
+                    // Default behavior is to list tools
+                    LIST_TOOLS_HANDLER
+                        .execute_command(command, ctx, tool_uses, pending_tool_index)
+                        .await
+                },
+                Command::Tools {
+                    subcommand: Some(subcommand),
+                } => {
+                    // Delegate to the appropriate subcommand handler
+                    subcommand
+                        .to_handler()
+                        .execute_command(command, ctx, tool_uses, pending_tool_index)
+                        .await
+                },
+                _ => Err(ChatError::Custom("ToolsCommand can only execute Tools commands".into())),
+            }
         })
     }
 

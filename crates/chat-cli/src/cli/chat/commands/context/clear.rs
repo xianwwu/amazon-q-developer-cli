@@ -44,17 +44,14 @@ impl CommandHandler for ClearContextCommand {
         })
     }
 
-    fn execute<'a>(
+    fn execute_command<'a>(
         &'a self,
-        args: Vec<&'a str>,
+        command: &'a crate::cli::chat::command::Command,
         ctx: &'a mut crate::cli::chat::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
-            // Parse the command to get the parameters
-            let command = self.to_command(args)?;
-
             // Extract the parameters from the command
             let global = match command {
                 crate::cli::chat::command::Command::Context {
@@ -80,10 +77,10 @@ impl CommandHandler for ClearContextCommand {
             };
 
             // Clear the context
-            match context_manager.clear(global).await {
+            match context_manager.clear(*global).await {
                 Ok(_) => {
                     // Success message
-                    let scope = if global { "global" } else { "profile" };
+                    let scope = if *global { "global" } else { "profile" };
                     queue!(
                         ctx.output,
                         style::SetForegroundColor(Color::Green),

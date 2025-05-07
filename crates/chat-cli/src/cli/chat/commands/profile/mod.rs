@@ -1,8 +1,15 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use super::CommandHandler;
-use crate::cli::chat::ChatError;
 use crate::cli::chat::command::{
     Command,
     ProfileSubcommand,
+};
+use crate::cli::chat::{
+    ChatError,
+    ChatState,
+    QueuedTool,
 };
 
 mod create;
@@ -13,30 +20,12 @@ mod rename;
 mod set;
 
 // Static handlers for profile subcommands
-pub use create::{
-    CREATE_PROFILE_HANDLER,
-    CreateProfileCommand,
-};
-pub use delete::{
-    DELETE_PROFILE_HANDLER,
-    DeleteProfileCommand,
-};
-pub use help::{
-    HELP_PROFILE_HANDLER,
-    HelpProfileCommand,
-};
-pub use list::{
-    LIST_PROFILE_HANDLER,
-    ListProfileCommand,
-};
-pub use rename::{
-    RENAME_PROFILE_HANDLER,
-    RenameProfileCommand,
-};
-pub use set::{
-    SET_PROFILE_HANDLER,
-    SetProfileCommand,
-};
+pub use create::CREATE_PROFILE_HANDLER;
+pub use delete::DELETE_PROFILE_HANDLER;
+pub use help::HELP_PROFILE_HANDLER;
+pub use list::LIST_PROFILE_HANDLER;
+pub use rename::RENAME_PROFILE_HANDLER;
+pub use set::SET_PROFILE_HANDLER;
 
 /// Profile command handler
 pub struct ProfileCommand;
@@ -87,9 +76,9 @@ impl CommandHandler for ProfileCommand {
 
 Subcommands:
 - list: List all available profiles
-- create <name>: Create a new profile
-- delete <name>: Delete a profile
-- set <name>: Switch to a different profile
+- create <n>: Create a new profile
+- delete <n>: Delete a profile
+- set <n>: Switch to a different profile
 - rename <old_name> <new_name>: Rename a profile
 
 Examples:
@@ -104,10 +93,15 @@ Profiles allow you to organize context files for different projects or tasks. Th
     }
 
     fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
+        // Check if this is a help request
+        if args.is_empty() || (args.len() == 1 && args[0] == "help") {
+            return Ok(Command::Help {
+                help_text: Some(ProfileSubcommand::help_text()),
+            });
+        }
+
         // Parse arguments to determine the subcommand
-        let subcommand = if args.is_empty() {
-            ProfileSubcommand::Help
-        } else if let Some(first_arg) = args.first() {
+        let subcommand = if let Some(first_arg) = args.first() {
             match *first_arg {
                 "list" => ProfileSubcommand::List,
                 "create" => {
@@ -143,11 +137,24 @@ Profiles allow you to organize context files for different projects or tasks. Th
                         new_name: args[2].to_string(),
                     }
                 },
-                "help" => ProfileSubcommand::Help,
-                _ => ProfileSubcommand::Help,
+                "help" => {
+                    // This case is handled above, but we'll include it here for completeness
+                    return Ok(Command::Help {
+                        help_text: Some(ProfileSubcommand::help_text()),
+                    });
+                },
+                _ => {
+                    // For unknown subcommands, show help
+                    return Ok(Command::Help {
+                        help_text: Some(ProfileSubcommand::help_text()),
+                    });
+                },
             }
         } else {
-            ProfileSubcommand::Help // Fallback, should not happen
+            // This case is handled above, but we'll include it here for completeness
+            return Ok(Command::Help {
+                help_text: Some(ProfileSubcommand::help_text()),
+            });
         };
 
         Ok(Command::Profile { subcommand })
@@ -163,5 +170,28 @@ Profiles allow you to organize context files for different projects or tasks. Th
             "delete" => true,         // Delete requires confirmation
             _ => false,               // Other commands don't require confirmation
         }
+    }
+
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        ctx: &'a mut crate::cli::chat::commands::context_adapter::CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
+        Box::pin(async move {
+            match command {
+                Command::Profile { subcommand } => {
+                    // Delegate to the appropriate subcommand handler
+                    subcommand
+                        .to_handler()
+                        .execute_command(command, ctx, tool_uses, pending_tool_index)
+                        .await
+                },
+                _ => Err(ChatError::Custom(
+                    "ProfileCommand can only execute Profile commands".into(),
+                )),
+            }
+        })
     }
 }

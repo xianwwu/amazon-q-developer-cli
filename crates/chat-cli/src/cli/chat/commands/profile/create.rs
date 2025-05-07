@@ -58,7 +58,7 @@ impl CommandHandler for CreateProfileCommand {
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a mut CommandContextAdapter<'a>,
+        _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
@@ -66,6 +66,23 @@ impl CommandHandler for CreateProfileCommand {
             // Parse the command to get the profile name
             let command = self.to_command(args)?;
 
+            // Return the command wrapped in ExecuteCommand state
+            Ok(ChatState::ExecuteCommand {
+                command,
+                tool_uses,
+                pending_tool_index,
+            })
+        })
+    }
+
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        ctx: &'a mut CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
+        Box::pin(async move {
             // Extract the profile name from the command
             let name = match command {
                 Command::Profile {
@@ -77,13 +94,13 @@ impl CommandHandler for CreateProfileCommand {
             // Get the context manager
             if let Some(context_manager) = &ctx.conversation_state.context_manager {
                 // Create the profile
-                match context_manager.create_profile(&name).await {
+                match context_manager.create_profile(name).await {
                     Ok(_) => {
                         queue!(
                             ctx.output,
                             style::Print("\nProfile '"),
                             style::SetForegroundColor(Color::Green),
-                            style::Print(&name),
+                            style::Print(name),
                             style::ResetColor,
                             style::Print("' created successfully.\n\n")
                         )?;

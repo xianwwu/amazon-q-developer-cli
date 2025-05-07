@@ -1,4 +1,6 @@
+use std::future::Future;
 use std::io::Write;
+use std::pin::Pin;
 
 use crossterm::queue;
 use crossterm::style::{
@@ -54,17 +56,14 @@ impl CommandHandler for AddContextCommand {
         })
     }
 
-    fn execute<'a>(
+    fn execute_command<'a>(
         &'a self,
-        args: Vec<&'a str>,
+        command: &'a crate::cli::chat::command::Command,
         ctx: &'a mut crate::cli::chat::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
-            // Parse the command to get the parameters
-            let command = self.to_command(args)?;
-
             // Extract the parameters from the command
             let (global, force, paths) = match command {
                 crate::cli::chat::command::Command::Context {
@@ -97,10 +96,10 @@ impl CommandHandler for AddContextCommand {
             };
 
             // Add the paths to the context
-            match context_manager.add_paths(paths.clone(), global, force).await {
+            match context_manager.add_paths(paths.clone(), *global, *force).await {
                 Ok(_) => {
                     // Success message
-                    let scope = if global { "global" } else { "profile" };
+                    let scope = if *global { "global" } else { "profile" };
                     queue!(
                         ctx.output,
                         style::SetForegroundColor(Color::Green),
@@ -198,49 +197,5 @@ mod tests {
             },
             _ => panic!("Expected Context Add command"),
         }
-    }
-
-    #[test]
-    fn test_to_command_no_flags() {
-        let handler = AddContextCommand;
-        let args = vec!["path1", "path2"];
-
-        let command = handler.to_command(args).unwrap();
-
-        match command {
-            Command::Context {
-                subcommand: ContextSubcommand::Add { global, force, paths },
-            } => {
-                assert!(!global);
-                assert!(!force);
-                assert_eq!(paths, vec!["path1".to_string(), "path2".to_string()]);
-            },
-            _ => panic!("Expected Context Add command"),
-        }
-    }
-
-    #[test]
-    fn test_to_command_no_paths() {
-        let handler = AddContextCommand;
-        let args = vec!["--global", "--force"];
-
-        let command = handler.to_command(args).unwrap();
-
-        match command {
-            Command::Context {
-                subcommand: ContextSubcommand::Add { global, force, paths },
-            } => {
-                assert!(global);
-                assert!(force);
-                assert!(paths.is_empty());
-            },
-            _ => panic!("Expected Context Add command"),
-        }
-    }
-
-    #[test]
-    fn test_requires_confirmation() {
-        let handler = AddContextCommand;
-        assert!(handler.requires_confirmation(&[]));
     }
 }

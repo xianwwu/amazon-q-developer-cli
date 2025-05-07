@@ -1,8 +1,20 @@
+use std::io::Write;
+
+use crossterm::queue;
+use crossterm::style::{
+    self,
+    Color,
+};
+
 use super::CommandHandler;
-use crate::cli::chat::ChatError;
 use crate::cli::chat::command::{
     Command,
     ContextSubcommand,
+};
+use crate::cli::chat::{
+    ChatError,
+    ChatState,
+    QueuedTool,
 };
 
 // Import modules
@@ -77,6 +89,13 @@ To see the full content of context files, use "/context show --expand"."#
     }
 
     fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
+        // Check if this is a help request
+        if args.len() == 1 && args[0] == "help" {
+            return Ok(Command::Help {
+                help_text: Some(ContextSubcommand::help_text()),
+            });
+        }
+
         // Parse arguments to determine the subcommand
         let subcommand = if args.is_empty() {
             ContextSubcommand::Show { expand: false }
@@ -118,8 +137,20 @@ To see the full content of context files, use "/context show --expand"."#
                     let global = args.len() > 1 && args[1] == "--global";
                     ContextSubcommand::Clear { global }
                 },
-                "help" => ContextSubcommand::Help,
+                "help" => {
+                    // This case is handled above, but we'll include it here for completeness
+                    return Ok(Command::Help {
+                        help_text: Some(ContextSubcommand::help_text()),
+                    });
+                },
                 "hooks" => {
+                    // Check if this is a hooks help request
+                    if args.len() > 1 && args[1] == "help" {
+                        return Ok(Command::Help {
+                            help_text: Some(ContextSubcommand::hooks_help_text()),
+                        });
+                    }
+
                     // Use the Command::parse_hooks function to parse hooks subcommands
                     // This ensures consistent behavior with the Command::parse method
                     let hook_parts: Vec<&str> = std::iter::once("hooks").chain(args.iter().copied()).collect();
@@ -147,5 +178,59 @@ To see the full content of context files, use "/context show --expand"."#
             "show" | "help" | "hooks" => false, // Read-only commands don't require confirmation
             _ => true,                          // All other subcommands require confirmation
         }
+    }
+
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        ctx: &'a mut crate::cli::chat::commands::context_adapter::CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
+        Box::pin(async move {
+            match command {
+                Command::Context { subcommand } => {
+                    match subcommand {
+                        // For Hooks subcommand with no subcommand, display hooks help text
+                        ContextSubcommand::Hooks { subcommand: None } => {
+                            // Return Help command with hooks help text
+                            Ok(ChatState::ExecuteCommand {
+                                command: Command::Help {
+                                    help_text: Some(ContextSubcommand::hooks_help_text()),
+                                },
+                                tool_uses,
+                                pending_tool_index,
+                            })
+                        },
+                        ContextSubcommand::Hooks { subcommand: Some(_) } => {
+                            // TODO: Implement hooks subcommands
+                            queue!(
+                                ctx.output,
+                                style::SetForegroundColor(Color::Yellow),
+                                style::Print("\nHooks subcommands are not yet implemented.\n\n"),
+                                style::ResetColor
+                            )?;
+                            ctx.output.flush()?;
+
+                            Ok(ChatState::PromptUser {
+                                tool_uses,
+                                pending_tool_index,
+                                skip_printing_tools: false,
+                            })
+                        },
+                        // For other subcommands, delegate to the appropriate handler
+                        _ => {
+                            subcommand
+                                .to_handler()
+                                .execute_command(command, ctx, tool_uses, pending_tool_index)
+                                .await
+                        },
+                    }
+                },
+                _ => Err(ChatError::Custom(
+                    "ContextCommand can only execute Context commands".into(),
+                )),
+            }
+        })
     }
 }

@@ -92,6 +92,26 @@ impl ProfileSubcommand {
         format!("{}\n\n{}", header.as_ref(), Self::AVAILABLE_COMMANDS)
     }
 
+    pub fn to_handler(&self) -> &'static dyn CommandHandler {
+        use crate::cli::chat::commands::profile::{
+            CREATE_PROFILE_HANDLER,
+            DELETE_PROFILE_HANDLER,
+            HELP_PROFILE_HANDLER,
+            LIST_PROFILE_HANDLER,
+            RENAME_PROFILE_HANDLER,
+            SET_PROFILE_HANDLER,
+        };
+
+        match self {
+            ProfileSubcommand::Create { .. } => &CREATE_PROFILE_HANDLER,
+            ProfileSubcommand::Delete { .. } => &DELETE_PROFILE_HANDLER,
+            ProfileSubcommand::List => &LIST_PROFILE_HANDLER,
+            ProfileSubcommand::Set { .. } => &SET_PROFILE_HANDLER,
+            ProfileSubcommand::Rename { .. } => &RENAME_PROFILE_HANDLER,
+            ProfileSubcommand::Help => &HELP_PROFILE_HANDLER,
+        }
+    }
+
     pub fn help_text() -> String {
         color_print::cformat!(
             r#"
@@ -1025,8 +1045,7 @@ mod tests {
         ];
 
         for (input, parsed) in tests {
-            // Use the new parse method instead of the old one with output parameter
-            let result = Command::parse(input).expect(&format!("Failed to parse command: {}", input));
+            let result = Command::parse(input).unwrap_or_else(|_| panic!("Failed to parse command: {}", input));
             assert_eq!(&result, parsed, "{}", input);
         }
     }
@@ -1048,7 +1067,8 @@ impl Command {
             Command::Quit => &QUIT_HANDLER,
             Command::Clear => &CLEAR_HANDLER,
             Command::Context { subcommand } => subcommand.to_handler(),
-            Command::Profile { subcommand: _ } => &PROFILE_HANDLER, // All profile subcommands use the same handler
+            Command::Profile { subcommand } => subcommand.to_handler(), /* Use the to_handler method on
+                                                                          * ProfileSubcommand */
             Command::Tools { subcommand } => match subcommand {
                 Some(sub) => sub.to_handler(), // Use the to_handler method on ToolsSubcommand
                 None => &crate::cli::chat::commands::tools::LIST_TOOLS_HANDLER, /* Default to list handler when no

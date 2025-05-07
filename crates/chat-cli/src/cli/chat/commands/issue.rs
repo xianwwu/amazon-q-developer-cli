@@ -1,6 +1,13 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use super::handler::CommandHandler;
-use crate::cli::chat::ChatError;
 use crate::cli::chat::command::Command;
+use crate::cli::chat::{
+    ChatError,
+    ChatState,
+    QueuedTool,
+};
 
 /// Command handler for the `/issue` command
 pub struct IssueCommand;
@@ -57,6 +64,28 @@ This command helps users report bugs, request features, or provide feedback abou
         let prompt = if args.is_empty() { None } else { Some(args.join(" ")) };
 
         Ok(Command::Issue { prompt })
+    }
+
+    fn execute_command<'a>(
+        &'a self,
+        command: &'a Command,
+        _ctx: &'a mut super::context_adapter::CommandContextAdapter<'a>,
+        tool_uses: Option<Vec<QueuedTool>>,
+        pending_tool_index: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
+        Box::pin(async move {
+            if let Command::Issue { prompt } = command {
+                // Return ExecuteCommand state with the Issue command
+                // The actual issue reporting is handled by the report_issue tool
+                Ok(ChatState::ExecuteCommand {
+                    command: Command::Issue { prompt: prompt.clone() },
+                    tool_uses,
+                    pending_tool_index,
+                })
+            } else {
+                Err(ChatError::Custom("IssueCommand can only execute Issue commands".into()))
+            }
+        })
     }
 
     fn requires_confirmation(&self, _args: &[&str]) -> bool {

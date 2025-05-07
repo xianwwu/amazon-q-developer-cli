@@ -685,9 +685,7 @@ impl ToolManager {
             "execute_bash" => Tool::ExecuteBash(serde_json::from_value::<ExecuteBash>(value.args).map_err(map_err)?),
             "use_aws" => Tool::UseAws(serde_json::from_value::<UseAws>(value.args).map_err(map_err)?),
             "report_issue" => Tool::GhIssue(serde_json::from_value::<GhIssue>(value.args).map_err(map_err)?),
-            "internal_command" => {
-                Tool::InternalCommand(serde_json::from_value::<InternalCommand>(value.args).map_err(map_err)?)
-            },
+            "internal_command" => Tool::InternalCommand(serde_json::from_value::<InternalCommand>(value.args).map_err(map_err)?),
             "q_think_tool" => Tool::Thinking(serde_json::from_value::<Thinking>(value.args).map_err(map_err)?),
             // Note that this name is namespaced with server_name{DELIMITER}tool_name
             name => {

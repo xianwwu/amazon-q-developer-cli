@@ -13,6 +13,7 @@ use crate::settings::Settings;
 /// avoiding issues with generic parameters and providing a cleaner interface.
 pub struct CommandContextAdapter<'a> {
     /// Core context for file system operations and environment variables
+    #[allow(dead_code)]
     pub context: &'a Context,
 
     /// Output handling for writing to the terminal
@@ -25,12 +26,15 @@ pub struct CommandContextAdapter<'a> {
     pub tool_permissions: &'a mut ToolPermissions,
 
     /// Whether the chat is in interactive mode
+    #[allow(dead_code)]
     pub interactive: bool,
 
     /// Input source for reading user input
+    #[allow(dead_code)]
     pub input_source: &'a mut InputSource,
 
     /// User settings
+    #[allow(dead_code)]
     pub settings: &'a Settings,
 }
 

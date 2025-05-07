@@ -471,6 +471,35 @@ fn supports_truecolor(ctx: &Context) -> bool {
         && shell_color::get_color_support().contains(shell_color::ColorSupport::TERM24BIT)
 }
 
+impl From<ToolUseResultBlock> for OutputKind {
+    fn from(block: ToolUseResultBlock) -> Self {
+        match block {
+            ToolUseResultBlock::Text(text) => OutputKind::Text(text),
+            ToolUseResultBlock::Json(json) => OutputKind::Json(json),
+        }
+    }
+}
+
+impl InvokeOutput {
+    pub fn new(content: String) -> Self {
+        Self {
+            output: OutputKind::Text(content),
+            next_state: None,
+        }
+    }
+
+    pub fn with_json(json: serde_json::Value) -> Self {
+        Self {
+            output: OutputKind::Json(json),
+            next_state: None,
+        }
+    }
+
+    pub fn content(&self) -> String {
+        self.output.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -520,34 +549,5 @@ mod tests {
             "/Volumes/projects/MyProject/src",
         )
         .await;
-    }
-}
-
-impl From<ToolUseResultBlock> for OutputKind {
-    fn from(block: ToolUseResultBlock) -> Self {
-        match block {
-            ToolUseResultBlock::Text(text) => OutputKind::Text(text),
-            ToolUseResultBlock::Json(json) => OutputKind::Json(json),
-        }
-    }
-}
-
-impl InvokeOutput {
-    pub fn new(content: String) -> Self {
-        Self {
-            output: OutputKind::Text(content),
-            next_state: None,
-        }
-    }
-
-    pub fn with_json(json: serde_json::Value) -> Self {
-        Self {
-            output: OutputKind::Json(json),
-            next_state: None,
-        }
-    }
-
-    pub fn content(&self) -> String {
-        self.output.to_string()
     }
 }

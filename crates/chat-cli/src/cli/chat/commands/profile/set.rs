@@ -36,7 +36,7 @@ impl CommandHandler for SetProfileCommand {
     }
 
     fn usage(&self) -> &'static str {
-        "/profile set <name>"
+        "/profile set <n>"
     }
 
     fn help(&self) -> String {
@@ -55,17 +55,14 @@ impl CommandHandler for SetProfileCommand {
         })
     }
 
-    fn execute<'a>(
+    fn execute_command<'a>(
         &'a self,
-        args: Vec<&'a str>,
+        command: &'a Command,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
-            // Parse the command to get the profile name
-            let command = self.to_command(args)?;
-
             // Extract the profile name from the command
             let name = match command {
                 Command::Profile {
@@ -77,13 +74,13 @@ impl CommandHandler for SetProfileCommand {
             // Get the context manager
             if let Some(context_manager) = &mut ctx.conversation_state.context_manager {
                 // Switch to the profile
-                match context_manager.switch_profile(&name).await {
+                match context_manager.switch_profile(name).await {
                     Ok(_) => {
                         queue!(
                             ctx.output,
                             style::Print("\nSwitched to profile '"),
                             style::SetForegroundColor(Color::Green),
-                            style::Print(&name),
+                            style::Print(name),
                             style::ResetColor,
                             style::Print("'.\n\n")
                         )?;
