@@ -42,7 +42,7 @@ use super::tools::execute_bash::ExecuteBash;
 use super::tools::fs_read::FsRead;
 use super::tools::fs_write::FsWrite;
 use super::tools::gh_issue::GhIssue;
-use crate::tools::internal_command::InternalCommand;
+use super::tools::internal_command::InternalCommand;
 use super::tools::thinking::Thinking;
 use super::tools::use_aws::UseAws;
 use super::tools::{
@@ -509,7 +509,7 @@ impl ToolManager {
             // Add internal_command tool dynamically using the get_tool_spec function
             tool_specs.insert(
                 "internal_command".to_string(),
-                crate::tools::internal_command::get_tool_spec(),
+                super::tools::internal_command::get_tool_spec(),
             );
 
             if !crate::cli::chat::tools::thinking::Thinking::is_enabled() {

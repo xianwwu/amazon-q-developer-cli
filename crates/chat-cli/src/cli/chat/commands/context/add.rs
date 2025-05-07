@@ -6,8 +6,8 @@ use crossterm::style::{
     Color,
 };
 
-use crate::commands::CommandHandler;
-use crate::{
+use crate::cli::chat::commands::CommandHandler;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,
@@ -36,7 +36,7 @@ impl CommandHandler for AddContextCommand {
         "Add files to the context. Use --global to add to global context (available in all profiles). Use --force to add files even if they exceed size limits.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command, ChatError> {
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::cli::chat::command::Command, ChatError> {
         let mut global = false;
         let mut force = false;
         let mut paths = Vec::new();
@@ -49,15 +49,15 @@ impl CommandHandler for AddContextCommand {
             }
         }
 
-        Ok(crate::command::Command::Context {
-            subcommand: crate::command::ContextSubcommand::Add { global, force, paths },
+        Ok(crate::cli::chat::command::Command::Context {
+            subcommand: crate::cli::chat::command::ContextSubcommand::Add { global, force, paths },
         })
     }
 
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a mut crate::commands::context_adapter::CommandContextAdapter<'a>,
+        ctx: &'a mut crate::cli::chat::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
@@ -67,8 +67,8 @@ impl CommandHandler for AddContextCommand {
 
             // Extract the parameters from the command
             let (global, force, paths) = match command {
-                crate::command::Command::Context {
-                    subcommand: crate::command::ContextSubcommand::Add { global, force, paths },
+                crate::cli::chat::command::Command::Context {
+                    subcommand: crate::cli::chat::command::ContextSubcommand::Add { global, force, paths },
                 } => (global, force, paths),
                 _ => return Err(ChatError::Custom("Invalid command".into())),
             };
@@ -138,7 +138,7 @@ impl CommandHandler for AddContextCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::{
+    use crate::cli::chat::command::{
         Command,
         ContextSubcommand,
     };

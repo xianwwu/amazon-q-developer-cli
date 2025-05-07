@@ -8,14 +8,14 @@ use crossterm::style::{
     Color,
 };
 
-use crate::command::{
+use crate::cli::chat::command::{
     Command,
     ToolsSubcommand,
 };
-use crate::commands::context_adapter::CommandContextAdapter;
-use crate::commands::handler::CommandHandler;
-use crate::tools::Tool;
-use crate::{
+use crate::cli::chat::commands::context_adapter::CommandContextAdapter;
+use crate::cli::chat::commands::handler::CommandHandler;
+use crate::cli::chat::tools::Tool;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,

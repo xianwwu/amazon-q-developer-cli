@@ -34,8 +34,8 @@ use thinking::Thinking;
 use use_aws::UseAws;
 
 use super::consts::MAX_TOOL_RESPONSE_SIZE;
-use crate::ToolResultStatus;
-use crate::message::{
+use crate::cli::chat::ToolResultStatus;
+use crate::cli::chat::message::{
     AssistantToolUse,
     ToolUseResult,
     ToolUseResultBlock,
@@ -311,7 +311,7 @@ pub struct InvokeOutput {
     /// Optional next state to transition to, overriding the default flow
     /// If set, tool_use_execute will return this state instead of proceeding to
     /// HandleResponseStream
-    pub(crate) next_state: Option<crate::ChatState>,
+    pub(crate) next_state: Option<crate::cli::chat::ChatState>,
 }
 
 impl InvokeOutput {

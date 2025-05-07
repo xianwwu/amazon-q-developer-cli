@@ -7,10 +7,10 @@ use crossterm::{
     style,
 };
 
-use crate::command::ProfileSubcommand;
-use crate::commands::context_adapter::CommandContextAdapter;
-use crate::commands::handler::CommandHandler;
-use crate::{
+use crate::cli::chat::command::ProfileSubcommand;
+use crate::cli::chat::commands::context_adapter::CommandContextAdapter;
+use crate::cli::chat::commands::handler::CommandHandler;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,
@@ -316,14 +316,14 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use fig_os_shim::Context;
+    use crate::platform::Context;
 
     use super::*;
     use crate::Settings;
-    use crate::conversation_state::ConversationState;
-    use crate::input_source::InputSource;
+    use crate::cli::chat::conversation_state::ConversationState;
+    use crate::cli::chat::input_source::InputSource;
     use crate::shared_writer::SharedWriter;
-    use crate::tools::ToolPermissions;
+    use crate::cli::chat::tools::ToolPermissions;
 
     #[tokio::test]
     async fn test_profile_list_command() {

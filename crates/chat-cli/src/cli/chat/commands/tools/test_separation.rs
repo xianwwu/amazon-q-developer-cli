@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use crate::command::{
+    use crate::cli::chat::command::{
         Command,
         ToolsSubcommand,
     };
-    use crate::commands::CommandHandler;
-    use crate::commands::tools::{
+    use crate::cli::chat::commands::CommandHandler;
+    use crate::cli::chat::commands::tools::{
         LIST_TOOLS_HANDLER,
         TRUST_TOOLS_HANDLER,
         TRUSTALL_TOOLS_HANDLER,

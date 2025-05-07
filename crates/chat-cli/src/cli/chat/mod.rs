@@ -1264,110 +1264,109 @@ impl ChatContext {
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Result<ChatState, ChatError> {
-        // Check if the input is a command (starts with /)
-        if user_input.trim_start().starts_with('/') {
-            // Use Command::parse to parse the command
-            match Command::parse(&user_input) {
-                Ok(command) => {
-                    // Use Command::execute to execute the command with self
-                    match command.execute(self, tool_uses.clone(), pending_tool_index).await {
-                        Ok(state) => return Ok(state),
-                        Err(e) => {
-                            execute!(
-                                self.output,
-                                style::SetForegroundColor(Color::Red),
-                                style::Print(format!("\nError: {}\n\n", e)),
-                                style::SetForegroundColor(Color::Reset)
-                            )?;
-
-                            return Ok(ChatState::PromptUser {
-                                tool_uses,
-                                pending_tool_index,
-                                skip_printing_tools: true,
-                            });
-                        },
-                    }
-                },
-                Err(error_message) => {
-                    // Display error message for command parsing errors
-                    execute!(
-                        self.output,
-                        style::SetForegroundColor(Color::Red),
-                        style::Print(format!("\nError: {}\n\n", error_message)),
-                        style::SetForegroundColor(Color::Reset)
-                    )?;
-
-                    return Ok(ChatState::PromptUser {
-                        tool_uses,
-                        pending_tool_index,
-                        skip_printing_tools: true,
-                    });
-                },
-            }
-        }
-
-        // If it's not a command, handle as a regular message
         let command_result = Command::parse(&user_input);
-        let command = command_result.unwrap();
 
-        // For Ask commands, handle them directly
-        if let Command::Ask { prompt } = &command {
-            // Handle Ask command logic here
-            let mut tool_uses = tool_uses.unwrap_or_default();
+        if let Err(error_message) = &command_result {
+            // Display error message for command parsing errors
+            execute!(
+                self.output,
+                style::SetForegroundColor(Color::Red),
+                style::Print(format!("\nError: {}\n\n", error_message)),
+                style::SetForegroundColor(Color::Reset)
+            )?;
 
-            // Check for a pending tool approval
-            if let Some(index) = pending_tool_index {
-                let tool_use = &mut tool_uses[index];
-
-                let is_trust = ["t", "T"].contains(&prompt.as_str());
-                if ["y", "Y"].contains(&prompt.as_str()) || is_trust {
-                    if is_trust {
-                        self.tool_permissions.trust_tool(&tool_use.name);
-                    }
-                    tool_use.accepted = true;
-
-                    return Ok(ChatState::ExecuteTools(tool_uses));
-                }
-            } else if !self.pending_prompts.is_empty() {
-                let prompts = self.pending_prompts.drain(0..).collect();
-                user_input = self
-                    .conversation_state
-                    .append_prompts(prompts)
-                    .ok_or(ChatError::Custom("Prompt append failed".into()))?;
-            }
-
-            // Otherwise continue with normal chat on 'n' or other responses
-            self.tool_use_status = ToolUseStatus::Idle;
-
-            if pending_tool_index.is_some() {
-                self.conversation_state.abandon_tool_use(tool_uses, user_input);
-            } else {
-                self.conversation_state.set_next_user_message(user_input).await;
-            }
-
-            let conv_state = self.conversation_state.as_sendable_conversation_state(true).await;
-
-            if self.interactive {
-                queue!(self.output, style::SetForegroundColor(Color::Magenta))?;
-                queue!(self.output, style::SetForegroundColor(Color::Reset))?;
-                queue!(self.output, cursor::Hide)?;
-                execute!(self.output, style::Print("\n"))?;
-                self.spinner = Some(Spinner::new(Spinners::Dots, "Thinking...".to_owned()));
-            }
-
-            self.send_tool_use_telemetry().await;
-
-            Ok(ChatState::HandleResponseStream(
-                self.client.send_message(conv_state).await?,
-            ))
-        } else {
-            // For all other commands, return ExecuteCommand state
-            Ok(ChatState::ExecuteCommand {
-                command,
+            return Ok(ChatState::PromptUser {
                 tool_uses,
                 pending_tool_index,
-            })
+                skip_printing_tools: true,
+            });
         }
+
+        let command = command_result.unwrap();
+
+        // Handle Ask commands directly
+        if let Command::Ask { prompt } = &command {
+            return self
+                .handle_ask_command(prompt, tool_uses.unwrap_or_default(), pending_tool_index)
+                .await;
+        }
+
+        // Use Command::execute to execute the command with self
+        match command.execute(self, tool_uses.clone(), pending_tool_index).await {
+            Ok(state) => return Ok(state),
+            Err(e) => {
+                execute!(
+                    self.output,
+                    style::SetForegroundColor(Color::Red),
+                    style::Print(format!("\nError: {}\n\n", e)),
+                    style::SetForegroundColor(Color::Reset)
+                )?;
+
+                return Ok(ChatState::PromptUser {
+                    tool_uses,
+                    pending_tool_index,
+                    skip_printing_tools: true,
+                });
+            },
+        }
+    }
+
+    // For Ask commands, handle them directly
+    // TODO:  can this move to command.execute()?
+    async fn handle_ask_command(
+        &mut self,
+        prompt: &str,
+        mut tool_uses: Vec<QueuedTool>,
+        pending_tool_index: Option<usize>,
+    ) -> Result<ChatState, ChatError> {
+        // Handle Ask command logic here
+        let mut user_input = prompt.to_string();
+
+        // Check for a pending tool approval
+        if let Some(index) = pending_tool_index {
+            let tool_use = &mut tool_uses[index];
+
+            let is_trust = ["t", "T"].contains(&prompt);
+            if ["y", "Y"].contains(&prompt) || is_trust {
+                if is_trust {
+                    self.tool_permissions.trust_tool(&tool_use.name);
+                }
+                tool_use.accepted = true;
+
+                return Ok(ChatState::ExecuteTools(tool_uses));
+            }
+        } else if !self.pending_prompts.is_empty() {
+            let prompts = self.pending_prompts.drain(0..).collect();
+            user_input = self
+                .conversation_state
+                .append_prompts(prompts)
+                .ok_or(ChatError::Custom("Prompt append failed".into()))?;
+        }
+
+        // Otherwise continue with normal chat on 'n' or other responses
+        self.tool_use_status = ToolUseStatus::Idle;
+
+        if pending_tool_index.is_some() {
+            self.conversation_state.abandon_tool_use(tool_uses, user_input);
+        } else {
+            self.conversation_state.set_next_user_message(user_input).await;
+        }
+
+        let conv_state = self.conversation_state.as_sendable_conversation_state(true).await;
+
+        if self.interactive {
+            queue!(self.output, style::SetForegroundColor(Color::Magenta))?;
+            queue!(self.output, style::SetForegroundColor(Color::Reset))?;
+            queue!(self.output, cursor::Hide)?;
+            execute!(self.output, style::Print("\n"))?;
+            self.spinner = Some(Spinner::new(Spinners::Dots, "Thinking...".to_owned()));
+        }
+
+        self.send_tool_use_telemetry().await;
+
+        Ok(ChatState::HandleResponseStream(
+            self.client.send_message(conv_state).await?,
+        ))
     }
 
     async fn execute(
@@ -3852,10 +3851,5 @@ mod tests {
             let processed = input.trim().to_string();
             assert_eq!(processed, expected.trim().to_string(), "Failed for input: {}", input);
         }
-    }
-}
-impl From<eyre::Report> for ChatError {
-    fn from(err: eyre::Report) -> Self {
-        ChatError::Custom(err.to_string().into())
     }
 }

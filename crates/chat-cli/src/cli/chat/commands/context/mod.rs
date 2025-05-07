@@ -1,6 +1,6 @@
 use super::CommandHandler;
-use crate::ChatError;
-use crate::command::{
+use crate::cli::chat::ChatError;
+use crate::cli::chat::command::{
     Command,
     ContextSubcommand,
 };
@@ -124,8 +124,8 @@ To see the full content of context files, use "/context show --expand"."#
                     // This ensures consistent behavior with the Command::parse method
                     let hook_parts: Vec<&str> = std::iter::once("hooks").chain(args.iter().copied()).collect();
 
-                    match crate::command::Command::parse_hooks(&hook_parts) {
-                        Ok(crate::command::Command::Context { subcommand }) => subcommand,
+                    match crate::cli::chat::command::Command::parse_hooks(&hook_parts) {
+                        Ok(crate::cli::chat::command::Command::Context { subcommand }) => subcommand,
                         _ => ContextSubcommand::Hooks { subcommand: None },
                     }
                 },

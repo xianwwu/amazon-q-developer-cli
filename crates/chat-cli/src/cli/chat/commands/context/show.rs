@@ -5,9 +5,10 @@ use crossterm::style::{
     self,
     Color,
 };
+use eyre::anyhow;
 
-use crate::commands::CommandHandler;
-use crate::{
+use crate::cli::chat::commands::CommandHandler;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,
@@ -36,18 +37,18 @@ impl CommandHandler for ShowContextCommand {
         "Display the current context configuration. Use --expand to show expanded file contents.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command, ChatError> {
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::cli::chat::command::Command, ChatError> {
         let expand = args.contains(&"--expand");
 
-        Ok(crate::command::Command::Context {
-            subcommand: crate::command::ContextSubcommand::Show { expand },
+        Ok(crate::cli::chat::command::Command::Context {
+            subcommand: crate::cli::chat::command::ContextSubcommand::Show { expand },
         })
     }
 
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a mut crate::commands::context_adapter::CommandContextAdapter<'a>,
+        ctx: &'a mut crate::cli::chat::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
@@ -57,8 +58,8 @@ impl CommandHandler for ShowContextCommand {
 
             // Extract the expand parameter from the command
             let expand = match command {
-                crate::command::Command::Context {
-                    subcommand: crate::command::ContextSubcommand::Show { expand },
+                crate::cli::chat::command::Command::Context {
+                    subcommand: crate::cli::chat::command::ContextSubcommand::Show { expand },
                 } => expand,
                 _ => return Err(ChatError::Custom("Invalid command".into())),
             };
@@ -104,7 +105,14 @@ impl CommandHandler for ShowContextCommand {
 
                 // If expand is requested, show the expanded files
                 if expand {
-                    let expanded_files = context_manager.get_global_context_files(true).await?;
+                    let expanded_files = match context_manager.get_global_context_files(true).await {
+                        Ok(files) => files,
+                        Err(e) => {
+                            return Err(ChatError::Custom(
+                                format!("Failed to get global context files: {}", e).into(),
+                            ));
+                        },
+                    };
                     queue!(
                         ctx.output,
                         style::SetForegroundColor(Color::Yellow),
@@ -142,7 +150,14 @@ impl CommandHandler for ShowContextCommand {
 
                 // If expand is requested, show the expanded files
                 if expand {
-                    let expanded_files = context_manager.get_current_profile_context_files(true).await?;
+                    let expanded_files = match context_manager.get_current_profile_context_files(true).await {
+                        Ok(files) => files,
+                        Err(e) => {
+                            return Err(ChatError::Custom(
+                                format!("Failed to get profile context files: {}", e).into(),
+                            ));
+                        },
+                    };
                     queue!(
                         ctx.output,
                         style::SetForegroundColor(Color::Yellow),
@@ -181,7 +196,7 @@ impl CommandHandler for ShowContextCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::{
+    use crate::cli::chat::command::{
         Command,
         ContextSubcommand,
     };

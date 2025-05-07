@@ -13,18 +13,18 @@ use serde::{
     Serialize,
 };
 
-use crate::commands::CommandHandler;
-use crate::commands::clear::CLEAR_HANDLER;
-use crate::commands::compact::COMPACT_HANDLER;
-use crate::commands::context::CONTEXT_HANDLER;
-use crate::commands::editor::EDITOR_HANDLER;
+use crate::cli::chat::commands::CommandHandler;
+use crate::cli::chat::commands::clear::CLEAR_HANDLER;
+use crate::cli::chat::commands::compact::COMPACT_HANDLER;
+use crate::cli::chat::commands::context::CONTEXT_HANDLER;
+use crate::cli::chat::commands::editor::EDITOR_HANDLER;
 // Import static handlers
-use crate::commands::help::HELP_HANDLER;
-use crate::commands::issue::ISSUE_HANDLER;
-use crate::commands::profile::PROFILE_HANDLER;
-use crate::commands::quit::QUIT_HANDLER;
-use crate::commands::tools::TOOLS_HANDLER;
-use crate::commands::usage::USAGE_HANDLER;
+use crate::cli::chat::commands::help::HELP_HANDLER;
+use crate::cli::chat::commands::issue::ISSUE_HANDLER;
+use crate::cli::chat::commands::profile::PROFILE_HANDLER;
+use crate::cli::chat::commands::quit::QUIT_HANDLER;
+use crate::cli::chat::commands::tools::TOOLS_HANDLER;
+use crate::cli::chat::commands::usage::USAGE_HANDLER;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -233,7 +233,7 @@ impl ContextSubcommand {
     const SHOW_USAGE: &str = "/context show [--expand]";
 
     pub fn to_handler(&self) -> &'static dyn CommandHandler {
-        use crate::commands::context::{
+        use crate::cli::chat::commands::context::{
             CONTEXT_HANDLER,
             add,
             clear,
@@ -1050,16 +1050,9 @@ impl Command {
             Command::Context { subcommand } => subcommand.to_handler(),
             Command::Profile { subcommand: _ } => &PROFILE_HANDLER, // All profile subcommands use the same handler
             Command::Tools { subcommand } => match subcommand {
-                Some(sub) => match sub {
-                    ToolsSubcommand::Schema => &TOOLS_HANDLER,
-                    ToolsSubcommand::Trust { .. } => &crate::commands::tools::TRUST_TOOLS_HANDLER,
-                    ToolsSubcommand::Untrust { .. } => &crate::commands::tools::UNTRUST_TOOLS_HANDLER,
-                    ToolsSubcommand::TrustAll { .. } => &crate::commands::tools::TRUSTALL_TOOLS_HANDLER,
-                    ToolsSubcommand::Reset => &crate::commands::tools::RESET_TOOLS_HANDLER,
-                    ToolsSubcommand::ResetSingle { .. } => &crate::commands::tools::RESET_SINGLE_TOOL_HANDLER,
-                    ToolsSubcommand::Help => &crate::commands::tools::HELP_TOOLS_HANDLER,
-                },
-                None => &crate::commands::tools::LIST_TOOLS_HANDLER, // Default to list handler when no subcommand
+                Some(sub) => sub.to_handler(), // Use the to_handler method on ToolsSubcommand
+                None => &crate::cli::chat::commands::tools::LIST_TOOLS_HANDLER, /* Default to list handler when no
+                                                 * subcommand */
             },
             Command::Compact { .. } => &COMPACT_HANDLER,
             Command::PromptEditor { .. } => &EDITOR_HANDLER,
@@ -1116,10 +1109,10 @@ impl Command {
     /// Execute the command directly with ChatContext
     pub async fn execute<'a>(
         &'a self,
-        chat_context: &'a mut crate::ChatContext,
-        tool_uses: Option<Vec<crate::QueuedTool>>,
+        chat_context: &'a mut crate::cli::chat::ChatContext,
+        tool_uses: Option<Vec<crate::cli::chat::QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Result<crate::ChatState, crate::ChatError> {
+    ) -> Result<crate::cli::chat::ChatState, crate::cli::chat::ChatError> {
         // Get the appropriate handler and delegate to it
         let handler = self.to_handler();
 

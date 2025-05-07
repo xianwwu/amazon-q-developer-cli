@@ -9,8 +9,8 @@ use crossterm::{
 
 use super::context_adapter::CommandContextAdapter;
 use super::handler::CommandHandler;
-use crate::command::Command;
-use crate::{
+use crate::cli::chat::command::Command;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,
@@ -150,7 +150,7 @@ No arguments or options are needed for this command.
                 let context_chars = *conversation_size.context_messages;
 
                 // Convert to token counts using the TokenCounter ratio
-                let max_chars = crate::consts::MAX_CHARS;
+                let max_chars = crate::cli::chat::consts::MAX_CHARS;
                 let max_tokens = max_chars / 3;
                 let history_tokens = history_chars / 3;
                 let context_tokens = context_chars / 3;
@@ -239,7 +239,7 @@ No arguments or options are needed for this command.
             let context_chars = *conversation_size.context_messages;
 
             // Convert to token counts using the TokenCounter ratio
-            let max_chars = crate::consts::MAX_CHARS;
+            let max_chars = crate::cli::chat::consts::MAX_CHARS;
             let max_tokens = max_chars / 3;
             let history_tokens = history_chars / 3;
             let context_tokens = context_chars / 3;
@@ -314,22 +314,21 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use fig_os_shim::Context;
-
     use super::*;
-    use crate::Settings;
-    use crate::commands::context_adapter::CommandContextAdapter;
-    use crate::conversation_state::ConversationState;
-    use crate::input_source::InputSource;
-    use crate::tools::ToolPermissions;
-    use crate::util::shared_writer::SharedWriter;
+    use crate::cli::chat::commands::context_adapter::CommandContextAdapter;
+    use crate::cli::chat::conversation_state::ConversationState;
+    use crate::cli::chat::input_source::InputSource;
+    use crate::cli::chat::tools::ToolPermissions;
+    use crate::cli::chat::util::shared_writer::SharedWriter;
+    use crate::platform::Context;
+    use crate::settings::Settings;
 
     #[tokio::test]
     async fn test_usage_command() {
         let command = UsageCommand::new();
 
         // Create a minimal context
-        let context = Arc::new(Context::new_fake());
+        let context = Arc::new(Context::new());
         let output = SharedWriter::null();
         let mut conversation_state = ConversationState::new(
             Arc::clone(&context),
@@ -341,7 +340,7 @@ mod tests {
         .await;
         let mut tool_permissions = ToolPermissions::new(0);
         let mut input_source = InputSource::new_mock(vec![]);
-        let settings = Settings::new_fake();
+        let settings = Settings::new();
 
         let mut ctx = CommandContextAdapter {
             context: &context,

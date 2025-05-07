@@ -1,9 +1,9 @@
-use crate::ChatError;
-use crate::command::{
+use crate::cli::chat::ChatError;
+use crate::cli::chat::command::{
     Command,
     ProfileSubcommand,
 };
-use crate::commands::handler::CommandHandler;
+use crate::cli::chat::commands::handler::CommandHandler;
 
 /// Static instance of the profile help command handler
 pub static HELP_PROFILE_HANDLER: HelpProfileCommand = HelpProfileCommand;

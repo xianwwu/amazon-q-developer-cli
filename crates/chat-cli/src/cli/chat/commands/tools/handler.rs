@@ -14,11 +14,11 @@ use crossterm::{
     style,
 };
 
-use crate::command::ToolsSubcommand;
-use crate::commands::context_adapter::CommandContextAdapter;
-use crate::commands::handler::CommandHandler;
-use crate::tools::Tool;
-use crate::{
+use crate::cli::chat::command::ToolsSubcommand;
+use crate::cli::chat::commands::context_adapter::CommandContextAdapter;
+use crate::cli::chat::commands::handler::CommandHandler;
+use crate::cli::chat::tools::Tool;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,
@@ -96,7 +96,7 @@ Examples:
 To get the current tool status, use the command "/tools list" which will display all available tools with their current permission status."#.to_string()
     }
 
-    fn to_command<'a>(&self, args: Vec<&'a str>) -> Result<crate::command::Command, ChatError> {
+    fn to_command<'a>(&self, args: Vec<&'a str>) -> Result<crate::cli::chat::command::Command, ChatError> {
         // Parse arguments to determine the subcommand
         let subcommand = if args.is_empty() {
             None // Default to list
@@ -131,12 +131,12 @@ To get the current tool status, use the command "/tools list" which will display
             None // Default to list if no arguments (should not happen due to earlier check)
         };
 
-        Ok(crate::command::Command::Tools { subcommand })
+        Ok(crate::cli::chat::command::Command::Tools { subcommand })
     }
 
     fn execute_command<'a>(
         &'a self,
-        command: &'a crate::command::Command,
+        command: &'a crate::cli::chat::command::Command,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
@@ -144,7 +144,7 @@ To get the current tool status, use the command "/tools list" which will display
         Box::pin(async move {
             // Extract the subcommand from the command
             let subcommand = match command {
-                crate::command::Command::Tools { subcommand } => subcommand,
+                crate::cli::chat::command::Command::Tools { subcommand } => subcommand,
                 _ => return Err(ChatError::Custom("Unexpected command type for this handler".into())),
             };
 
@@ -342,14 +342,14 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use fig_os_shim::Context;
+    use crate::platform::Context;
 
     use super::*;
     use crate::Settings;
-    use crate::conversation_state::ConversationState;
-    use crate::input_source::InputSource;
-    use crate::util::shared_writer::SharedWriter;
-    use crate::tools::ToolPermissions;
+    use crate::cli::chat::conversation_state::ConversationState;
+    use crate::cli::chat::input_source::InputSource;
+    use crate::cli::chat::util::shared_writer::SharedWriter;
+    use crate::cli::chat::tools::ToolPermissions;
 
     #[tokio::test]
     async fn test_tools_list_command() {

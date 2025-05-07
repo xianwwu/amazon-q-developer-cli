@@ -5,8 +5,8 @@ use super::{
     CommandContextAdapter,
     CommandHandler,
 };
-use crate::command::Command;
-use crate::{
+use crate::cli::chat::command::Command;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,

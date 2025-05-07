@@ -3,23 +3,23 @@ mod command_execution_tests {
     use std::collections::HashMap;
 
     use eyre::Result;
-    use fig_api_client::StreamingClient;
-    use fig_os_shim::Context;
-    use fig_settings::{
+    use crate::api_client::StreamingClient;
+    use crate::platform::Context;
+    use crate::settings::{
         Settings,
         State,
     };
 
-    use crate::command::Command;
-    use crate::conversation_state::ConversationState;
-    use crate::input_source::InputSource;
+    use crate::cli::chat::command::Command;
+    use crate::cli::chat::conversation_state::ConversationState;
+    use crate::cli::chat::input_source::InputSource;
     use crate::shared_writer::SharedWriter;
-    use crate::tools::internal_command::schema::InternalCommand;
-    use crate::tools::{
+    use crate::cli::chat::tools::internal_command::schema::InternalCommand;
+    use crate::cli::chat::tools::{
         Tool,
         ToolPermissions,
     };
-    use crate::{
+    use crate::cli::chat::{
         ChatContext,
         ChatState,
         ToolUseStatus,

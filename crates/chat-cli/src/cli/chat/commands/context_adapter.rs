@@ -1,12 +1,11 @@
-use fig_os_shim::Context;
-use fig_settings::Settings;
-
-use crate::{
+use crate::cli::chat::{
     ConversationState,
     InputSource,
     SharedWriter,
     ToolPermissions,
 };
+use crate::platform::Context;
+use crate::settings::Settings;
 
 /// Adapter that provides controlled access to components needed by command handlers
 ///

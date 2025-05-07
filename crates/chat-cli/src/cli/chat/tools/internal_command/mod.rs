@@ -5,8 +5,8 @@ pub mod tool;
 
 pub use schema::InternalCommand;
 
-use crate::command::Command;
-use crate::tools::ToolSpec;
+use crate::cli::chat::command::Command;
+use crate::cli::chat::tools::ToolSpec;
 
 /// Get the tool specification for internal_command
 ///

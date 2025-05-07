@@ -4,8 +4,8 @@ use std::pin::Pin;
 
 use super::CommandHandler;
 use super::context_adapter::CommandContextAdapter;
-use crate::command::Command;
-use crate::{
+use crate::cli::chat::command::Command;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,

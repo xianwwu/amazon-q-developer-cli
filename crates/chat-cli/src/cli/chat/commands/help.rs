@@ -6,8 +6,8 @@ use super::CommandHandler;
 use super::clear::CLEAR_HANDLER;
 use super::context_adapter::CommandContextAdapter;
 use super::quit::QUIT_HANDLER;
-use crate::command::Command;
-use crate::{
+use crate::cli::chat::command::Command;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,
@@ -76,7 +76,7 @@ Examples:
                     }
                 } else {
                     // Otherwise, show general help
-                    crate::HELP_TEXT.to_string()
+                    crate::cli::chat::HELP_TEXT.to_string()
                 };
 
                 // Display the help text

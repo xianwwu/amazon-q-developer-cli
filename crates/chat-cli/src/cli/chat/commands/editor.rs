@@ -20,7 +20,7 @@ use tracing::{
 
 use super::context_adapter::CommandContextAdapter;
 use super::handler::CommandHandler;
-use crate::{
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,
@@ -143,21 +143,21 @@ Examples:
         .to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command, ChatError> {
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::cli::chat::command::Command, ChatError> {
         let initial_text = if !args.is_empty() { Some(args.join(" ")) } else { None };
 
-        Ok(crate::command::Command::PromptEditor { initial_text })
+        Ok(crate::cli::chat::command::Command::PromptEditor { initial_text })
     }
 
     fn execute_command<'a>(
         &'a self,
-        command: &'a crate::command::Command,
+        command: &'a crate::cli::chat::command::Command,
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
-            if let crate::command::Command::PromptEditor { initial_text } = command {
+            if let crate::cli::chat::command::Command::PromptEditor { initial_text } = command {
                 // Create a temporary file for editing
                 let mut temp_file = match NamedTempFile::new() {
                     Ok(file) => file,

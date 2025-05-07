@@ -6,8 +6,8 @@ use crossterm::style::{
     Color,
 };
 
-use crate::commands::CommandHandler;
-use crate::{
+use crate::cli::chat::commands::CommandHandler;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,
@@ -36,7 +36,7 @@ impl CommandHandler for RemoveContextCommand {
         "Remove files from the context. Use --global to remove from global context.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command, ChatError> {
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::cli::chat::command::Command, ChatError> {
         let mut global = false;
         let mut paths = Vec::new();
 
@@ -47,15 +47,15 @@ impl CommandHandler for RemoveContextCommand {
             }
         }
 
-        Ok(crate::command::Command::Context {
-            subcommand: crate::command::ContextSubcommand::Remove { global, paths },
+        Ok(crate::cli::chat::command::Command::Context {
+            subcommand: crate::cli::chat::command::ContextSubcommand::Remove { global, paths },
         })
     }
 
     fn execute<'a>(
         &'a self,
         args: Vec<&'a str>,
-        ctx: &'a mut crate::commands::context_adapter::CommandContextAdapter<'a>,
+        ctx: &'a mut crate::cli::chat::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
@@ -65,8 +65,8 @@ impl CommandHandler for RemoveContextCommand {
 
             // Extract the parameters from the command
             let (global, paths) = match command {
-                crate::command::Command::Context {
-                    subcommand: crate::command::ContextSubcommand::Remove { global, paths },
+                crate::cli::chat::command::Command::Context {
+                    subcommand: crate::cli::chat::command::ContextSubcommand::Remove { global, paths },
                 } => (global, paths),
                 _ => return Err(ChatError::Custom("Invalid command".into())),
             };
@@ -135,7 +135,7 @@ impl CommandHandler for RemoveContextCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::command::{
+    use crate::cli::chat::command::{
         Command,
         ContextSubcommand,
     };

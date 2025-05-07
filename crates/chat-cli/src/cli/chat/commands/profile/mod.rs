@@ -1,6 +1,6 @@
 use super::CommandHandler;
-use crate::ChatError;
-use crate::command::{
+use crate::cli::chat::ChatError;
+use crate::cli::chat::command::{
     Command,
     ProfileSubcommand,
 };

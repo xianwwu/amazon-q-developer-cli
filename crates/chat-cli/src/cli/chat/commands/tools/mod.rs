@@ -1,15 +1,15 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::command::{
+use crate::cli::chat::command::{
     Command,
     ToolsSubcommand,
 };
-use crate::commands::{
+use crate::cli::chat::commands::{
     CommandContextAdapter,
     CommandHandler,
 };
-use crate::{
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,
@@ -201,3 +201,16 @@ To get the current tool status, use the command "/tools list" which will display
     }
 }
 pub mod test_separation;
+impl ToolsSubcommand {
+    pub fn to_handler(&self) -> &'static dyn CommandHandler {
+        match self {
+            ToolsSubcommand::Schema => &TOOLS_HANDLER,
+            ToolsSubcommand::Trust { .. } => &TRUST_TOOLS_HANDLER,
+            ToolsSubcommand::Untrust { .. } => &UNTRUST_TOOLS_HANDLER,
+            ToolsSubcommand::TrustAll { .. } => &TRUSTALL_TOOLS_HANDLER,
+            ToolsSubcommand::Reset => &RESET_TOOLS_HANDLER,
+            ToolsSubcommand::ResetSingle { .. } => &RESET_SINGLE_TOOL_HANDLER,
+            ToolsSubcommand::Help => &HELP_TOOLS_HANDLER,
+        }
+    }
+}

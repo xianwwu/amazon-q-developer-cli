@@ -1,6 +1,6 @@
 use super::handler::CommandHandler;
-use crate::ChatError;
-use crate::command::Command;
+use crate::cli::chat::ChatError;
+use crate::cli::chat::command::Command;
 
 /// Command handler for the `/issue` command
 pub struct IssueCommand;

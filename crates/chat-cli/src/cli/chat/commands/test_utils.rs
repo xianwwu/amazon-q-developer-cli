@@ -2,29 +2,28 @@
 
 use std::collections::HashMap;
 
-use fig_api_client::StreamingClient;
-use fig_os_shim::Context;
-use fig_settings::{
-    Settings,
-    State,
-};
-
-use crate::conversation_state::ConversationState;
-use crate::input_source::InputSource;
-use crate::tools::ToolPermissions;
-use crate::util::shared_writer::SharedWriter;
-use crate::{
+use crate::api_client::StreamingClient;
+use crate::cli::chat::conversation_state::ConversationState;
+use crate::cli::chat::input_source::InputSource;
+use crate::cli::chat::tools::ToolPermissions;
+use crate::cli::chat::util::shared_writer::SharedWriter;
+use crate::cli::chat::{
     ChatContext,
     ChatError,
     ToolUseStatus,
 };
+use crate::platform::Context;
+use crate::settings::{
+    Settings,
+    State,
+};
 
 /// Create a test chat context for unit tests
 pub async fn create_test_chat_context() -> Result<ChatContext, ChatError> {
-    // Create a context - Context::new_fake() already returns an Arc<Context>
-    let ctx = Context::new_fake();
-    let settings = Settings::new_fake();
-    let state = State::new_fake();
+    // Create a context - Context::new() already returns an Arc<Context>
+    let ctx = Context::new();
+    let settings = Settings::new();
+    let state = State::new();
     let output = SharedWriter::null();
     let input_source = InputSource::new_mock(vec![]);
     let interactive = true;
@@ -52,7 +51,7 @@ pub async fn create_test_chat_context() -> Result<ChatContext, ChatError> {
         tool_permissions: ToolPermissions::new(10),
         tool_use_telemetry_events: HashMap::new(),
         tool_use_status: ToolUseStatus::Idle,
-        tool_manager: crate::tool_manager::ToolManager::default(),
+        tool_manager: crate::cli::chat::tool_manager::ToolManager::default(),
         failed_request_ids: Vec::new(),
         pending_prompts: std::collections::VecDeque::new(),
     };
@@ -63,8 +62,8 @@ pub async fn create_test_chat_context() -> Result<ChatContext, ChatError> {
 /// Create a test command context adapter for unit tests
 pub async fn create_test_command_context(
     chat_context: &mut ChatContext,
-) -> Result<crate::commands::CommandContextAdapter<'_>, ChatError> {
-    Ok(crate::commands::CommandContextAdapter::new(
+) -> Result<crate::cli::chat::commands::CommandContextAdapter<'_>, ChatError> {
+    Ok(crate::cli::chat::commands::CommandContextAdapter::new(
         &chat_context.ctx,
         &mut chat_context.output,
         &mut chat_context.conversation_state,

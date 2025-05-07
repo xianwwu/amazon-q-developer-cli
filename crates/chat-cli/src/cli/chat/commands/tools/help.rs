@@ -7,13 +7,13 @@ use crossterm::style::{
     self,
 };
 
-use crate::command::{
+use crate::cli::chat::command::{
     Command,
     ToolsSubcommand,
 };
-use crate::commands::context_adapter::CommandContextAdapter;
-use crate::commands::handler::CommandHandler;
-use crate::{
+use crate::cli::chat::commands::context_adapter::CommandContextAdapter;
+use crate::cli::chat::commands::handler::CommandHandler;
+use crate::cli::chat::{
     ChatError,
     ChatState,
     QueuedTool,

@@ -6,16 +6,16 @@ use crossterm::style::{
     Color,
 };
 use eyre::Result;
-use fig_os_shim::Context;
 use tracing::debug;
 
-use crate::ChatState;
-use crate::command::Command;
-use crate::tools::internal_command::schema::InternalCommand;
-use crate::tools::{
+use crate::cli::chat::ChatState;
+use crate::cli::chat::command::Command;
+use crate::cli::chat::tools::internal_command::schema::InternalCommand;
+use crate::cli::chat::tools::{
     InvokeOutput,
     OutputKind,
 };
+use crate::platform::Context;
 
 impl InternalCommand {
     /// Validate that the command exists
