@@ -12,7 +12,6 @@ use crossterm::{
     queue,
     style,
 };
-use eyre::Result;
 use tempfile::NamedTempFile;
 use tracing::{
     debug,
@@ -22,6 +21,7 @@ use tracing::{
 use super::context_adapter::CommandContextAdapter;
 use super::handler::CommandHandler;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -143,7 +143,7 @@ Examples:
         .to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command, ChatError> {
         let initial_text = if !args.is_empty() { Some(args.join(" ")) } else { None };
 
         Ok(crate::command::Command::PromptEditor { initial_text })
@@ -155,7 +155,7 @@ Examples:
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             if let crate::command::Command::PromptEditor { initial_text } = command {
                 // Create a temporary file for editing
@@ -307,7 +307,9 @@ Examples:
                     },
                 }
             } else {
-                Err(eyre::anyhow!("EditorCommand can only execute PromptEditor commands"))
+                Err(ChatError::Custom(
+                    "EditorCommand can only execute PromptEditor commands".into(),
+                ))
             }
         })
     }
@@ -318,7 +320,7 @@ Examples:
         ctx: &'a mut CommandContextAdapter<'a>,
         _tool_uses: Option<Vec<QueuedTool>>,
         _pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Get initial text from args if provided
             let initial_text = if !args.is_empty() { Some(args.join(" ")) } else { None };

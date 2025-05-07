@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 
-use eyre::Result;
 use fig_api_client::StreamingClient;
 use fig_os_shim::Context;
 use fig_settings::{
@@ -16,11 +15,12 @@ use crate::tools::ToolPermissions;
 use crate::util::shared_writer::SharedWriter;
 use crate::{
     ChatContext,
+    ChatError,
     ToolUseStatus,
 };
 
 /// Create a test chat context for unit tests
-pub async fn create_test_chat_context() -> Result<ChatContext> {
+pub async fn create_test_chat_context() -> Result<ChatContext, ChatError> {
     // Create a context - Context::new_fake() already returns an Arc<Context>
     let ctx = Context::new_fake();
     let settings = Settings::new_fake();
@@ -63,7 +63,7 @@ pub async fn create_test_chat_context() -> Result<ChatContext> {
 /// Create a test command context adapter for unit tests
 pub async fn create_test_command_context(
     chat_context: &mut ChatContext,
-) -> Result<crate::commands::CommandContextAdapter<'_>> {
+) -> Result<crate::commands::CommandContextAdapter<'_>, ChatError> {
     Ok(crate::commands::CommandContextAdapter::new(
         &chat_context.ctx,
         &mut chat_context.output,

@@ -8,7 +8,6 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::Result;
 
 use crate::command::{
     Command,
@@ -45,9 +44,9 @@ impl CommandHandler for UntrustToolsCommand {
         "Untrust specific tools, reverting them to per-request confirmation.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         if args.is_empty() {
-            return Err(eyre::eyre!("Expected at least one tool name"));
+            return Err(ChatError::Custom("Expected at least one tool name".into()));
         }
 
         let tool_names: HashSet<String> = args.iter().map(|s| (*s).to_string()).collect();
@@ -69,7 +68,11 @@ impl CommandHandler for UntrustToolsCommand {
                 Command::Tools {
                     subcommand: Some(ToolsSubcommand::Untrust { tool_names }),
                 } => tool_names,
-                _ => return Err(ChatError::Custom("UntrustToolsCommand can only execute Untrust commands".into())),
+                _ => {
+                    return Err(ChatError::Custom(
+                        "UntrustToolsCommand can only execute Untrust commands".into(),
+                    ));
+                },
             };
 
             // Untrust the specified tools

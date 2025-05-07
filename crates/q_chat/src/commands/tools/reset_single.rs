@@ -7,7 +7,6 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::Result;
 
 use crate::command::{
     Command,
@@ -44,9 +43,9 @@ impl CommandHandler for ResetSingleToolCommand {
         "Reset a specific tool to its default permission level.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         if args.len() != 1 {
-            return Err(eyre::eyre!("Expected tool name argument"));
+            return Err(ChatError::Custom("Expected tool name argument".into()));
         }
 
         Ok(Command::Tools {
@@ -71,7 +70,7 @@ impl CommandHandler for ResetSingleToolCommand {
                 } => tool_name,
                 _ => {
                     return Err(ChatError::Custom(
-                        "ResetSingleToolCommand can only execute ResetSingle commands".into()
+                        "ResetSingleToolCommand can only execute ResetSingle commands".into(),
                     ));
                 },
             };

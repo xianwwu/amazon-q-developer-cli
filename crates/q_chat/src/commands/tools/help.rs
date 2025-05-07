@@ -6,7 +6,6 @@ use crossterm::queue;
 use crossterm::style::{
     self,
 };
-use eyre::Result;
 
 use crate::command::{
     Command,
@@ -15,6 +14,7 @@ use crate::command::{
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -48,7 +48,7 @@ impl CommandHandler for HelpToolsCommand {
         "Displays help information for the tools command and its subcommands.".to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command, ChatError> {
         Ok(Command::Tools {
             subcommand: Some(ToolsSubcommand::Help),
         })
@@ -60,7 +60,7 @@ impl CommandHandler for HelpToolsCommand {
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             if let Command::Tools {
                 subcommand: Some(ToolsSubcommand::Help),
@@ -82,7 +82,9 @@ impl CommandHandler for HelpToolsCommand {
                     skip_printing_tools: false,
                 })
             } else {
-                Err(eyre::anyhow!("HelpToolsCommand can only execute Help commands"))
+                Err(ChatError::Custom(
+                    "HelpToolsCommand can only execute Help commands".into(),
+                ))
             }
         })
     }

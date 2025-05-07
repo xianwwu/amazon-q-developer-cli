@@ -5,10 +5,10 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::Result;
 
 use crate::commands::CommandHandler;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -36,7 +36,7 @@ impl CommandHandler for ClearContextCommand {
         "Clear all files from the current context. Use --global to clear global context.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command, ChatError> {
         let global = args.contains(&"--global");
 
         Ok(crate::command::Command::Context {
@@ -50,7 +50,7 @@ impl CommandHandler for ClearContextCommand {
         ctx: &'a mut crate::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Parse the command to get the parameters
             let command = self.to_command(args)?;
@@ -60,7 +60,7 @@ impl CommandHandler for ClearContextCommand {
                 crate::command::Command::Context {
                     subcommand: crate::command::ContextSubcommand::Clear { global },
                 } => global,
-                _ => return Err(eyre::eyre!("Invalid command")),
+                _ => return Err(ChatError::Custom("Invalid command".into())),
             };
 
             // Get the context manager

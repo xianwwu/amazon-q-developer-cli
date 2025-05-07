@@ -1,14 +1,13 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use eyre::Result;
-
 use super::{
     CommandContextAdapter,
     CommandHandler,
 };
 use crate::command::Command;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -64,7 +63,7 @@ Common quit commands from other tools that users might try:
             .to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command, ChatError> {
         Ok(Command::Quit)
     }
 
@@ -74,12 +73,12 @@ Common quit commands from other tools that users might try:
         _ctx: &'a mut CommandContextAdapter<'a>,
         _tool_uses: Option<Vec<QueuedTool>>,
         _pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             if let Command::Quit = command {
                 Ok(ChatState::Exit)
             } else {
-                Err(eyre::anyhow!("QuitCommand can only execute Quit commands"))
+                Err(ChatError::Custom("QuitCommand can only execute Quit commands".into()))
             }
         })
     }
@@ -92,7 +91,7 @@ Common quit commands from other tools that users might try:
         _ctx: &'a mut CommandContextAdapter<'a>,
         _tool_uses: Option<Vec<QueuedTool>>,
         _pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move { Ok(ChatState::Exit) })
     }
 

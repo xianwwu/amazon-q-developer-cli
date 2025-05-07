@@ -1,6 +1,5 @@
-use eyre::Result;
-
 use super::CommandHandler;
+use crate::ChatError;
 use crate::command::{
     Command,
     ContextSubcommand,
@@ -77,7 +76,7 @@ To see the full content of context files, use "/context show --expand"."#
             .to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         // Parse arguments to determine the subcommand
         let subcommand = if args.is_empty() {
             ContextSubcommand::Show { expand: false }

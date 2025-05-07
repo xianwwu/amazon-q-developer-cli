@@ -7,13 +7,13 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::Result;
 
 use crate::command::Command;
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::tools::Tool;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -41,7 +41,7 @@ impl CommandHandler for ListToolsCommand {
         "List all available tools and their current permission status.".to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command, ChatError> {
         Ok(Command::Tools { subcommand: None })
     }
 
@@ -51,7 +51,7 @@ impl CommandHandler for ListToolsCommand {
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             if let Command::Tools { subcommand: None } = command {
                 // List all tools and their status
@@ -97,8 +97,8 @@ impl CommandHandler for ListToolsCommand {
                     skip_printing_tools: false,
                 })
             } else {
-                Err(eyre::anyhow!(
-                    "ListToolsCommand can only execute Tools commands with no subcommand"
+                Err(ChatError::Custom(
+                    "ListToolsCommand can only execute Tools commands with no subcommand".into(),
                 ))
             }
         })

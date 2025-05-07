@@ -7,7 +7,6 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::Result;
 
 use crate::command::{
     Command,
@@ -51,7 +50,7 @@ impl CommandHandler for ResetToolsCommand {
             .to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command, ChatError> {
         Ok(Command::Tools {
             subcommand: Some(ToolsSubcommand::Reset),
         })
@@ -86,7 +85,9 @@ impl CommandHandler for ResetToolsCommand {
                     skip_printing_tools: false,
                 })
             } else {
-                Err(ChatError::Custom("ResetToolsCommand can only execute Reset commands".into()))
+                Err(ChatError::Custom(
+                    "ResetToolsCommand can only execute Reset commands".into(),
+                ))
             }
         })
     }

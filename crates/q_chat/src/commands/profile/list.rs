@@ -7,7 +7,6 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::Result;
 
 use crate::command::{
     Command,
@@ -16,6 +15,7 @@ use crate::command::{
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -43,7 +43,7 @@ impl CommandHandler for ListProfileCommand {
         "List all available profiles and show which one is currently active.".to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command, ChatError> {
         Ok(Command::Profile {
             subcommand: ProfileSubcommand::List,
         })
@@ -55,7 +55,7 @@ impl CommandHandler for ListProfileCommand {
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Get the context manager
             if let Some(context_manager) = &ctx.conversation_state.context_manager {

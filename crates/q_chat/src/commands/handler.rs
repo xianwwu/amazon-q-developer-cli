@@ -29,14 +29,13 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use eyre::{
-    Result,
-    anyhow,
-};
-
 use super::context_adapter::CommandContextAdapter;
-use crate::QueuedTool;
 use crate::command::Command;
+use crate::{
+    ChatError,
+    ChatState,
+    QueuedTool,
+};
 
 /// Trait for command handlers
 pub(crate) trait CommandHandler: Send + Sync {
@@ -59,7 +58,7 @@ pub(crate) trait CommandHandler: Send + Sync {
     /// This method takes a vector of string slices and returns a Command enum.
     /// It's used by the execute method and can also be used directly by tools
     /// like internal_command to parse commands without executing them.
-    fn to_command(&self, args: Vec<&str>) -> Result<Command>;
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError>;
 
     /// Returns a detailed description with examples for LLM tool descriptions
     /// This is used to provide more context to the LLM about how to use the command
@@ -86,10 +85,10 @@ pub(crate) trait CommandHandler: Send + Sync {
         _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<crate::ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             let command = self.to_command(args)?;
-            Ok(crate::ChatState::ExecuteCommand {
+            Ok(ChatState::ExecuteCommand {
                 command,
                 tool_uses,
                 pending_tool_index,
@@ -109,8 +108,8 @@ pub(crate) trait CommandHandler: Send + Sync {
         _ctx: &'a mut CommandContextAdapter<'a>,
         _tool_uses: Option<Vec<QueuedTool>>,
         _pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<crate::ChatState>> + Send + 'a>> {
-        Box::pin(async move { Err(anyhow!("Unexpected command type for this handler")) })
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
+        Box::pin(async move { Err(ChatError::Custom("Unexpected command type for this handler".into())) })
     }
 
     /// Check if this command requires confirmation before execution
@@ -123,7 +122,7 @@ pub(crate) trait CommandHandler: Send + Sync {
     /// This method takes a vector of string slices and returns a vector of string slices.
     /// The lifetime of the returned slices must be the same as the lifetime of the input slices.
     #[allow(dead_code)]
-    fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>> {
+    fn parse_args<'a>(&self, args: Vec<&'a str>) -> Result<Vec<&'a str>, ChatError> {
         Ok(args)
     }
 }

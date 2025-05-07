@@ -1,5 +1,4 @@
-use eyre::Result;
-
+use crate::ChatError;
 use crate::command::{
     Command,
     ProfileSubcommand,
@@ -41,9 +40,9 @@ impl CommandHandler for RenameProfileCommand {
         "Rename a profile from <old_name> to <new_name>.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         if args.len() != 2 {
-            return Err(eyre::eyre!("Expected old_name and new_name arguments"));
+            return Err(ChatError::Custom("Expected old_name and new_name arguments".into()));
         }
 
         let old_name = args[0].to_string();

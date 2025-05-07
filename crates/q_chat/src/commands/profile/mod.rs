@@ -1,6 +1,5 @@
-use eyre::Result;
-
 use super::CommandHandler;
+use crate::ChatError;
 use crate::command::{
     Command,
     ProfileSubcommand,
@@ -104,7 +103,7 @@ Profiles allow you to organize context files for different projects or tasks. Th
             .to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         // Parse arguments to determine the subcommand
         let subcommand = if args.is_empty() {
             ProfileSubcommand::Help
@@ -113,7 +112,7 @@ Profiles allow you to organize context files for different projects or tasks. Th
                 "list" => ProfileSubcommand::List,
                 "create" => {
                     if args.len() < 2 {
-                        return Err(eyre::eyre!("Missing profile name for create command"));
+                        return Err(ChatError::Custom("Missing profile name for create command".into()));
                     }
                     ProfileSubcommand::Create {
                         name: args[1].to_string(),
@@ -121,7 +120,7 @@ Profiles allow you to organize context files for different projects or tasks. Th
                 },
                 "delete" => {
                     if args.len() < 2 {
-                        return Err(eyre::eyre!("Missing profile name for delete command"));
+                        return Err(ChatError::Custom("Missing profile name for delete command".into()));
                     }
                     ProfileSubcommand::Delete {
                         name: args[1].to_string(),
@@ -129,7 +128,7 @@ Profiles allow you to organize context files for different projects or tasks. Th
                 },
                 "set" => {
                     if args.len() < 2 {
-                        return Err(eyre::eyre!("Missing profile name for set command"));
+                        return Err(ChatError::Custom("Missing profile name for set command".into()));
                     }
                     ProfileSubcommand::Set {
                         name: args[1].to_string(),
@@ -137,7 +136,7 @@ Profiles allow you to organize context files for different projects or tasks. Th
                 },
                 "rename" => {
                     if args.len() < 3 {
-                        return Err(eyre::eyre!("Missing profile names for rename command"));
+                        return Err(ChatError::Custom("Missing profile names for rename command".into()));
                     }
                     ProfileSubcommand::Rename {
                         old_name: args[1].to_string(),

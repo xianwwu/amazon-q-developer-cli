@@ -8,7 +8,6 @@ use crossterm::style::{
     Attribute,
     Color,
 };
-use eyre::Result;
 
 use crate::command::{
     Command,
@@ -41,7 +40,7 @@ impl CommandHandler for TrustAllToolsCommand {
         "/tools trustall"
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command, ChatError> {
         Ok(Command::Tools {
             subcommand: Some(ToolsSubcommand::TrustAll { from_deprecated: false }),
         })
@@ -101,7 +100,9 @@ impl CommandHandler for TrustAllToolsCommand {
                     skip_printing_tools: false,
                 })
             } else {
-                Err(ChatError::Custom("TrustAllToolsCommand can only execute TrustAll commands".into()))
+                Err(ChatError::Custom(
+                    "TrustAllToolsCommand can only execute TrustAll commands".into(),
+                ))
             }
         })
     }

@@ -2,14 +2,13 @@ use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
 
-use eyre::Result;
-
 use super::CommandHandler;
 use super::clear::CLEAR_HANDLER;
 use super::context_adapter::CommandContextAdapter;
 use super::quit::QUIT_HANDLER;
 use crate::command::Command;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -49,7 +48,7 @@ Examples:
             .to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         let help_text = if args.is_empty() { None } else { Some(args.join(" ")) };
 
         Ok(Command::Help { help_text })
@@ -61,7 +60,7 @@ Examples:
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             if let Command::Help { help_text } = command {
                 // Get the help text to display
@@ -89,7 +88,7 @@ Examples:
                 })
             } else {
                 // This should never happen if the command system is working correctly
-                Err(eyre::anyhow!("HelpCommand can only execute Help commands"))
+                Err(ChatError::Custom("HelpCommand can only execute Help commands".into()))
             }
         })
     }

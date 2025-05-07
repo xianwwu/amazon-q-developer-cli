@@ -13,13 +13,13 @@ use crossterm::{
     queue,
     style,
 };
-use eyre::Result;
 
 use crate::command::ToolsSubcommand;
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::tools::Tool;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -96,7 +96,7 @@ Examples:
 To get the current tool status, use the command "/tools list" which will display all available tools with their current permission status."#.to_string()
     }
 
-    fn to_command<'a>(&self, args: Vec<&'a str>) -> Result<crate::command::Command> {
+    fn to_command<'a>(&self, args: Vec<&'a str>) -> Result<crate::command::Command, ChatError> {
         // Parse arguments to determine the subcommand
         let subcommand = if args.is_empty() {
             None // Default to list
@@ -140,12 +140,12 @@ To get the current tool status, use the command "/tools list" which will display
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Extract the subcommand from the command
             let subcommand = match command {
                 crate::command::Command::Tools { subcommand } => subcommand,
-                _ => return Err(eyre::eyre!("Unexpected command type for this handler")),
+                _ => return Err(ChatError::Custom("Unexpected command type for this handler".into())),
             };
 
             match subcommand {

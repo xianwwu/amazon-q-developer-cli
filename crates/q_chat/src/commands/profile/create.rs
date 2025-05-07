@@ -7,7 +7,6 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::Result;
 
 use crate::command::{
     Command,
@@ -16,6 +15,7 @@ use crate::command::{
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -43,9 +43,9 @@ impl CommandHandler for CreateProfileCommand {
         "Create a new profile with the specified name.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         if args.len() != 1 {
-            return Err(eyre::eyre!("Expected profile name argument"));
+            return Err(ChatError::Custom("Expected profile name argument".into()));
         }
 
         Ok(Command::Profile {
@@ -61,7 +61,7 @@ impl CommandHandler for CreateProfileCommand {
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Parse the command to get the profile name
             let command = self.to_command(args)?;
@@ -71,7 +71,7 @@ impl CommandHandler for CreateProfileCommand {
                 Command::Profile {
                     subcommand: ProfileSubcommand::Create { name },
                 } => name,
-                _ => return Err(eyre::eyre!("Invalid command")),
+                _ => return Err(ChatError::Custom("Invalid command".into())),
             };
 
             // Get the context manager

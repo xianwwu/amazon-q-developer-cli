@@ -6,12 +6,12 @@ use crossterm::{
     queue,
     style,
 };
-use eyre::Result;
 
 use crate::command::ProfileSubcommand;
 use crate::commands::context_adapter::CommandContextAdapter;
 use crate::commands::handler::CommandHandler;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -94,7 +94,7 @@ To get the current profiles, use the command "/profile list" which will display 
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Parse arguments to determine the subcommand
             let subcommand = if args.is_empty() {
@@ -104,7 +104,7 @@ To get the current profiles, use the command "/profile list" which will display 
                     "list" => ProfileSubcommand::List,
                     "set" => {
                         if args.len() < 2 {
-                            return Err(eyre::eyre!("Missing profile name for set command"));
+                            return Err(ChatError::Custom("Missing profile name for set command".into()));
                         }
                         ProfileSubcommand::Set {
                             name: args[1].to_string(),
@@ -112,7 +112,7 @@ To get the current profiles, use the command "/profile list" which will display 
                     },
                     "create" => {
                         if args.len() < 2 {
-                            return Err(eyre::eyre!("Missing profile name for create command"));
+                            return Err(ChatError::Custom("Missing profile name for create command".into()));
                         }
                         ProfileSubcommand::Create {
                             name: args[1].to_string(),
@@ -120,7 +120,7 @@ To get the current profiles, use the command "/profile list" which will display 
                     },
                     "delete" => {
                         if args.len() < 2 {
-                            return Err(eyre::eyre!("Missing profile name for delete command"));
+                            return Err(ChatError::Custom("Missing profile name for delete command".into()));
                         }
                         ProfileSubcommand::Delete {
                             name: args[1].to_string(),
@@ -128,7 +128,7 @@ To get the current profiles, use the command "/profile list" which will display 
                     },
                     "rename" => {
                         if args.len() < 3 {
-                            return Err(eyre::eyre!("Missing old or new profile name for rename command"));
+                            return Err(ChatError::Custom("Missing old or new profile name for rename command".into()));
                         }
                         ProfileSubcommand::Rename {
                             old_name: args[1].to_string(),

@@ -9,7 +9,6 @@ use crossterm::style::{
     Attribute,
     Color,
 };
-use eyre::Result;
 
 use crate::command::{
     Command,
@@ -47,9 +46,9 @@ impl CommandHandler for TrustToolsCommand {
         "Trust specific tools for the session. Trusted tools will not require confirmation before running.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         if args.is_empty() {
-            return Err(eyre::eyre!("Expected at least one tool name"));
+            return Err(ChatError::Custom("Expected at least one tool name".into()));
         }
 
         let tool_names: HashSet<String> = args.iter().map(|s| (*s).to_string()).collect();
@@ -71,7 +70,11 @@ impl CommandHandler for TrustToolsCommand {
                 Command::Tools {
                     subcommand: Some(ToolsSubcommand::Trust { tool_names }),
                 } => tool_names,
-                _ => return Err(ChatError::Custom("TrustToolsCommand can only execute Trust commands".into())),
+                _ => {
+                    return Err(ChatError::Custom(
+                        "TrustToolsCommand can only execute Trust commands".into(),
+                    ));
+                },
             };
 
             // Trust the specified tools

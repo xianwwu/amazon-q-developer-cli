@@ -1,14 +1,13 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use eyre::Result;
-
 use super::{
     CommandContextAdapter,
     CommandHandler,
 };
 use crate::command::Command;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -55,7 +54,7 @@ impl CommandHandler for CompactCommand {
             .to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         // Parse arguments to determine if this is a help request, has a custom prompt, or shows summary
         let mut prompt = None;
         let mut show_summary = false;
@@ -82,7 +81,7 @@ impl CommandHandler for CompactCommand {
         _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             if let Command::Compact {
                 prompt,
@@ -99,7 +98,9 @@ impl CommandHandler for CompactCommand {
                     help: *help,
                 })
             } else {
-                Err(eyre::anyhow!("CompactCommand can only execute Compact commands"))
+                Err(ChatError::Custom(
+                    "CompactCommand can only execute Compact commands".into(),
+                ))
             }
         })
     }
@@ -112,7 +113,7 @@ impl CommandHandler for CompactCommand {
         _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Parse arguments to determine if this is a help request, has a custom prompt, or shows summary
             let mut prompt = None;

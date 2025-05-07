@@ -1119,20 +1119,12 @@ impl Command {
         chat_context: &'a mut crate::ChatContext,
         tool_uses: Option<Vec<crate::QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Result<crate::ChatState> {
+    ) -> Result<crate::ChatState, crate::ChatError> {
         // Get the appropriate handler and delegate to it
         let handler = self.to_handler();
 
         // Create a CommandContextAdapter from the ChatContext
-        let mut adapter = crate::commands::CommandContextAdapter::new(
-            &chat_context.ctx,
-            &mut chat_context.output,
-            &mut chat_context.conversation_state,
-            &mut chat_context.tool_permissions,
-            chat_context.interactive,
-            &mut chat_context.input_source,
-            &chat_context.settings,
-        );
+        let mut adapter = chat_context.command_context_adapter();
 
         handler
             .execute_command(self, &mut adapter, tool_uses, pending_tool_index)

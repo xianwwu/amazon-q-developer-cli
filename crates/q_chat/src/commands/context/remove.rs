@@ -5,13 +5,10 @@ use crossterm::style::{
     self,
     Color,
 };
-use eyre::{
-    Result,
-    eyre,
-};
 
 use crate::commands::CommandHandler;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -39,7 +36,7 @@ impl CommandHandler for RemoveContextCommand {
         "Remove files from the context. Use --global to remove from global context.".to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<crate::command::Command, ChatError> {
         let mut global = false;
         let mut paths = Vec::new();
 
@@ -61,7 +58,7 @@ impl CommandHandler for RemoveContextCommand {
         ctx: &'a mut crate::commands::context_adapter::CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Parse the command to get the parameters
             let command = self.to_command(args)?;
@@ -71,12 +68,14 @@ impl CommandHandler for RemoveContextCommand {
                 crate::command::Command::Context {
                     subcommand: crate::command::ContextSubcommand::Remove { global, paths },
                 } => (global, paths),
-                _ => return Err(eyre!("Invalid command")),
+                _ => return Err(ChatError::Custom("Invalid command".into())),
             };
 
             // Check if paths are provided
             if paths.is_empty() {
-                return Err(eyre!("No paths specified. Usage: {}", self.usage()));
+                return Err(ChatError::Custom(
+                    format!("No paths specified. Usage: {}", self.usage()).into(),
+                ));
             }
 
             // Get the context manager

@@ -6,12 +6,12 @@ use crossterm::{
     queue,
     style,
 };
-use eyre::Result;
 
 use super::context_adapter::CommandContextAdapter;
 use super::handler::CommandHandler;
 use crate::command::Command;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -124,7 +124,7 @@ No arguments or options are needed for this command.
         .to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command, ChatError> {
         Ok(Command::Usage)
     }
 
@@ -134,7 +134,7 @@ No arguments or options are needed for this command.
         ctx: &'a mut CommandContextAdapter<'a>,
         _tool_uses: Option<Vec<QueuedTool>>,
         _pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             if let Command::Usage = command {
                 // Calculate token usage statistics
@@ -212,7 +212,7 @@ No arguments or options are needed for this command.
                     skip_printing_tools: false,
                 })
             } else {
-                Err(eyre::anyhow!("UsageCommand can only execute Usage commands"))
+                Err(ChatError::Custom("UsageCommand can only execute Usage commands".into()))
             }
         })
     }
@@ -224,7 +224,7 @@ No arguments or options are needed for this command.
         ctx: &'a mut CommandContextAdapter<'a>,
         _tool_uses: Option<Vec<QueuedTool>>,
         _pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Calculate token usage statistics
             let char_count = ctx.conversation_state.calculate_char_count().await;

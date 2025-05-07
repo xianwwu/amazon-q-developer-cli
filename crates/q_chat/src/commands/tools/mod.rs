@@ -1,8 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use eyre::Result;
-
 use crate::command::{
     Command,
     ToolsSubcommand,
@@ -12,6 +10,7 @@ use crate::commands::{
     CommandHandler,
 };
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -128,7 +127,7 @@ Examples:
 To get the current tool status, use the command "/tools list" which will display all available tools with their current permission status."#.to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         if args.is_empty() {
             // Default to showing the list when no subcommand is provided
             return Ok(Command::Tools { subcommand: None });
@@ -175,7 +174,7 @@ To get the current tool status, use the command "/tools list" which will display
         _ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             // Use to_command to parse arguments and avoid duplication
             let command = self.to_command(args)?;

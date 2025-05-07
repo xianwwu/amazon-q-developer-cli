@@ -1,5 +1,4 @@
-use eyre::Result;
-
+use crate::ChatError;
 use crate::command::{
     Command,
     ProfileSubcommand,
@@ -35,7 +34,7 @@ impl CommandHandler for HelpProfileCommand {
         "Displays help information for the profile command and its subcommands.".to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command, ChatError> {
         Ok(Command::Profile {
             subcommand: ProfileSubcommand::Help,
         })

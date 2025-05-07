@@ -2,12 +2,11 @@ use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
 
-use eyre::Result;
-
 use super::CommandHandler;
 use super::context_adapter::CommandContextAdapter;
 use crate::command::Command;
 use crate::{
+    ChatError,
     ChatState,
     QueuedTool,
 };
@@ -58,7 +57,7 @@ Examples of statements that may trigger this command:
             .to_string()
     }
 
-    fn to_command(&self, _args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, _args: Vec<&str>) -> Result<Command, ChatError> {
         Ok(Command::Clear)
     }
 
@@ -68,7 +67,7 @@ Examples of statements that may trigger this command:
         ctx: &'a mut CommandContextAdapter<'a>,
         tool_uses: Option<Vec<QueuedTool>>,
         pending_tool_index: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatState>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
             if let Command::Clear = command {
                 // Clear the conversation history
@@ -80,7 +79,7 @@ Examples of statements that may trigger this command:
                     skip_printing_tools: true,
                 })
             } else {
-                Err(eyre::anyhow!("ClearCommand can only execute Clear commands"))
+                Err(ChatError::Custom("ClearCommand can only execute Clear commands".into()))
             }
         })
     }

@@ -1,6 +1,5 @@
-use eyre::Result;
-
 use super::handler::CommandHandler;
+use crate::ChatError;
 use crate::command::Command;
 
 /// Command handler for the `/issue` command
@@ -54,7 +53,7 @@ This command helps users report bugs, request features, or provide feedback abou
             .to_string()
     }
 
-    fn to_command(&self, args: Vec<&str>) -> Result<Command> {
+    fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         let prompt = if args.is_empty() { None } else { Some(args.join(" ")) };
 
         Ok(Command::Issue { prompt })
