@@ -7,6 +7,7 @@ pub mod handler;
 pub mod help;
 pub mod issue;
 pub mod profile;
+pub mod prompts;
 pub mod quit;
 pub mod test_utils;
 pub mod tools;
