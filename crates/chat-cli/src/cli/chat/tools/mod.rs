@@ -35,12 +35,6 @@ use use_aws::UseAws;
 
 use super::consts::MAX_TOOL_RESPONSE_SIZE;
 use super::util::images::RichImageBlocks;
-use crate::cli::chat::ToolResultStatus;
-use crate::cli::chat::message::{
-    AssistantToolUse,
-    ToolUseResult,
-    ToolUseResultBlock,
-};
 use crate::platform::Context;
 
 /// Represents an executable tool use.
@@ -71,18 +65,6 @@ impl Tool {
             Tool::Thinking(_) => "thinking (prerelease)",
         }
         .to_owned()
-    }
-
-    /// Get all tool names
-    pub fn all_tool_names() -> Vec<&'static str> {
-        vec![
-            "fs_read",
-            "fs_write",
-            "execute_bash",
-            "use_aws",
-            "gh_issue",
-            "internal_command",
-        ]
     }
 
     /// Whether or not the tool should prompt the user to accept before [Self::invoke] is called.
@@ -142,40 +124,6 @@ impl Tool {
     }
 }
 
-impl TryFrom<AssistantToolUse> for Tool {
-    type Error = ToolUseResult;
-
-    fn try_from(value: AssistantToolUse) -> std::result::Result<Self, Self::Error> {
-        let map_err = |parse_error| ToolUseResult {
-            tool_use_id: value.id.clone(),
-            content: vec![ToolUseResultBlock::Text(format!(
-                "Failed to validate tool parameters: {parse_error}. The model has either suggested tool parameters which are incompatible with the existing tools, or has suggested one or more tool that does not exist in the list of known tools."
-            ))],
-            status: ToolResultStatus::Error,
-        };
-
-        Ok(match value.name.as_str() {
-            "fs_read" => Self::FsRead(serde_json::from_value::<FsRead>(value.args).map_err(map_err)?),
-            "fs_write" => Self::FsWrite(serde_json::from_value::<FsWrite>(value.args).map_err(map_err)?),
-            "execute_bash" => Self::ExecuteBash(serde_json::from_value::<ExecuteBash>(value.args).map_err(map_err)?),
-            "use_aws" => Self::UseAws(serde_json::from_value::<UseAws>(value.args).map_err(map_err)?),
-            "report_issue" => Self::GhIssue(serde_json::from_value::<GhIssue>(value.args).map_err(map_err)?),
-            "internal_command" => {
-                Self::InternalCommand(serde_json::from_value::<InternalCommand>(value.args).map_err(map_err)?)
-            },
-            "thinking" => Self::Thinking(serde_json::from_value::<Thinking>(value.args).map_err(map_err)?),
-            unknown => {
-                return Err(ToolUseResult {
-                    tool_use_id: value.id,
-                    content: vec![ToolUseResultBlock::Text(format!(
-                        "The tool, \"{unknown}\" is not supported by the client"
-                    ))],
-                    status: ToolResultStatus::Error,
-                });
-            },
-        })
-    }
-}
 #[derive(Debug, Clone)]
 pub struct ToolPermission {
     pub trusted: bool,
@@ -216,12 +164,6 @@ impl ToolPermissions {
     pub fn trust_tool(&mut self, tool_name: &str) {
         self.permissions
             .insert(tool_name.to_string(), ToolPermission { trusted: true });
-    }
-
-    pub fn trust_all_tools(&mut self) {
-        for tool_name in Tool::all_tool_names() {
-            self.trust_tool(tool_name);
-        }
     }
 
     pub fn untrust_tool(&mut self, tool_name: &str) {
@@ -335,16 +277,6 @@ pub enum OutputKind {
 impl Default for OutputKind {
     fn default() -> Self {
         Self::Text(String::new())
-    }
-}
-
-impl std::fmt::Display for OutputKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Text(text) => write!(f, "{}", text),
-            Self::Json(json) => write!(f, "{}", json),
-            Self::Images(_) => write!(f, ""),
-        }
     }
 }
 
@@ -472,35 +404,6 @@ fn supports_truecolor(ctx: &Context) -> bool {
     // Simple override to disable truecolor since shell_color doesn't use Context.
     !ctx.env().get("Q_DISABLE_TRUECOLOR").is_ok_and(|s| !s.is_empty())
         && shell_color::get_color_support().contains(shell_color::ColorSupport::TERM24BIT)
-}
-
-impl From<ToolUseResultBlock> for OutputKind {
-    fn from(block: ToolUseResultBlock) -> Self {
-        match block {
-            ToolUseResultBlock::Text(text) => OutputKind::Text(text),
-            ToolUseResultBlock::Json(json) => OutputKind::Json(json),
-        }
-    }
-}
-
-impl InvokeOutput {
-    pub fn new(content: String) -> Self {
-        Self {
-            output: OutputKind::Text(content),
-            next_state: None,
-        }
-    }
-
-    pub fn with_json(json: serde_json::Value) -> Self {
-        Self {
-            output: OutputKind::Json(json),
-            next_state: None,
-        }
-    }
-
-    pub fn content(&self) -> String {
-        self.output.to_string()
-    }
 }
 
 #[cfg(test)]

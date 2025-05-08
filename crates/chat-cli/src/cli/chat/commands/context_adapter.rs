@@ -1,4 +1,5 @@
 use crate::cli::chat::{
+    ChatContext,
     ConversationState,
     InputSource,
     SharedWriter,
@@ -36,27 +37,29 @@ pub struct CommandContextAdapter<'a> {
     /// User settings
     #[allow(dead_code)]
     pub settings: &'a Settings,
+
+    /// Terminal width
+    pub terminal_width: usize,
 }
 
 impl<'a> CommandContextAdapter<'a> {
     /// Create a new CommandContextAdapter from a ChatContext
-    pub fn new(
-        context: &'a Context,
-        output: &'a mut SharedWriter,
-        conversation_state: &'a mut ConversationState,
-        tool_permissions: &'a mut ToolPermissions,
-        interactive: bool,
-        input_source: &'a mut InputSource,
-        settings: &'a Settings,
-    ) -> Self {
+    pub fn from_chat_context(chat_context: &'a mut ChatContext) -> Self {
+        let terminal_width = chat_context.terminal_width();
         Self {
-            context,
-            output,
-            conversation_state,
-            tool_permissions,
-            interactive,
-            input_source,
-            settings,
+            context: &chat_context.ctx,
+            output: &mut chat_context.output,
+            conversation_state: &mut chat_context.conversation_state,
+            tool_permissions: &mut chat_context.tool_permissions,
+            interactive: chat_context.interactive,
+            input_source: &mut chat_context.input_source,
+            settings: &chat_context.settings,
+            terminal_width,
         }
+    }
+
+    /// Get the current terminal width
+    pub fn terminal_width(&self) -> usize {
+        self.terminal_width
     }
 }

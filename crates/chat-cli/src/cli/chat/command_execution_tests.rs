@@ -158,6 +158,20 @@ mod command_execution_tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn test_command_context_adapter_terminal_width() -> Result<()> {
+        // Create a mock ChatContext
+        let mut chat_context = create_test_chat_context().await?;
+        
+        // Create a CommandContextAdapter
+        let adapter = chat_context.command_context_adapter();
+        
+        // Verify that the terminal_width method returns the expected value
+        assert_eq!(adapter.terminal_width(), 80);
+        
+        Ok(())
+    }
+
     async fn create_test_chat_context() -> Result<ChatContext> {
         // Create a context - Context::new_fake() already returns an Arc<Context>
         let ctx = Context::new_fake();

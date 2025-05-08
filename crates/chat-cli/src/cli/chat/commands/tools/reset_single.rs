@@ -14,7 +14,6 @@ use crate::cli::chat::command::{
 };
 use crate::cli::chat::commands::context_adapter::CommandContextAdapter;
 use crate::cli::chat::commands::handler::CommandHandler;
-use crate::cli::chat::tools::Tool;
 use crate::cli::chat::{
     ChatError,
     ChatState,
@@ -76,7 +75,7 @@ impl CommandHandler for ResetSingleToolCommand {
             };
 
             // Check if the tool exists
-            if !Tool::all_tool_names().contains(&tool_name.as_str()) {
+            if !ctx.tool_permissions.has(tool_name) {
                 queue!(
                     ctx.output,
                     style::SetForegroundColor(Color::Red),

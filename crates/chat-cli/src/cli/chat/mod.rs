@@ -561,15 +561,7 @@ impl ChatContext {
     /// This method provides a clean interface for command handlers to access
     /// only the components they need without exposing the entire ChatContext.
     pub fn command_context_adapter(&mut self) -> commands::context_adapter::CommandContextAdapter<'_> {
-        commands::context_adapter::CommandContextAdapter::new(
-            &self.ctx,
-            &mut self.output,
-            &mut self.conversation_state,
-            &mut self.tool_permissions,
-            self.interactive,
-            &mut self.input_source,
-            &self.settings,
-        )
+        commands::context_adapter::CommandContextAdapter::from_chat_context(self)
     }
 }
 

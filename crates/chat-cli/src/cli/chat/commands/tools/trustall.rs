@@ -18,6 +18,7 @@ use crate::cli::chat::commands::handler::CommandHandler;
 use crate::cli::chat::{
     ChatError,
     ChatState,
+    FigTool,
     QueuedTool,
 };
 
@@ -74,7 +75,13 @@ impl CommandHandler for TrustAllToolsCommand {
                 }
 
                 // Trust all tools
-                ctx.tool_permissions.trust_all_tools();
+                ctx.conversation_state
+                    .tools
+                    .values()
+                    .flatten()
+                    .for_each(|FigTool::ToolSpecification(spec)| {
+                        ctx.tool_permissions.trust_tool(spec.name.as_str());
+                    });
 
                 queue!(
                     ctx.output,

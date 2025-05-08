@@ -5,16 +5,18 @@ use std::pin::Pin;
 use crossterm::queue;
 use crossterm::style::{
     self,
+    Attribute,
     Color,
 };
 
 use crate::cli::chat::command::Command;
 use crate::cli::chat::commands::context_adapter::CommandContextAdapter;
 use crate::cli::chat::commands::handler::CommandHandler;
-use crate::cli::chat::tools::Tool;
+use crate::cli::chat::consts::DUMMY_TOOL_NAME;
 use crate::cli::chat::{
     ChatError,
     ChatState,
+    FigTool,
     QueuedTool,
 };
 
@@ -53,40 +55,71 @@ impl CommandHandler for ListToolsCommand {
         pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
         Box::pin(async move {
-            // List all tools and their status
+            // Determine how to format the output nicely.
+            let terminal_width = ctx.terminal_width();
+            let longest = ctx
+                .conversation_state
+                .tools
+                .values()
+                .flatten()
+                .map(|FigTool::ToolSpecification(spec)| spec.name.len())
+                .max()
+                .unwrap_or(0);
+
             queue!(
                 ctx.output,
-                style::Print("\nTrusted tools can be run without confirmation\n\n")
+                style::Print("\n"),
+                style::SetAttribute(Attribute::Bold),
+                style::Print({
+                    // Adding 2 because of "- " preceding every tool name
+                    let width = longest + 2 - "Tool".len() + 4;
+                    format!("Tool{:>width$}Permission", "", width = width)
+                }),
+                style::SetAttribute(Attribute::Reset),
+                style::Print("\n"),
+                style::Print("▔".repeat(terminal_width)),
             )?;
 
-            // Get all tool names
-            let tool_names = Tool::all_tool_names();
-
-            // Display each tool with its permission status
-            for tool_name in tool_names {
-                let permission_label = ctx.tool_permissions.display_label(tool_name);
-
-                queue!(
+            ctx.conversation_state.tools.iter().for_each(|(origin, tools)| {
+                let to_display = tools
+                    .iter()
+                    .filter(|FigTool::ToolSpecification(spec)| spec.name != DUMMY_TOOL_NAME)
+                    .fold(String::new(), |mut acc, FigTool::ToolSpecification(spec)| {
+                        let width = longest - spec.name.len() + 4;
+                        acc.push_str(
+                            format!(
+                                "- {}{:>width$}{}\n",
+                                spec.name,
+                                "",
+                                ctx.tool_permissions.display_label(&spec.name),
+                                width = width
+                            )
+                            .as_str(),
+                        );
+                        acc
+                    });
+                let _ = queue!(
                     ctx.output,
-                    style::Print("- "),
-                    style::Print(format!("{:<20} ", tool_name)),
-                    style::Print(permission_label),
+                    style::SetAttribute(Attribute::Bold),
+                    style::Print(format!("{}:\n", origin)),
+                    style::SetAttribute(Attribute::Reset),
+                    style::Print(to_display),
                     style::Print("\n")
-                )?;
-            }
+                );
+            });
 
-            // Add a note about default settings
             queue!(
                 ctx.output,
+                style::Print("\nTrusted tools can be run without confirmation\n"),
                 style::SetForegroundColor(Color::DarkGrey),
-                style::Print("\n* Default settings\n\n"),
-                style::Print("💡 Use "),
+                style::Print(format!("\n{}\n", "* Default settings")),
+                style::Print("\n💡 Use "),
                 style::SetForegroundColor(Color::Green),
                 style::Print("/tools help"),
+                style::SetForegroundColor(Color::Reset),
                 style::SetForegroundColor(Color::DarkGrey),
-                style::Print(" to edit permissions.\n"),
-                style::ResetColor,
-                style::Print("\n")
+                style::Print(" to edit permissions."),
+                style::SetForegroundColor(Color::Reset),
             )?;
             ctx.output.flush()?;
 
