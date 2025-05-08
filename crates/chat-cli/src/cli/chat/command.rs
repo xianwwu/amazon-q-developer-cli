@@ -22,7 +22,6 @@ use crate::cli::chat::commands::editor::EDITOR_HANDLER;
 use crate::cli::chat::commands::help::HELP_HANDLER;
 use crate::cli::chat::commands::issue::ISSUE_HANDLER;
 use crate::cli::chat::commands::profile::PROFILE_HANDLER;
-use crate::cli::chat::commands::prompts::PROMPTS_HANDLER;
 use crate::cli::chat::commands::quit::QUIT_HANDLER;
 use crate::cli::chat::commands::tools::TOOLS_HANDLER;
 use crate::cli::chat::commands::usage::USAGE_HANDLER;

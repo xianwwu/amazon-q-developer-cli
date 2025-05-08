@@ -25,9 +25,6 @@ pub use get::GET_PROMPTS_HANDLER;
 pub use help::HELP_PROMPTS_HANDLER;
 pub use list::LIST_PROMPTS_HANDLER;
 
-/// Static instance of the prompts command handler
-pub static PROMPTS_HANDLER: PromptsCommand = PromptsCommand;
-
 /// Handler for the prompts command
 pub struct PromptsCommand;
 
