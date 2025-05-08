@@ -101,7 +101,7 @@ impl CommandHandler for ShowContextCommand {
 
                 // If expand is requested, show the expanded files
                 if *expand {
-                    let expanded_files = match context_manager.get_global_context_files(true).await {
+                    let expanded_files = match context_manager.get_global_context_files().await {
                         Ok(files) => files,
                         Err(e) => {
                             return Err(ChatError::Custom(
@@ -146,7 +146,7 @@ impl CommandHandler for ShowContextCommand {
 
                 // If expand is requested, show the expanded files
                 if *expand {
-                    let expanded_files = match context_manager.get_current_profile_context_files(true).await {
+                    let expanded_files = match context_manager.get_current_profile_context_files().await {
                         Ok(files) => files,
                         Err(e) => {
                             return Err(ChatError::Custom(
