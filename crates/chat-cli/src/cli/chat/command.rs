@@ -18,6 +18,7 @@ use crate::cli::chat::commands::clear::CLEAR_HANDLER;
 use crate::cli::chat::commands::compact::COMPACT_HANDLER;
 use crate::cli::chat::commands::context::CONTEXT_HANDLER;
 use crate::cli::chat::commands::editor::EDITOR_HANDLER;
+use crate::cli::chat::commands::execute::EXECUTE_HANDLER;
 // Import static handlers
 use crate::cli::chat::commands::help::HELP_HANDLER;
 use crate::cli::chat::commands::issue::ISSUE_HANDLER;
@@ -1067,8 +1068,8 @@ impl Command {
             Command::Quit => &QUIT_HANDLER,
             Command::Clear => &CLEAR_HANDLER,
             Command::Context { subcommand } => subcommand.to_handler(),
-            Command::Profile { subcommand } => subcommand.to_handler(), /* Use the to_handler method on
-                                                                          * ProfileSubcommand */
+            Command::Profile { subcommand } => subcommand.to_handler(), // Use the to_handler method on
+            // ProfileSubcommand
             Command::Tools { subcommand } => match subcommand {
                 Some(sub) => sub.to_handler(), // Use the to_handler method on ToolsSubcommand
                 None => &crate::cli::chat::commands::tools::LIST_TOOLS_HANDLER, /* Default to list handler when no
@@ -1079,11 +1080,12 @@ impl Command {
             Command::Usage => &USAGE_HANDLER,
             Command::Issue { .. } => &ISSUE_HANDLER,
             // These commands are not handled through the command system
-            Command::Ask { .. } => &HELP_HANDLER,     // Fallback to help handler
-            Command::Execute { .. } => &HELP_HANDLER, // Fallback to help handler
+            Command::Ask { .. } => &HELP_HANDLER,        // Fallback to help handler
+            Command::Execute { .. } => &EXECUTE_HANDLER, // Use the dedicated execute handler
             Command::Prompts { subcommand } => match subcommand {
                 Some(sub) => sub.to_handler(),
-                None => &crate::cli::chat::commands::prompts::LIST_PROMPTS_HANDLER, // Default to list handler when no subcommand
+                None => &crate::cli::chat::commands::prompts::LIST_PROMPTS_HANDLER, /* Default to list handler when
+                                                                                     * no subcommand */
             },
         }
     }

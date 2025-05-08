@@ -44,8 +44,8 @@ impl CommandHandler for ListPromptsCommand {
     }
 
     fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
-        let search_word = args.get(0).map(|s| (*s).to_string());
-        
+        let search_word = args.first().map(|s| (*s).to_string());
+
         Ok(Command::Prompts {
             subcommand: Some(PromptsSubcommand::List { search_word }),
         })
@@ -75,9 +75,11 @@ impl CommandHandler for ListPromptsCommand {
                 style::SetForegroundColor(Color::Yellow),
                 style::Print("No MCP servers with prompts are currently available.\n\n"),
                 style::ResetColor,
-                style::Print("To use prompts, you need to install and configure MCP servers that provide prompt templates.\n\n")
+                style::Print(
+                    "To use prompts, you need to install and configure MCP servers that provide prompt templates.\n\n"
+                )
             )?;
-            
+
             if let Some(word) = search_word {
                 queue!(
                     ctx.output,
@@ -85,7 +87,7 @@ impl CommandHandler for ListPromptsCommand {
                     style::Print("No matching prompts found.\n\n")
                 )?;
             }
-            
+
             ctx.output.flush()?;
 
             Ok(ChatState::PromptUser {

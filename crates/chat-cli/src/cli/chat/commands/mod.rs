@@ -3,6 +3,7 @@ pub mod compact;
 pub mod context;
 pub mod context_adapter;
 pub mod editor;
+pub mod execute;
 pub mod handler;
 pub mod help;
 pub mod issue;
