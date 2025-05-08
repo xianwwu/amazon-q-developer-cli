@@ -77,7 +77,7 @@ This command allows you to run any shell command without leaving the chat interf
                 Ok(ChatState::PromptUser {
                     tool_uses,
                     pending_tool_index,
-                    skip_printing_tools: false,
+                    skip_printing_tools: true,
                 })
             } else {
                 Err(ChatError::Custom(

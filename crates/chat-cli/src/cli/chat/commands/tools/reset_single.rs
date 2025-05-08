@@ -99,7 +99,7 @@ impl CommandHandler for ResetSingleToolCommand {
             Ok(ChatState::PromptUser {
                 tool_uses,
                 pending_tool_index,
-                skip_printing_tools: false,
+                skip_printing_tools: true,
             })
         })
     }

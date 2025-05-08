@@ -36,12 +36,12 @@ impl TestContext {
             "/clear" => Ok(ChatState::PromptUser {
                 tool_uses: None,
                 pending_tool_index: None,
-                skip_printing_tools: false,
+                skip_printing_tools: true,
             }),
             _ => Ok(ChatState::PromptUser {
                 tool_uses: None,
                 pending_tool_index: None,
-                skip_printing_tools: false,
+                skip_printing_tools: true,
             }),
         }
     }

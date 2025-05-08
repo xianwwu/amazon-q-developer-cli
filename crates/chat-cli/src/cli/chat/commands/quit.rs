@@ -48,16 +48,15 @@ Examples of statements that may trigger this command:
 - "Bye!"
 - "Let's quit the application"
 - "Exit"
+- "Adios"
 - "I want to exit"
 - "Close the chat"
 - "End this session"
-
-Common quit commands from other tools that users might try:
+Common quit commands from other tools that users might try, that SHOULD also trigger this command:
 - ":q" (vi/vim)
 - "exit" (shell, Python REPL)
 - "quit" (many REPLs)
-- "Ctrl+D" (Unix shells, Python REPL)
-- "Ctrl+C" (many command-line applications)
+- "quit()" (Python REPL)
 - "logout" (shells)
 - "bye" (some interactive tools)"#
             .to_string()
@@ -69,18 +68,12 @@ Common quit commands from other tools that users might try:
 
     fn execute_command<'a>(
         &'a self,
-        command: &'a Command,
+        _command: &'a Command,
         _ctx: &'a mut CommandContextAdapter<'a>,
         _tool_uses: Option<Vec<QueuedTool>>,
         _pending_tool_index: Option<usize>,
     ) -> Pin<Box<dyn Future<Output = Result<ChatState, ChatError>> + Send + 'a>> {
-        Box::pin(async move {
-            if let Command::Quit = command {
-                Ok(ChatState::Exit)
-            } else {
-                Err(ChatError::Custom("QuitCommand can only execute Quit commands".into()))
-            }
-        })
+        Box::pin(async move { Ok(ChatState::Exit) })
     }
 
     // Override the default execute implementation since this command

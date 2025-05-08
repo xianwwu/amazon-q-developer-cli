@@ -1149,70 +1149,38 @@ impl Command {
             .await
     }
 
+    /// Returns a vector of all available commands for dynamic enumeration
+    pub fn all_commands() -> Vec<(&'static str, &'static dyn CommandHandler)> {
+        vec![
+            ("help", &HELP_HANDLER as &dyn CommandHandler),
+            ("quit", &QUIT_HANDLER as &dyn CommandHandler),
+            ("clear", &CLEAR_HANDLER as &dyn CommandHandler),
+            ("context", &CONTEXT_HANDLER as &dyn CommandHandler),
+            ("profile", &PROFILE_HANDLER as &dyn CommandHandler),
+            ("tools", &TOOLS_HANDLER as &dyn CommandHandler),
+            ("compact", &COMPACT_HANDLER as &dyn CommandHandler),
+            ("usage", &USAGE_HANDLER as &dyn CommandHandler),
+            ("editor", &EDITOR_HANDLER as &dyn CommandHandler),
+            ("issue", &ISSUE_HANDLER as &dyn CommandHandler),
+        ]
+    }
+
     /// Generate descriptions for all commands for LLM tool descriptions
+    ///
+    /// This method dynamically iterates through all available commands and collects
+    /// their descriptions for use in LLM integration. This ensures that all commands
+    /// are properly described and no commands are missed when new ones are added.
     pub fn generate_llm_descriptions() -> std::collections::HashMap<String, CommandDescription> {
         let mut descriptions = std::collections::HashMap::new();
 
-        // Add descriptions for all implemented commands
-        descriptions.insert("help".to_string(), CommandDescription {
-            short_description: HELP_HANDLER.description().to_string(),
-            full_description: HELP_HANDLER.llm_description(),
-            usage: HELP_HANDLER.usage().to_string(),
-        });
-
-        descriptions.insert("quit".to_string(), CommandDescription {
-            short_description: QUIT_HANDLER.description().to_string(),
-            full_description: QUIT_HANDLER.llm_description(),
-            usage: QUIT_HANDLER.usage().to_string(),
-        });
-
-        descriptions.insert("clear".to_string(), CommandDescription {
-            short_description: CLEAR_HANDLER.description().to_string(),
-            full_description: CLEAR_HANDLER.llm_description(),
-            usage: CLEAR_HANDLER.usage().to_string(),
-        });
-
-        descriptions.insert("context".to_string(), CommandDescription {
-            short_description: CONTEXT_HANDLER.description().to_string(),
-            full_description: CONTEXT_HANDLER.llm_description(),
-            usage: CONTEXT_HANDLER.usage().to_string(),
-        });
-
-        descriptions.insert("profile".to_string(), CommandDescription {
-            short_description: PROFILE_HANDLER.description().to_string(),
-            full_description: PROFILE_HANDLER.llm_description(),
-            usage: PROFILE_HANDLER.usage().to_string(),
-        });
-
-        descriptions.insert("tools".to_string(), CommandDescription {
-            short_description: TOOLS_HANDLER.description().to_string(),
-            full_description: TOOLS_HANDLER.llm_description(),
-            usage: TOOLS_HANDLER.usage().to_string(),
-        });
-
-        descriptions.insert("compact".to_string(), CommandDescription {
-            short_description: COMPACT_HANDLER.description().to_string(),
-            full_description: COMPACT_HANDLER.llm_description(),
-            usage: COMPACT_HANDLER.usage().to_string(),
-        });
-
-        descriptions.insert("usage".to_string(), CommandDescription {
-            short_description: USAGE_HANDLER.description().to_string(),
-            full_description: USAGE_HANDLER.llm_description(),
-            usage: USAGE_HANDLER.usage().to_string(),
-        });
-
-        descriptions.insert("editor".to_string(), CommandDescription {
-            short_description: EDITOR_HANDLER.description().to_string(),
-            full_description: EDITOR_HANDLER.llm_description(),
-            usage: EDITOR_HANDLER.usage().to_string(),
-        });
-
-        descriptions.insert("issue".to_string(), CommandDescription {
-            short_description: ISSUE_HANDLER.description().to_string(),
-            full_description: ISSUE_HANDLER.llm_description(),
-            usage: ISSUE_HANDLER.usage().to_string(),
-        });
+        // Dynamically iterate through all commands
+        for (name, handler) in Self::all_commands() {
+            descriptions.insert(name.to_string(), CommandDescription {
+                short_description: handler.description().to_string(),
+                full_description: handler.llm_description(),
+                usage: handler.usage().to_string(),
+            });
+        }
 
         descriptions
     }

@@ -167,7 +167,7 @@ Examples:
                         return Ok(ChatState::PromptUser {
                             tool_uses,
                             pending_tool_index,
-                            skip_printing_tools: false,
+                            skip_printing_tools: true,
                         });
                     },
                 };
@@ -185,7 +185,7 @@ Examples:
                         return Ok(ChatState::PromptUser {
                             tool_uses,
                             pending_tool_index,
-                            skip_printing_tools: false,
+                            skip_printing_tools: true,
                         });
                     }
                     // Flush to ensure content is written before editor opens
@@ -232,7 +232,7 @@ Examples:
                                         return Ok(ChatState::PromptUser {
                                             tool_uses,
                                             pending_tool_index,
-                                            skip_printing_tools: false,
+                                            skip_printing_tools: true,
                                         });
                                     }
 
@@ -276,7 +276,7 @@ Examples:
                 Ok(ChatState::PromptUser {
                     tool_uses,
                     pending_tool_index,
-                    skip_printing_tools: false,
+                    skip_printing_tools: true,
                 })
             } else {
                 Err(ChatError::Custom(

@@ -204,7 +204,7 @@ No arguments or options are needed for this command.
                 Ok(ChatState::PromptUser {
                     tool_uses: None,
                     pending_tool_index: None,
-                    skip_printing_tools: false,
+                    skip_printing_tools: true,
                 })
             } else {
                 Err(ChatError::Custom("UsageCommand can only execute Usage commands".into()))
