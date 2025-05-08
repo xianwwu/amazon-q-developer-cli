@@ -724,6 +724,7 @@ impl Command {
                     }
 
                     match parts[1].to_lowercase().as_str() {
+                        "list" => Self::Tools { subcommand: None },
                         "schema" => Self::Tools {
                             subcommand: Some(ToolsSubcommand::Schema),
                         },

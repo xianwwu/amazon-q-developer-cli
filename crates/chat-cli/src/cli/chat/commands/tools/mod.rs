@@ -90,20 +90,20 @@ You can view and manage tool permissions using the following commands:
         r#"The tools command manages tool permissions and settings.
 
 Subcommands:
-- list: List all available tools and their trust status
+- <empty>: List all available tools and their trust status
 - trust <tool_name>: Trust a specific tool (don't ask for confirmation)
 - untrust <tool_name>: Untrust a specific tool (ask for confirmation)
 - trustall: Trust all tools
 - reset: Reset all tool permissions to default
 
 Examples:
-- "/tools list" - Lists all available tools
+- "/tools" - Lists all available tools
 - "/tools trust fs_write" - Trusts the fs_write tool
 - "/tools untrust execute_bash" - Untrusts the execute_bash tool
 - "/tools trustall" - Trusts all tools
 - "/tools reset" - Resets all tool permissions to default
 
-To get the current tool status, use the command "/tools list" which will display all available tools with their current permission status."#.to_string()
+To get the current tool status, use the command "/tools" which will display all available tools with their current permission status."#.to_string()
     }
 
     fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
@@ -122,7 +122,7 @@ To get the current tool status, use the command "/tools list" which will display
         // Parse arguments to determine the subcommand
         let subcommand = if let Some(first_arg) = args.first() {
             match *first_arg {
-                "list" => None, // Default is to list tools
+                "list" => None, // "list" is an unlisted alias for the default behavior (list tools)
                 "trust" => {
                     let tool_names = args[1..].iter().map(|s| (*s).to_string()).collect();
                     Some(ToolsSubcommand::Trust { tool_names })
@@ -195,10 +195,11 @@ To get the current tool status, use the command "/tools list" which will display
             return false; // Default list doesn't require confirmation
         }
 
+        // Shouldn't get here, as this should delegate to the subcommand
         match args[0] {
             "help" | "list" => false, // Help and list don't require confirmation
             "trustall" => true,       // Trustall requires confirmation
-            _ => false,               // Other commands don't require confirmation
+            _ => true,                // Other commands require confirmation
         }
     }
 }

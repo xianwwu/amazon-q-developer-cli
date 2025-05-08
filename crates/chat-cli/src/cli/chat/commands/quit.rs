@@ -53,7 +53,7 @@ Examples of statements that may trigger this command:
 - "Close the chat"
 - "End this session"
 Common quit commands from other tools that users might try, that SHOULD also trigger this command:
-- ":q" (vi/vim)
+- ":q" or ":wq" or ":q!" (vi/vim)
 - "exit" (shell, Python REPL)
 - "quit" (many REPLs)
 - "quit()" (Python REPL)
