@@ -39,7 +39,6 @@ impl Default for EditorCommand {
 }
 
 impl EditorCommand {
-
     #[allow(dead_code)]
     /// Get the default editor from environment or fallback to platform-specific defaults
     fn get_default_editor() -> String {

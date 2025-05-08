@@ -71,8 +71,12 @@ impl CommandHandler for HelpPromptsCommand {
                         style::SetAttribute(crossterm::style::Attribute::Reset),
                         style::ResetColor,
                         style::Print("\n"),
-                        style::Print("Prompts are reusable templates that help you quickly access common workflows and tasks.\n"),
-                        style::Print("These templates are provided by the MCP servers you have installed and configured.\n\n"),
+                        style::Print(
+                            "Prompts are reusable templates that help you quickly access common workflows and tasks.\n"
+                        ),
+                        style::Print(
+                            "These templates are provided by the MCP servers you have installed and configured.\n\n"
+                        ),
                         style::SetForegroundColor(Color::Cyan),
                         style::SetAttribute(crossterm::style::Attribute::Bold),
                         style::Print("Available commands\n"),
@@ -108,7 +112,9 @@ impl CommandHandler for HelpPromptsCommand {
                         style::Print("Notes\n"),
                         style::SetAttribute(crossterm::style::Attribute::Reset),
                         style::ResetColor,
-                        style::Print("• You can also use @<prompt name> as a shortcut for /prompts get <prompt name>\n"),
+                        style::Print(
+                            "• You can also use @<prompt name> as a shortcut for /prompts get <prompt name>\n"
+                        ),
                         style::Print("• Prompts can accept arguments to customize their behavior\n"),
                         style::Print("• Prompts are provided by MCP servers you have installed\n\n")
                     )?;

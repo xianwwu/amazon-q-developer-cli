@@ -155,6 +155,6 @@ impl CommandHandler for ListProfileCommand {
 
 #[cfg(test)]
 mod tests {
-    
+
     // Test implementations would go here
 }

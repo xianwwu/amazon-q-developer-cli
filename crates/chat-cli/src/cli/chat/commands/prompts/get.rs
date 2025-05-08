@@ -47,24 +47,21 @@ impl CommandHandler for GetPromptsCommand {
         if args.is_empty() {
             return Err(ChatError::Custom("Expected prompt name".into()));
         }
-        
+
         let name = args[0].to_string();
         let arguments = if args.len() > 1 {
             Some(args[1..].iter().map(|s| (*s).to_string()).collect())
         } else {
             None
         };
-        
-        let params = crate::cli::chat::command::PromptsGetParam {
-            name,
-            arguments,
-        };
-        
+
+        let params = crate::cli::chat::command::PromptsGetParam { name, arguments };
+
         let get_command = crate::cli::chat::command::PromptsGetCommand {
             orig_input: Some(args.join(" ")),
             params,
         };
-        
+
         Ok(Command::Prompts {
             subcommand: Some(PromptsSubcommand::Get { get_command }),
         })
@@ -94,16 +91,18 @@ impl CommandHandler for GetPromptsCommand {
                 style::SetForegroundColor(Color::Yellow),
                 style::Print(format!("Prompt '{}' not found.\n\n", get_command.params.name)),
                 style::ResetColor,
-                style::Print("To use prompts, you need to install and configure MCP servers that provide prompt templates.\n\n")
+                style::Print(
+                    "To use prompts, you need to install and configure MCP servers that provide prompt templates.\n\n"
+                )
             )?;
-            
+
             if let Some(args) = &get_command.params.arguments {
                 queue!(
                     ctx.output,
                     style::Print(format!("Arguments provided: {}\n\n", args.join(", ")))
                 )?;
             }
-            
+
             ctx.output.flush()?;
 
             Ok(ChatState::PromptUser {

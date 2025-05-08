@@ -69,7 +69,8 @@ Notes:
 • You can also use @<prompt name> as a shortcut for /prompts get <prompt name>
 • Prompts can accept arguments to customize their behavior
 • Prompts are provided by MCP servers you have installed
-"#.to_string()
+"#
+        .to_string()
     }
 
     fn llm_description(&self) -> String {
@@ -94,10 +95,8 @@ Available subcommands:
     fn to_command(&self, args: Vec<&str>) -> Result<Command, ChatError> {
         if args.is_empty() {
             // Default to showing the list when no subcommand is provided
-            return Ok(Command::Prompts { 
-                subcommand: Some(PromptsSubcommand::List { 
-                    search_word: None 
-                }) 
+            return Ok(Command::Prompts {
+                subcommand: Some(PromptsSubcommand::List { search_word: None }),
             });
         }
 
@@ -119,24 +118,21 @@ Available subcommands:
                     if args.len() < 2 {
                         return Err(ChatError::Custom("Expected prompt name".into()));
                     }
-                    
+
                     let name = args[1].to_string();
                     let arguments = if args.len() > 2 {
                         Some(args[2..].iter().map(|s| (*s).to_string()).collect())
                     } else {
                         None
                     };
-                    
-                    let params = crate::cli::chat::command::PromptsGetParam {
-                        name,
-                        arguments,
-                    };
-                    
+
+                    let params = crate::cli::chat::command::PromptsGetParam { name, arguments };
+
                     let get_command = PromptsGetCommand {
                         orig_input: Some(args[1..].join(" ")),
                         params,
                     };
-                    
+
                     Some(PromptsSubcommand::Get { get_command })
                 },
                 "help" => {
@@ -181,7 +177,9 @@ Available subcommands:
                         .execute_command(command, ctx, tool_uses, pending_tool_index)
                         .await
                 },
-                _ => Err(ChatError::Custom("PromptsCommand can only execute Prompts commands".into())),
+                _ => Err(ChatError::Custom(
+                    "PromptsCommand can only execute Prompts commands".into(),
+                )),
             }
         })
     }

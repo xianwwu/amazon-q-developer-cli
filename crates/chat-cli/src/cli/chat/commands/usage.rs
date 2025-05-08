@@ -29,7 +29,6 @@ impl Default for UsageCommand {
 }
 
 impl UsageCommand {
-
     #[allow(dead_code)]
     /// Format a progress bar based on percentage
     fn format_progress_bar(percentage: f64, width: usize) -> String {
