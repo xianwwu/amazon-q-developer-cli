@@ -1090,7 +1090,20 @@ impl Command {
         }
     }
 
-    /// Parse a command from components (for use by internal_command tool)
+    /// Parse a command from components
+    ///
+    /// This method formats a command string from its components and parses it into a Command enum.
+    ///
+    /// # Arguments
+    ///
+    /// * `command` - The base command name
+    /// * `subcommand` - Optional subcommand
+    /// * `args` - Optional arguments
+    /// * `flags` - Optional flags
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Self>` - The parsed Command enum
     pub fn parse_from_components(
         command: &str,
         subcommand: Option<&String>,

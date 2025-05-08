@@ -1339,8 +1339,8 @@ impl ChatContext {
         if let Some(index) = pending_tool_index {
             let tool_use = &mut tool_uses[index];
 
-            let is_trust = ["t", "T"].contains(&prompt.as_str());
-            if ["y", "Y"].contains(&prompt.as_str()) || is_trust {
+            let is_trust = ["t", "T"].contains(&prompt);
+            if ["y", "Y"].contains(&prompt) || is_trust {
                 if is_trust {
                     self.tool_permissions.trust_tool(&tool_use.name);
                 }

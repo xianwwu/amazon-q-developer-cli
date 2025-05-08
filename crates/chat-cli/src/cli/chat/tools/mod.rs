@@ -136,9 +136,7 @@ impl Tool {
             Tool::UseAws(use_aws) => use_aws.validate(ctx).await,
             Tool::Custom(custom_tool) => custom_tool.validate(ctx).await,
             Tool::GhIssue(gh_issue) => gh_issue.validate(ctx).await,
-            Tool::InternalCommand(internal_command) => internal_command
-                .validate()
-                .map_err(|e| eyre::eyre!("Tool validation failed: {:?}", e)),
+            Tool::InternalCommand(internal_command) => internal_command.validate().await,
             Tool::Thinking(think) => think.validate(ctx).await,
         }
     }
@@ -165,6 +163,7 @@ impl TryFrom<AssistantToolUse> for Tool {
             "internal_command" => {
                 Self::InternalCommand(serde_json::from_value::<InternalCommand>(value.args).map_err(map_err)?)
             },
+            "thinking" => Self::Thinking(serde_json::from_value::<Thinking>(value.args).map_err(map_err)?),
             unknown => {
                 return Err(ToolUseResult {
                     tool_use_id: value.id,
@@ -344,7 +343,7 @@ impl std::fmt::Display for OutputKind {
         match self {
             Self::Text(text) => write!(f, "{}", text),
             Self::Json(json) => write!(f, "{}", json),
-            Self::Images(_) => todo!(),
+            Self::Images(_) => write!(f, ""),
         }
     }
 }

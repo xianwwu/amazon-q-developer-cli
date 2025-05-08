@@ -19,16 +19,14 @@ use crate::platform::Context;
 
 impl InternalCommand {
     /// Validate that the command exists
-    pub fn validate(&self) -> Result<()> {
-        // Format a command string
-        let cmd_str = if !self.command.starts_with('/') {
-            format!("/{}", self.command)
-        } else {
-            self.command.clone()
-        };
-
-        // Try to parse the command using the Command::parse method
-        match Command::parse(&cmd_str) {
+    pub async fn validate(&self) -> Result<()> {
+        // Parse the command using the existing parse_from_components method
+        match Command::parse_from_components(
+            &self.command,
+            self.subcommand.as_ref(),
+            self.args.as_ref(),
+            self.flags.as_ref(),
+        ) {
             Ok(_) => Ok(()),
             Err(e) => Err(eyre::eyre!("Unknown command: {} - {}", self.command, e)),
         }
@@ -36,29 +34,23 @@ impl InternalCommand {
 
     /// Check if the command requires user acceptance
     pub fn requires_acceptance(&self) -> bool {
-        // Format a command string
-        let cmd_str = if !self.command.starts_with('/') {
-            format!("/{}", self.command)
-        } else {
-            self.command.clone()
-        };
+        // Parse the command using the existing parse_from_components method
+        match Command::parse_from_components(
+            &self.command,
+            self.subcommand.as_ref(),
+            self.args.as_ref(),
+            self.flags.as_ref(),
+        ) {
+            Ok(command) => {
+                // Get the handler directly from the command
+                // This will automatically use the subcommand's handler when appropriate
+                let handler = command.to_handler();
 
-        // Try to parse the command
-        if let Ok(command) = Command::parse(&cmd_str) {
-            // Get the handler for this command using to_handler()
-            let handler = command.to_handler();
-
-            // Convert args to string slices for the handler
-            let args: Vec<&str> = match &self.subcommand {
-                Some(subcommand) => vec![subcommand.as_str()],
-                None => vec![],
-            };
-
-            return handler.requires_confirmation(&args);
+                // Pass empty args since the handler already knows what command it's for
+                handler.requires_confirmation(&[])
+            },
+            Err(_) => true, // Default to requiring confirmation for unparsable commands
         }
-
-        // For commands not recognized, default to requiring confirmation
-        true
     }
 
     /// Format the command string with subcommand and arguments
@@ -98,22 +90,23 @@ impl InternalCommand {
 
     /// Get a description for the command
     pub fn get_command_description(&self) -> String {
-        // Format a simple command string
-        let cmd_str = if !self.command.starts_with('/') {
-            format!("/{}", self.command)
-        } else {
-            self.command.clone()
-        };
-
-        // Try to parse the command
-        if let Ok(command) = Command::parse(&cmd_str) {
-            // Get the handler for this command using to_handler()
-            let handler = command.to_handler();
-            return handler.description().to_string();
+        // Parse the command using the existing parse_from_components method
+        match Command::parse_from_components(
+            &self.command,
+            self.subcommand.as_ref(),
+            self.args.as_ref(),
+            self.flags.as_ref(),
+        ) {
+            Ok(command) => {
+                // Get the handler for this command using to_handler()
+                let handler = command.to_handler();
+                handler.description().to_string()
+            },
+            Err(_) => {
+                // For commands not recognized, return a generic description
+                "Execute a command in the Q chat system".to_string()
+            },
         }
-
-        // For commands not recognized, return a generic description
-        "Execute a command in the Q chat system".to_string()
     }
 
     /// Queue description for the command execution
