@@ -19,8 +19,8 @@ use crate::platform::Context;
 
 impl InternalCommand {
     /// Validate that the command exists
-    pub fn validate_simple(&self) -> Result<()> {
-        // Format a simple command string
+    pub fn validate(&self) -> Result<()> {
+        // Format a command string
         let cmd_str = if !self.command.starts_with('/') {
             format!("/{}", self.command)
         } else {
@@ -35,8 +35,8 @@ impl InternalCommand {
     }
 
     /// Check if the command requires user acceptance
-    pub fn requires_acceptance_simple(&self) -> bool {
-        // Format a simple command string
+    pub fn requires_acceptance(&self) -> bool {
+        // Format a command string
         let cmd_str = if !self.command.starts_with('/') {
             format!("/{}", self.command)
         } else {

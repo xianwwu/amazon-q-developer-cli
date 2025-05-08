@@ -22,6 +22,7 @@ use crate::cli::chat::commands::editor::EDITOR_HANDLER;
 use crate::cli::chat::commands::help::HELP_HANDLER;
 use crate::cli::chat::commands::issue::ISSUE_HANDLER;
 use crate::cli::chat::commands::profile::PROFILE_HANDLER;
+use crate::cli::chat::commands::prompts::PROMPTS_HANDLER;
 use crate::cli::chat::commands::quit::QUIT_HANDLER;
 use crate::cli::chat::commands::tools::TOOLS_HANDLER;
 use crate::cli::chat::commands::usage::USAGE_HANDLER;
@@ -1081,7 +1082,10 @@ impl Command {
             // These commands are not handled through the command system
             Command::Ask { .. } => &HELP_HANDLER,     // Fallback to help handler
             Command::Execute { .. } => &HELP_HANDLER, // Fallback to help handler
-            Command::Prompts { .. } => &HELP_HANDLER, // Fallback to help handler
+            Command::Prompts { subcommand } => match subcommand {
+                Some(sub) => sub.to_handler(),
+                None => &crate::cli::chat::commands::prompts::LIST_PROMPTS_HANDLER, // Default to list handler when no subcommand
+            },
         }
     }
 

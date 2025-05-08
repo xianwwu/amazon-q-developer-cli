@@ -93,7 +93,7 @@ impl Tool {
             Tool::UseAws(use_aws) => use_aws.requires_acceptance(),
             Tool::Custom(_) => true,
             Tool::GhIssue(_) => false,
-            Tool::InternalCommand(internal_command) => internal_command.requires_acceptance_simple(),
+            Tool::InternalCommand(internal_command) => internal_command.requires_acceptance(),
             Tool::Thinking(_) => false,
         }
     }
@@ -136,7 +136,7 @@ impl Tool {
             Tool::Custom(custom_tool) => custom_tool.validate(ctx).await,
             Tool::GhIssue(gh_issue) => gh_issue.validate(ctx).await,
             Tool::InternalCommand(internal_command) => internal_command
-                .validate_simple()
+                .validate()
                 .map_err(|e| eyre::eyre!("Tool validation failed: {:?}", e)),
             Tool::Thinking(think) => think.validate(ctx).await,
         }
