@@ -853,7 +853,7 @@ impl ToolManager {
                             Err(ToolResult {
                                 tool_use_id: value.id.clone(),
                                 content: vec![ToolResultContentBlock::Text(format!(
-                                    "The tool, \"{name}\" is supplied with incorrect name"
+                                    "Tool call with {name} does not correspond to any existing tool."
                                 ))],
                                 status: ToolResultStatus::Error,
                             })
@@ -864,7 +864,7 @@ impl ToolManager {
                 let (server_name, tool_name) = name.split_once(NAMESPACE_DELIMITER).ok_or(ToolResult {
                     tool_use_id: value.id.clone(),
                     content: vec![ToolResultContentBlock::Text(format!(
-                        "The tool, \"{name}\" is supplied with incorrect name"
+                        "Tool call with {name} does not correspond to any existing tool."
                     ))],
                     status: ToolResultStatus::Error,
                 })?;
@@ -872,7 +872,7 @@ impl ToolManager {
                     return Err(ToolResult {
                         tool_use_id: value.id,
                         content: vec![ToolResultContentBlock::Text(format!(
-                            "The tool, \"{server_name}\" is not supported by the client"
+                            "Tool call with {name} does not correspond to any existing tool."
                         ))],
                         status: ToolResultStatus::Error,
                     });
