@@ -3,7 +3,6 @@ pub const APP_PROCESS_NAME: &str = "q_desktop.exe";
 
 /// TODO(brandonskiser): revert back to "qchat" for prompting login after standalone releases.
 pub const CLI_BINARY_NAME: &str = "q";
-#[allow(dead_code)]
 pub const CHAT_BINARY_NAME: &str = "qchat";
 
 pub const PRODUCT_NAME: &str = "Amazon Q";
