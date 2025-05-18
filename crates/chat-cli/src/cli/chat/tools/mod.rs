@@ -28,6 +28,7 @@ use thinking::Thinking;
 use use_aws::UseAws;
 
 use super::consts::MAX_TOOL_RESPONSE_SIZE;
+
 use super::util::images::RichImageBlocks;
 use crate::platform::Context;
 
@@ -420,3 +421,39 @@ mod tests {
         .await;
     }
 }
+
+/// Helper function to queue a summary display with consistent styling
+/// Only displays the summary if it exists (Some)
+/// 
+/// # Parameters
+/// * `summary` - Optional summary text to display
+/// * `updates` - The output to write to
+/// * `trailing_newlines` - Number of trailing newlines to add after the summary (defaults to 1)
+pub fn queue_summary(summary: Option<&str>, updates: &mut impl Write, trailing_newlines: Option<usize>) -> Result<()> {
+    if let Some(summary_text) = summary {
+        use crossterm::queue;
+        use crossterm::style::{self, Color};
+        
+        queue!(
+            updates,
+            style::Print("\n"),
+            style::Print(super::CONTINUATION_LINE),
+            style::Print("\n"),
+            style::Print(super::PURPOSE_ARROW),
+            style::SetForegroundColor(Color::Blue),
+            style::Print("Purpose: "),
+            style::ResetColor,
+            style::Print(summary_text),
+            style::Print("\n"),
+        )?;
+        
+        // Add any additional trailing newlines (default to 1 if not specified)
+        let newlines = trailing_newlines.unwrap_or(1);
+        for _ in 1..newlines {
+            queue!(updates, style::Print("\n"))?;
+        }
+    }
+    
+    Ok(())
+}
+
