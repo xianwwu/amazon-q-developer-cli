@@ -28,7 +28,6 @@ use thinking::Thinking;
 use use_aws::UseAws;
 
 use super::consts::MAX_TOOL_RESPONSE_SIZE;
-
 use super::util::images::RichImageBlocks;
 use crate::platform::Context;
 
@@ -424,7 +423,7 @@ mod tests {
 
 /// Helper function to queue a summary display with consistent styling
 /// Only displays the summary if it exists (Some)
-/// 
+///
 /// # Parameters
 /// * `summary` - Optional summary text to display
 /// * `updates` - The output to write to
@@ -432,8 +431,11 @@ mod tests {
 pub fn queue_summary(summary: Option<&str>, updates: &mut impl Write, trailing_newlines: Option<usize>) -> Result<()> {
     if let Some(summary_text) = summary {
         use crossterm::queue;
-        use crossterm::style::{self, Color};
-        
+        use crossterm::style::{
+            self,
+            Color,
+        };
+
         queue!(
             updates,
             style::Print("\n"),
@@ -446,14 +448,78 @@ pub fn queue_summary(summary: Option<&str>, updates: &mut impl Write, trailing_n
             style::Print(summary_text),
             style::Print("\n"),
         )?;
-        
+
         // Add any additional trailing newlines (default to 1 if not specified)
         let newlines = trailing_newlines.unwrap_or(1);
         for _ in 1..newlines {
             queue!(updates, style::Print("\n"))?;
         }
     }
-    
+
     Ok(())
 }
 
+/// Helper function to format function results with consistent styling
+///
+/// # Parameters
+/// * `result` - The result text to display
+/// * `updates` - The output to write to
+/// * `is_error` - Whether this is an error message (changes formatting)
+/// * `use_bullet` - Whether to use a bullet point instead of a tick/exclamation
+pub fn queue_function_result(result: &str, updates: &mut impl Write, is_error: bool, use_bullet: bool) -> Result<()> {
+    use crossterm::queue;
+    use crossterm::style::{
+        self,
+        Color,
+    };
+
+    // Split the result into lines for proper formatting
+    let lines = result.lines().collect::<Vec<_>>();
+    let color = if is_error { Color::Red } else { Color::Reset };
+
+    queue!(updates, style::Print("\n"))?;
+
+    // Use appropriate symbol based on parameters
+    if let Some(first_line) = lines.first() {
+        // Select symbol: bullet for summaries, tick/exclamation for operations
+        let symbol = if is_error {
+            super::ERROR_EXCLAMATION
+        } else if use_bullet {
+            super::TOOL_BULLET
+        } else {
+            super::SUCCESS_TICK
+        };
+
+        // Set color to green for success ticks
+        let text_color = if is_error {
+            Color::Red
+        } else if !use_bullet {
+            Color::Green
+        } else {
+            Color::Reset
+        };
+
+        queue!(
+            updates,
+            style::SetForegroundColor(text_color),
+            style::Print(symbol),
+            style::ResetColor,
+            style::Print(first_line),
+            style::Print("\n"),
+        )?;
+    }
+
+    // For any additional lines, indent them properly
+    for line in lines.iter().skip(1) {
+        queue!(
+            updates,
+            style::Print("   "), // Same indentation as the bullet
+            style::SetForegroundColor(color),
+            style::Print(line),
+            style::ResetColor,
+            style::Print("\n"),
+        )?;
+    }
+
+    Ok(())
+}

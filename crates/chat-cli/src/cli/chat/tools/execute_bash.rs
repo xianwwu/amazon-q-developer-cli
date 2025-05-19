@@ -122,7 +122,7 @@ impl ExecuteBash {
             style::Print("\n"),
             style::ResetColor
         )?;
-        
+
         // Add the summary if available
         super::queue_summary(self.summary.as_deref(), updates, Some(2))?;
 

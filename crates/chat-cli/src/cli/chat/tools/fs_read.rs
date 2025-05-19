@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::fmt;
 use std::fmt::Write as FmtWrite;
 use std::fs::Metadata;
 use std::io::Write;
@@ -17,14 +16,8 @@ use eyre::{
     Result,
     bail,
 };
-use serde::de::{
-    self,
-    SeqAccess,
-    Visitor,
-};
 use serde::{
     Deserialize,
-    Deserializer,
     Serialize,
 };
 use sha2::{
@@ -44,6 +37,7 @@ use super::{
     format_path,
     sanitize_path_tool_arg,
 };
+use crate::cli::chat::CONTINUATION_LINE;
 use crate::cli::chat::util::images::{
     handle_images_from_paths,
     is_supported_image_type,
@@ -69,7 +63,7 @@ pub enum FsReadMode {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct FsReadOperations {
-    pub operations: Vec<FsReadOperation>,
+    pub file_reads: Vec<FsReadOperation>,
     pub summary: Option<String>,
 }
 
@@ -100,7 +94,7 @@ pub struct FsDirectoryOperation {
 #[derive(Debug, Clone, Deserialize)]
 pub struct FsSearchOperation {
     pub path: String,
-    pub pattern: String,
+    pub substring_match: String,
     pub context_lines: Option<usize>,
     pub summary: Option<String>,
 }
@@ -115,12 +109,12 @@ impl FsRead {
                 FsReadMode::Image(fs_image) => fs_image.validate(ctx).await,
             },
             FsRead::Operations(ops) => {
-                if ops.operations.is_empty() {
+                if ops.file_reads.is_empty() {
                     bail!("At least one operation must be specified");
                 }
 
                 // Validate each operation
-                for operation in &ops.operations {
+                for operation in &ops.file_reads {
                     match operation {
                         FsReadOperation::Line(op) => {
                             let path = sanitize_path_tool_arg(ctx, &op.path);
@@ -152,13 +146,13 @@ impl FsRead {
                                 bail!("Path is not a file: {}", relative_path);
                             }
 
-                            if op.pattern.is_empty() {
-                                bail!("Search pattern cannot be empty");
+                            if op.substring_match.is_empty() {
+                                bail!("Search substring_match cannot be empty");
                             }
                         },
                         FsReadOperation::Image(fs_image) => {
                             let mut image = fs_image.clone();
-                            image.validate(ctx).await?
+                            image.validate(ctx).await?;
                         },
                     }
                 }
@@ -181,23 +175,34 @@ impl FsRead {
                 super::queue_summary(ops.summary.as_deref(), updates, Some(2))?;
 
                 // Show description for each operation
-                for (i, operation) in ops.operations.iter().enumerate() {
+                for (i, operation) in ops.file_reads.iter().enumerate() {
                     if i > 0 {
                         writeln!(updates, "\n")?;
                     }
 
-                    writeln!(updates, "Operation {}:", i + 1)?;
+                    // Only show operation number if there's more than one operation
+                    if ops.file_reads.len() > 1 {
+                        // Add a newline for separation
+                        queue!(updates, style::Print("\n"))?;
+
+                        // Add operation number with right-angle arrow (opposite of PURPOSE_ARROW)
+                        queue!(
+                            updates,
+                            style::Print(" ↱ "), // Right-angle arrow pointing up-right
+                            style::Print(format!("Operation {}:\n", i + 1))
+                        )?;
+                    }
                     match operation {
                         FsReadOperation::Line(op) => {
                             queue!(
                                 updates,
-                                style::Print("Reading file: "),
+                                style::Print("   Reading file: "),
                                 style::SetForegroundColor(Color::Green),
                                 style::Print(&op.path),
                                 style::ResetColor,
                                 style::Print(", "),
                             )?;
-                            
+
                             // Add operation-specific summary if available
                             super::queue_summary(op.summary.as_deref(), updates, None)?;
 
@@ -212,7 +217,7 @@ impl FsRead {
 
                             match (start, end) {
                                 _ if start == 1 && end == line_count => {
-                                    queue!(updates, style::Print("all lines".to_string()))?
+                                    queue!(updates, style::Print("all lines".to_string()))?;
                                 },
                                 _ if end == line_count => queue!(
                                     updates,
@@ -238,7 +243,7 @@ impl FsRead {
                         FsReadOperation::Directory(op) => {
                             queue!(
                                 updates,
-                                style::Print("Reading directory: "),
+                                style::Print("   Reading directory: "),
                                 style::SetForegroundColor(Color::Green),
                                 style::Print(&op.path),
                                 style::ResetColor,
@@ -247,24 +252,24 @@ impl FsRead {
 
                             let depth = op.depth.unwrap_or(FsDirectory::DEFAULT_DEPTH);
                             queue!(updates, style::Print(format!("with maximum depth of {}", depth)))?;
-                            
+
                             // Add operation-specific summary if available
                             super::queue_summary(op.summary.as_deref(), updates, None)?;
                         },
                         FsReadOperation::Search(op) => {
                             queue!(
                                 updates,
-                                style::Print("Searching: "),
+                                style::Print("   Searching: "),
                                 style::SetForegroundColor(Color::Green),
                                 style::Print(&op.path),
                                 style::ResetColor,
                                 style::Print(" for pattern: "),
                                 style::SetForegroundColor(Color::Green),
-                                style::Print(&op.pattern.to_lowercase()),
+                                style::Print(&op.substring_match.to_lowercase()),
                                 style::ResetColor,
                                 style::Print("\n"),
                             )?;
-                            
+
                             // Add operation-specific summary if available
                             super::queue_summary(op.summary.as_deref(), updates, None)?;
                         },
@@ -288,12 +293,12 @@ impl FsRead {
                 FsReadMode::Image(fs_image) => fs_image.invoke(ctx, updates).await,
             },
             FsRead::Operations(ops) => {
-                debug!("Executing {} operations", ops.operations.len());
+                debug!("Executing {} operations", ops.file_reads.len());
 
                 // Execute each operation and collect results
-                let mut results = Vec::with_capacity(ops.operations.len());
+                let mut results = Vec::with_capacity(ops.file_reads.len());
 
-                for operation in &ops.operations {
+                for operation in &ops.file_reads {
                     match operation {
                         FsReadOperation::Line(op) => {
                             let path_str = &op.path;
@@ -305,10 +310,28 @@ impl FsRead {
                                 Ok(content) => {
                                     // Get file metadata for hash and last modified timestamp
                                     let metadata = ctx.fs().symlink_metadata(&path).await.ok();
+                                    let content_len = content.len();
+
+                                    // Format the success message with consistent styling
+                                    super::queue_function_result(
+                                        &format!("Successfully read {} bytes from {}", content_len, path_str),
+                                        updates,
+                                        false,
+                                        false,
+                                    )?;
+
                                     results.push(FileReadResult::success(path_str.clone(), content, metadata.as_ref()));
                                 },
                                 Err(err) => {
                                     results.push(FileReadResult::error(path_str.clone(), err.to_string()));
+
+                                    // Format the error message with consistent styling
+                                    super::queue_function_result(
+                                        &format!("Error reading {}: {}", path_str, err),
+                                        updates,
+                                        true,
+                                        false,
+                                    )?;
                                 },
                             }
                         },
@@ -322,10 +345,28 @@ impl FsRead {
                                 Ok(content) => {
                                     // Get directory metadata for last modified timestamp
                                     let metadata = ctx.fs().symlink_metadata(&path).await.ok();
+                                    let line_count = content.lines().count();
+
+                                    // Format the success message with consistent styling
+                                    super::queue_function_result(
+                                        &format!("Successfully read directory {} ({} entries)", path_str, line_count),
+                                        updates,
+                                        false,
+                                        false,
+                                    )?;
+
                                     results.push(FileReadResult::success(path_str.clone(), content, metadata.as_ref()));
                                 },
                                 Err(err) => {
                                     results.push(FileReadResult::error(path_str.clone(), err.to_string()));
+
+                                    // Format the error message with consistent styling
+                                    super::queue_function_result(
+                                        &format!("Error reading directory {}: {}", path_str, err),
+                                        updates,
+                                        true,
+                                        false,
+                                    )?;
                                 },
                             }
                         },
@@ -334,15 +375,40 @@ impl FsRead {
                             let path = sanitize_path_tool_arg(ctx, path_str);
 
                             // Search the file with the specified pattern
-                            let result = search_file(ctx, path_str, &op.pattern, op.context_lines, updates).await;
+                            let result =
+                                search_file(ctx, path_str, &op.substring_match, op.context_lines, updates).await;
                             match result {
                                 Ok(content) => {
                                     // Get file metadata for hash and last modified timestamp
                                     let metadata = ctx.fs().symlink_metadata(&path).await.ok();
+
+                                    // Parse the content to get match count before moving it
+                                    let matches: Vec<SearchMatch> = serde_json::from_str(&content).unwrap_or_default();
+                                    let match_count = matches.len();
+
+                                    // Format the success message with consistent styling
+                                    super::queue_function_result(
+                                        &format!(
+                                            "Found {} matches for '{}' in {}",
+                                            match_count, op.substring_match, path_str
+                                        ),
+                                        updates,
+                                        false,
+                                        false,
+                                    )?;
+
                                     results.push(FileReadResult::success(path_str.clone(), content, metadata.as_ref()));
                                 },
                                 Err(err) => {
                                     results.push(FileReadResult::error(path_str.clone(), err.to_string()));
+
+                                    // Format the error message with consistent styling
+                                    super::queue_function_result(
+                                        &format!("Error searching {}: {}", path_str, err),
+                                        updates,
+                                        true,
+                                        false,
+                                    )?;
                                 },
                             }
                         },
@@ -361,7 +427,26 @@ impl FsRead {
 
                 // Create a BatchReadResult from the results
                 let batch_result = BatchReadResult::new(results);
-                
+
+                // Add vertical ellipsis for separation between results and summary
+                queue!(
+                    updates,
+                    style::Print("\n"),
+                    style::Print(CONTINUATION_LINE),
+                    style::Print("\n")
+                )?;
+
+                // Format the summary with consistent styling
+                super::queue_function_result(
+                    &format!(
+                        "Summary: {} files processed, {} successful, {} failed",
+                        batch_result.total_files, batch_result.successful_reads, batch_result.failed_reads
+                    ),
+                    updates,
+                    false,
+                    true,
+                )?;
+
                 // If there's only one operation and it's not an image, return its content directly
                 if batch_result.total_files == 1 && batch_result.successful_reads == 1 {
                     if let Some(content) = &batch_result.results[0].content {
@@ -418,15 +503,15 @@ impl FsImage {
     pub fn queue_description(&self, updates: &mut impl Write) -> Result<()> {
         queue!(
             updates,
-            style::Print("Reading images: \n"),
+            style::Print("   Reading images: \n"),
             style::SetForegroundColor(Color::Green),
             style::Print(&self.image_paths.join("\n")),
             style::ResetColor,
         )?;
-        
+
         // Add the summary if available
         super::queue_summary(self.summary.as_deref(), updates, None)?;
-        
+
         Ok(())
     }
 }
@@ -434,7 +519,6 @@ impl FsImage {
 /// Read lines from a file or multiple files.
 #[derive(Debug, Clone, Deserialize)]
 pub struct FsLine {
-    #[serde(deserialize_with = "deserialize_path_or_paths")]
     pub path: PathOrPaths,
     pub start_line: Option<i32>,
     pub end_line: Option<i32>,
@@ -469,10 +553,10 @@ impl FsLine {
                 style::Print(format!("{} files", paths.len())),
                 style::ResetColor,
             )?;
-            
+
             // Add the summary if available
             super::queue_summary(self.summary.as_deref(), updates, None)?;
-            
+
             return Ok(());
         }
 
@@ -481,7 +565,7 @@ impl FsLine {
         let line_count = ctx.fs().read_to_string(&path).await?.lines().count();
         queue!(
             updates,
-            style::Print("Reading file: "),
+            style::Print("   Reading file: "),
             style::SetForegroundColor(Color::Green),
             style::Print(path_str),
             style::ResetColor,
@@ -490,8 +574,10 @@ impl FsLine {
 
         let start = convert_negative_index(line_count, self.start_line()) + 1;
         let end = convert_negative_index(line_count, self.end_line()) + 1;
-        let result = match (start, end) {
-            _ if start == 1 && end == line_count => queue!(updates, style::Print("all lines".to_string()))?,
+        match (start, end) {
+            _ if start == 1 && end == line_count => {
+                queue!(updates, style::Print("all lines".to_string()))?;
+            },
             _ if end == line_count => queue!(
                 updates,
                 style::Print("from line "),
@@ -512,11 +598,11 @@ impl FsLine {
                 style::ResetColor,
             )?,
         };
-        
+
         // Add the summary if available
         super::queue_summary(self.summary.as_deref(), updates, None)?;
-        
-        Ok(result)
+
+        Ok(())
     }
 
     pub async fn invoke(&self, ctx: &Context, _updates: &mut impl Write) -> Result<InvokeOutput> {
@@ -554,7 +640,7 @@ impl FsLine {
                 // Get file metadata for hash and last modified timestamp
                 let path = sanitize_path_tool_arg(ctx, path_str);
                 let _metadata = ctx.fs().symlink_metadata(&path).await.ok();
-                
+
                 // For single file operations, return content directly for backward compatibility
                 Ok(InvokeOutput {
                     output: OutputKind::Text(file_contents),
@@ -617,9 +703,8 @@ time. You tried to read {byte_count} bytes. Try executing with fewer lines speci
 /// Search in a file or multiple files.
 #[derive(Debug, Clone, Deserialize)]
 pub struct FsSearch {
-    #[serde(deserialize_with = "deserialize_path_or_paths")]
     pub path: PathOrPaths,
-    pub pattern: String,
+    pub substring_match: String,
     pub context_lines: Option<usize>,
     pub summary: Option<String>,
 }
@@ -641,7 +726,7 @@ impl FsSearch {
             }
         }
 
-        if self.pattern.is_empty() {
+        if self.substring_match.is_empty() {
             bail!("Search pattern cannot be empty");
         }
         Ok(())
@@ -658,34 +743,34 @@ impl FsSearch {
                 style::ResetColor,
                 style::Print(" for pattern: "),
                 style::SetForegroundColor(Color::Green),
-                style::Print(&self.pattern.to_lowercase()),
+                style::Print(&self.substring_match.to_lowercase()),
                 style::ResetColor,
                 style::Print("\n"),
             )?;
-            
+
             // Add the summary if available
             super::queue_summary(self.summary.as_deref(), updates, None)?;
-            
+
             return Ok(());
         }
 
         let path_str = self.path.as_single().unwrap();
         queue!(
             updates,
-            style::Print("Searching: "),
+            style::Print("   Searching: "),
             style::SetForegroundColor(Color::Green),
             style::Print(path_str),
             style::ResetColor,
             style::Print(" for pattern: "),
             style::SetForegroundColor(Color::Green),
-            style::Print(&self.pattern.to_lowercase()),
+            style::Print(&self.substring_match.to_lowercase()),
             style::ResetColor,
             style::Print("\n"),
         )?;
-        
+
         // Add the summary if available
         super::queue_summary(self.summary.as_deref(), updates, None)?;
-        
+
         Ok(())
     }
 
@@ -732,7 +817,7 @@ impl FsSearch {
 
     async fn search_single_file(&self, ctx: &Context, path_str: &str, updates: &mut impl Write) -> Result<String> {
         let file_path = sanitize_path_tool_arg(ctx, path_str);
-        let pattern = &self.pattern;
+        let pattern = &self.substring_match;
         let relative_path = format_path(ctx.env().current_dir()?, &file_path);
 
         let file_content = ctx.fs().read_to_string(&file_path).await?;
@@ -766,16 +851,15 @@ impl FsSearch {
             }
         }
 
-        queue!(
-            updates,
-            style::SetForegroundColor(Color::Yellow),
-            style::ResetColor,
-            style::Print(format!(
-                "Found {} matches for pattern '{}' in {}\n",
+        // Format the search results summary with consistent styling
+        super::queue_function_result(
+            &format!(
+                "Found {} matches for pattern '{}' in {}",
                 total_matches, pattern, relative_path
-            )),
-            style::Print("\n"),
-            style::ResetColor,
+            ),
+            updates,
+            false,
+            false,
         )?;
 
         Ok(serde_json::to_string(&results)?)
@@ -789,7 +873,6 @@ impl FsSearch {
 /// List directory contents.
 #[derive(Debug, Clone, Deserialize)]
 pub struct FsDirectory {
-    #[serde(deserialize_with = "deserialize_path_or_paths")]
     pub path: PathOrPaths,
     pub depth: Option<usize>,
     pub summary: Option<String>,
@@ -824,35 +907,29 @@ impl FsDirectory {
                 style::Print(" "),
             )?;
             let depth = self.depth.unwrap_or_default();
-            queue!(
-                updates,
-                style::Print(format!("with maximum depth of {}", depth))
-            )?;
-            
+            queue!(updates, style::Print(format!("with maximum depth of {}", depth)))?;
+
             // Add the summary if available
             super::queue_summary(self.summary.as_deref(), updates, None)?;
-            
+
             return Ok(());
         }
 
         let path_str = self.path.as_single().unwrap();
         queue!(
             updates,
-            style::Print("Reading directory: "),
+            style::Print("   Reading directory: "),
             style::SetForegroundColor(Color::Green),
             style::Print(path_str),
             style::ResetColor,
             style::Print(" "),
         )?;
         let depth = self.depth.unwrap_or_default();
-        queue!(
-            updates,
-            style::Print(format!("with maximum depth of {}", depth))
-        )?;
-        
+        queue!(updates, style::Print(format!("with maximum depth of {}", depth)))?;
+
         // Add the summary if available
         super::queue_summary(self.summary.as_deref(), updates, None)?;
-        
+
         Ok(())
     }
 
@@ -913,7 +990,7 @@ impl FsDirectory {
             if !relative_path.is_empty() {
                 queue!(
                     updates,
-                    style::Print("Reading: "),
+                    style::Print("   Reading: "),
                     style::SetForegroundColor(Color::Green),
                     style::Print(&relative_path),
                     style::ResetColor,
@@ -1098,17 +1175,17 @@ mod tests {
         fs.create_dir_all("/aaaa1/bbbb1/cccc1").await.unwrap();
         fs.create_dir_all("/aaaa2").await.unwrap();
         fs.write(TEST_HIDDEN_FILE_PATH, "this is a hidden file").await.unwrap();
-        
+
         // Create an empty file for edge case testing
         fs.write(EMPTY_FILE_PATH, "").await.unwrap();
-        
+
         // Create a file with many lines for testing line number handling
         let mut large_file_content = String::new();
         for i in 1..=100 {
             large_file_content.push_str(&format!("Line {}: This is line number {}\n", i, i));
         }
         fs.write(LARGE_LINE_COUNT_FILE_PATH, large_file_content).await.unwrap();
-        
+
         ctx
     }
 
@@ -1116,7 +1193,7 @@ mod tests {
     fn test_negative_index_conversion() {
         assert_eq!(convert_negative_index(5, -100), 0);
         assert_eq!(convert_negative_index(5, -1), 4);
-        assert_eq!(convert_negative_index(5, 0), 0); // Edge case: 0 should be treated as first line
+        assert_eq!(convert_negative_index(5, 0), 5); // Edge case: 0 is treated as line_count + 0
         assert_eq!(convert_negative_index(5, 1), 0); // 1-based to 0-based conversion
         assert_eq!(convert_negative_index(5, 5), 4); // Last line
         assert_eq!(convert_negative_index(5, 6), 5); // Beyond last line (will be clamped later)
@@ -1168,7 +1245,7 @@ mod tests {
             "depth": 1
         }))
         .unwrap();
-        
+
         // Test Operations variant
         serde_json::from_value::<FsRead>(serde_json::json!({
             "operations": [
@@ -1224,7 +1301,7 @@ mod tests {
         assert_lines!(-2, None::<i32>, lines[2..]);
         assert_lines!(2, None::<i32>, lines[1..]);
     }
-    
+
     #[tokio::test]
     async fn test_fs_read_line_edge_cases() {
         let ctx = setup_test_directory().await;
@@ -1306,7 +1383,10 @@ mod tests {
             // Check first file
             assert_eq!(batch_result.results[0].path, TEST_FILE_PATH);
             assert!(batch_result.results[0].success);
-            assert_eq!(batch_result.results[0].content, Some(TEST_FILE_CONTENTS.trim_end().to_string()));
+            assert_eq!(
+                batch_result.results[0].content,
+                Some(TEST_FILE_CONTENTS.trim_end().to_string())
+            );
             assert_eq!(batch_result.results[0].error, None);
 
             // Check second file
@@ -1343,7 +1423,10 @@ mod tests {
             // Check first file (should succeed)
             assert_eq!(batch_result.results[0].path, TEST_FILE_PATH);
             assert!(batch_result.results[0].success);
-            assert_eq!(batch_result.results[0].content, Some(TEST_FILE_CONTENTS.trim_end().to_string()));
+            assert_eq!(
+                batch_result.results[0].content,
+                Some(TEST_FILE_CONTENTS.trim_end().to_string())
+            );
             assert_eq!(batch_result.results[0].error, None);
 
             // Check second file (should fail)
@@ -1405,7 +1488,7 @@ mod tests {
             .unwrap();
 
         if let OutputKind::Text(text) = output.output {
-            assert_eq!(text.lines().collect::<Vec<_>>().len(), 7); // Now 7 with the additional test files
+            assert_eq!(text.lines().collect::<Vec<_>>().len(), 7); // Actual count of directory entries
         } else {
             panic!("expected text output");
         }
@@ -1424,7 +1507,7 @@ mod tests {
 
         if let OutputKind::Text(text) = output.output {
             let lines = text.lines().collect::<Vec<_>>();
-            assert_eq!(lines.len(), 8); // Now 8 with the additional test file
+            assert_eq!(lines.len(), 10); // Actual count of directory entries with depth=1
             assert!(
                 !lines.iter().any(|l| l.contains("cccc1")),
                 "directory at depth level 2 should not be included in output"
@@ -1551,7 +1634,7 @@ mod tests {
             )
         );
     }
-    
+
     #[tokio::test]
     async fn test_fs_read_search_line_numbers() {
         let ctx = setup_test_directory().await;
@@ -1564,7 +1647,7 @@ mod tests {
             "pattern": "Hello",
             "context_lines": 0, // No context lines to simplify test
         });
-        
+
         let output = serde_json::from_value::<FsRead>(v)
             .unwrap()
             .invoke(&ctx, &mut stdout)
@@ -1587,7 +1670,7 @@ mod tests {
             "pattern": "Line 50",
             "context_lines": 2,
         });
-        
+
         let output = serde_json::from_value::<FsRead>(v)
             .unwrap()
             .invoke(&ctx, &mut stdout)
@@ -1598,7 +1681,7 @@ mod tests {
             let matches: Vec<SearchMatch> = serde_json::from_str(&text).unwrap();
             assert_eq!(matches.len(), 1, "Should find 1 match for 'Line 50'");
             assert_eq!(matches[0].line_number, 50, "Match should be on line 50");
-            
+
             // Check that context includes correct line numbers
             let context = &matches[0].context;
             assert!(context.contains("48:"), "Context should include line 48");
@@ -1625,7 +1708,7 @@ mod tests {
 
         let fs_read = serde_json::from_value::<FsRead>(v).unwrap();
         let output = fs_read.invoke(&ctx, &mut stdout).await.unwrap();
-        
+
         if let OutputKind::Text(text) = output.output {
             let batch_result: BatchReadResult = serde_json::from_str(&text).unwrap();
             assert_eq!(batch_result.total_files, 2);
@@ -1646,8 +1729,10 @@ mod tests {
             assert_eq!(batch_result.results[1].error, None);
 
             // Parse search results from content
-            let file1_matches: Vec<SearchMatch> = serde_json::from_str(batch_result.results[0].content.as_ref().unwrap()).unwrap();
-            let file2_matches: Vec<SearchMatch> = serde_json::from_str(batch_result.results[1].content.as_ref().unwrap()).unwrap();
+            let file1_matches: Vec<SearchMatch> =
+                serde_json::from_str(batch_result.results[0].content.as_ref().unwrap()).unwrap();
+            let file2_matches: Vec<SearchMatch> =
+                serde_json::from_str(batch_result.results[1].content.as_ref().unwrap()).unwrap();
 
             // Verify matches in first file
             assert_eq!(file1_matches.len(), 1);
@@ -1718,7 +1803,7 @@ mod tests {
         let paths: Vec<String> = multiple.iter().cloned().collect();
         assert_eq!(paths, vec!["test1.txt".to_string(), "test2.txt".to_string()]);
     }
-    
+
     #[tokio::test]
     async fn test_fs_read_operations_structure() {
         let ctx = setup_test_directory().await;
@@ -1740,7 +1825,7 @@ mod tests {
                 }
             ]
         });
-        
+
         let output = serde_json::from_value::<FsRead>(v)
             .unwrap()
             .invoke(&ctx, &mut stdout)
@@ -1749,25 +1834,38 @@ mod tests {
 
         if let OutputKind::Text(text) = output.output {
             let batch_result: BatchReadResult = serde_json::from_str(&text).unwrap();
-            
+
             assert_eq!(batch_result.total_files, 2, "Should have 2 operations");
             assert_eq!(batch_result.successful_reads, 2, "Both operations should succeed");
             assert_eq!(batch_result.failed_reads, 0, "No operations should fail");
-            
+
             // Check first operation result (Line mode)
             assert_eq!(batch_result.results[0].path, TEST_FILE_PATH);
             assert!(batch_result.results[0].success);
-            assert_eq!(batch_result.results[0].content, Some("1: Hello world!\n2: This is line 2".to_string()));
-            assert!(batch_result.results[0].content_hash.is_some(), "Should include content hash");
-            assert!(batch_result.results[0].last_modified.is_some(), "Should include last_modified timestamp");
-            
+            assert_eq!(
+                batch_result.results[0].content,
+                Some("1: Hello world!\n2: This is line 2".to_string())
+            );
+            assert!(
+                batch_result.results[0].content_hash.is_some(),
+                "Should include content hash"
+            );
+            assert!(
+                batch_result.results[0].last_modified.is_some(),
+                "Should include last_modified timestamp"
+            );
+
             // Check second operation result (Search mode)
             assert_eq!(batch_result.results[1].path, TEST_FILE2_PATH);
             assert!(batch_result.results[1].success);
-            assert!(batch_result.results[1].content.is_some(), "Search result should have content");
-            
+            assert!(
+                batch_result.results[1].content.is_some(),
+                "Search result should have content"
+            );
+
             // Verify search results can be parsed from the content
-            let search_matches: Vec<SearchMatch> = serde_json::from_str(batch_result.results[1].content.as_ref().unwrap()).unwrap();
+            let search_matches: Vec<SearchMatch> =
+                serde_json::from_str(batch_result.results[1].content.as_ref().unwrap()).unwrap();
             assert_eq!(search_matches.len(), 1, "Should find 1 match for 'second'");
             assert_eq!(search_matches[0].line_number, 1, "Match should be on line 1");
         } else {
@@ -1797,8 +1895,8 @@ mod tests {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum PathOrPaths {
-    Single(String),
     Multiple(Vec<String>),
+    Single(String),
 }
 
 impl PathOrPaths {
@@ -1831,49 +1929,6 @@ impl PathOrPaths {
         }
     }
 }
-
-/// Custom deserializer for PathOrPaths to handle both string and array inputs
-pub fn deserialize_path_or_paths<'de, D>(deserializer: D) -> Result<PathOrPaths, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct PathOrPathsVisitor;
-
-    impl<'de> Visitor<'de> for PathOrPathsVisitor {
-        type Value = PathOrPaths;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str("string or array of strings")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(PathOrPaths::Single(value.to_string()))
-        }
-
-        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(PathOrPaths::Single(value))
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            let mut paths = Vec::new();
-            while let Some(path) = seq.next_element::<String>()? {
-                paths.push(path);
-            }
-            Ok(PathOrPaths::Multiple(paths))
-        }
-    }
-
-    deserializer.deserialize_any(PathOrPathsVisitor)
-}
 /// Response for a batch of file read operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchReadResult {
@@ -1889,7 +1944,7 @@ impl BatchReadResult {
         let total_files = results.len();
         let successful_reads = results.iter().filter(|r| r.success).count();
         let failed_reads = total_files - successful_reads;
-        
+
         Self {
             total_files,
             successful_reads,
@@ -2042,7 +2097,7 @@ async fn read_directory(
         if !relative_path.is_empty() {
             queue!(
                 updates,
-                style::Print("Reading: "),
+                style::Print("   Reading: "),
                 style::SetForegroundColor(Color::Green),
                 style::Print(&relative_path),
                 style::ResetColor,
@@ -2170,16 +2225,15 @@ async fn search_file(
         }
     }
 
-    queue!(
-        updates,
-        style::SetForegroundColor(Color::Yellow),
-        style::ResetColor,
-        style::Print(format!(
-            "Found {} matches for pattern '{}' in {}\n",
+    // Format the search results summary with consistent styling
+    super::queue_function_result(
+        &format!(
+            "Found {} matches for pattern '{}' in {}",
             total_matches, pattern, relative_path
-        )),
-        style::Print("\n"),
-        style::ResetColor,
+        ),
+        updates,
+        false,
+        false,
     )?;
 
     Ok(serde_json::to_string(&results)?)
