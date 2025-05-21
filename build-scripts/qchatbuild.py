@@ -82,8 +82,17 @@ def build_chat_bin(
         return out_path
 
 
-def build_macos(chat_path: pathlib.Path):
+def sign_and_notarize(chat_path: pathlib.Path):
+    # First, sign the application
+
+    # Next, notarize the application
+
+    # Last, staple the notarization to the application
     pass
+
+
+def build_macos(chat_path: pathlib.Path):
+    sign_and_notarize(chat_path)
 
 
 def build_linux(chat_path: pathlib.Path):
