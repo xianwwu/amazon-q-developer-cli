@@ -1,0 +1,11 @@
+type: :app # no need to change this for .pkg, .dmg and executables
+os: :osx
+name: __NAME__ # This should be the file name
+outputs:
+- label: macos
+  path: __NAME__ # This should be the file name
+app:
+  :identifier: com.amazon.codewhisperer # this must equal the Bundle Identifier value in the embedded Info.plist
+  signing_requirements:
+    certificate_type: :developerIDAppDistribution
+    app_id_prefix: 94KV3E626L # AMZN Mobile LLC
