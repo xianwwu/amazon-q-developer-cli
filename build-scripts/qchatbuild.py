@@ -108,6 +108,9 @@ def get_creds():
 
 
 def cd_signer_request(method: str, path: str, data: str | None = None):
+    """
+    Sends a request to the CD Signer API.
+    """
     SigV4Auth = import_module("botocore.auth").SigV4Auth
     AWSRequest = import_module("botocore.awsrequest").AWSRequest
     requests = import_module("requests")
@@ -130,6 +133,10 @@ def cd_signer_request(method: str, path: str, data: str | None = None):
 
 
 def cd_signer_create_request(manifest: Any) -> str:
+    """
+    Sends a POST request to create a new signing request. After creation, we
+    need to send another request to start it.
+    """
     response = cd_signer_request(
         method="POST",
         path="/signing_requests",
@@ -142,6 +149,9 @@ def cd_signer_create_request(manifest: Any) -> str:
 
 
 def cd_signer_start_request(request_id: str, source_key: str, destination_key: str, signing_data: CdSigningData):
+    """
+    Sends a POST request to start the signing process.
+    """
     response_text = cd_signer_request(
         method="POST",
         path=f"/signing_requests/{request_id}/start",
@@ -179,21 +189,36 @@ def cd_build_signed_package(file_path: pathlib.Path):
     | | ├─ qchat
     ```
     """
+    # working_dir = BUILD_DIR / "package"
+    # shutil.rmtree(working_dir, ignore_errors=True)
+    # (BUILD_DIR / "package" / "artifact" / "EXECUTABLES_TO_SIGN").mkdir(parents=True)
+    #
+    # name = file_path.name
+    #
+    # # Write the manifest.yaml
+    # manifest_template_path = pathlib.Path.cwd() / "build-config" / "signing" / "qchat" / "manifest.yaml.template"
+    # (working_dir / "manifest.yaml").write_text(manifest_template_path.read_text().replace("__NAME__", name))
+    #
+    # shutil.copy2(file_path, working_dir / "artifact" / "EXECUTABLES_TO_SIGN" / file_path.name)
+    # file_path.unlink()
+    #
+    # run_cmd(
+    #     ["gtar", "-czf", BUILD_DIR / "package.tar.gz", "manifest.yaml", "artifact"],
+    #     cwd=working_dir,
+    # )
+
+    # Trying a different format without manifest.yaml and placing EXECUTABLES_TO_SIGN
+    # at the root.
+    # The docs contain conflicting information, idk what to even do here
     working_dir = BUILD_DIR / "package"
     shutil.rmtree(working_dir, ignore_errors=True)
-    (BUILD_DIR / "package" / "artifact" / "EXECUTABLES_TO_SIGN").mkdir(parents=True)
+    (BUILD_DIR / "package" / "EXECUTABLES_TO_SIGN").mkdir(parents=True)
 
-    name = file_path.name
-
-    # Write the manifest.yaml
-    manifest_template_path = pathlib.Path.cwd() / "build-config" / "signing" / "qchat" / "manifest.yaml.template"
-    (working_dir / "manifest.yaml").write_text(manifest_template_path.read_text().replace("__NAME__", name))
-
-    shutil.copy2(file_path, working_dir / "artifact" / "EXECUTABLES_TO_SIGN" / file_path.name)
+    shutil.copy2(file_path, working_dir / "EXECUTABLES_TO_SIGN" / file_path.name)
     file_path.unlink()
 
     run_cmd(
-        ["gtar", "-czf", BUILD_DIR / "package.tar.gz", "manifest.yaml", "artifact"],
+        ["gtar", "-czf", BUILD_DIR / "package.tar.gz", "."],
         cwd=working_dir,
     )
 
