@@ -15,7 +15,7 @@ from signing import (
     cd_sign_file,
     apple_notarize_file,
 )
-from util import info, isDarwin, run_cmd, warn
+from util import debug, info, isDarwin, run_cmd, warn
 from rust import cargo_cmd_name, rust_env, rust_targets
 from importlib import import_module
 
@@ -121,6 +121,7 @@ def cd_signer_request(method: str, path: str, data: str | None = None):
     SigV4Auth(get_creds(), "signer-builder-tools", REGION).add_auth(request)
 
     for i in range(1, 8):
+        debug(f"Sending request {method} to {url} with data: {data}")
         response = requests.request(method=method, url=url, headers=dict(request.headers), data=data)
         info(f"CDSigner Request ({url}): {response.status_code}")
         if response.status_code == 429:
@@ -187,6 +188,13 @@ def cd_build_signed_package(file_path: pathlib.Path):
     ├─ artifact
     | ├─ EXECUTABLES_TO_SIGN
     | | ├─ qchat
+    ```
+
+    Try #2:
+    ```
+    package
+    ├─ EXECUTABLES_TO_SIGN
+    | ├─ qchat
     ```
     """
     # working_dir = BUILD_DIR / "package"
