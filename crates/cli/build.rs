@@ -46,26 +46,26 @@ struct Def {
 #[cfg(target_os = "macos")]
 fn write_plist() {
     let plist = format!(
-        r#"
-<?xml version="1.0" encoding="UTF-8"?>
+        r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.amazon.codewhisperer</string>
-    <key>CFBundleName</key>
-    <string>{}</string>
-    <key>CFBundleVersion</key>
-    <string>{}</string>
-    <key>CFBundleShortVersionString</key>
-    <string>{}/string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2022 Amazon Q CLI Team (q-cli@amazon.com):Chay Nabors (nabochay@amazon.com):Brandon Kiser (bskiser@amazon.com) All rights reserved.</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.amazon.codewhisperer</string>
+	<key>CFBundleName</key>
+	<string>{}</string>
+	<key>CFBundleVersion</key>
+	<string>{}</string>
+	<key>CFBundleShortVersionString</key>
+	<string>{}</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2022 Amazon Q CLI Team (q-cli@amazon.com):Chay Nabors (nabochay@amazon.com):Brandon Kiser (bskiser@amazon.com) All rights reserved.</string>
 </dict>
+</plist>
 "#,
         option_env!("AMAZON_Q_BUILD_HASH").unwrap_or("unknown"),
         option_env!("AMAZON_Q_BUILD_DATETIME").unwrap_or("unknown"),

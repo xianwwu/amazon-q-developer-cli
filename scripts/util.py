@@ -105,6 +105,8 @@ def run_cmd_output(
     env: Env | None = None,
     cwd: Cwd | None = None,
 ) -> str:
+    args_str = [str(arg) for arg in args]
+    print(f"+ {shlex.join(args_str)}")
     res = subprocess.run(args, env=env, cwd=cwd, check=True, stdout=subprocess.PIPE)
     return res.stdout.decode("utf-8")
 

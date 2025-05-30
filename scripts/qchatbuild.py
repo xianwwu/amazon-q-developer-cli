@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import json
 import pathlib
 from functools import cache
@@ -8,14 +9,9 @@ from typing import Any, Mapping, Sequence
 from build import generate_sha
 from const import APPLE_TEAM_ID, CHAT_BINARY_NAME, CHAT_PACKAGE_NAME, LINUX_ARCHIVE_NAME
 from signing import (
-    CdSigningData,
-    CdSigningType,
     load_gpg_signer,
-    rebundle_dmg,
-    cd_sign_file,
-    apple_notarize_file,
 )
-from util import debug, info, isDarwin, run_cmd, warn
+from util import debug, info, isDarwin, run_cmd, run_cmd_output, warn
 from rust import cargo_cmd_name, rust_env, rust_targets
 from importlib import import_module
 
@@ -24,6 +20,19 @@ BUILD_DIR = BUILD_DIR_RELATIVE.absolute()
 
 REGION = "us-west-2"
 SIGNING_API_BASE_URL = "https://api.signer.builder-tools.aws.dev"
+MACOS_BUNDLE_ID = "com.amazon.codewhisperer"
+
+
+@dataclass
+class CdSigningData:
+    bucket_name: str
+    '''The bucket hosting signing artifacts accessible by CD Signer.'''
+    aws_account_id: str
+    '''The id of the account hosting the build'''
+    aws_region: str
+    '''The AWS region where the app is built'''
+    notarizing_secret_id: str
+    signing_role_name: str
 
 
 def run_cargo_tests():
@@ -179,42 +188,15 @@ def cd_signer_status_request(request_id: str):
     return response_json["signingRequest"]["status"]
 
 
-def cd_build_signed_package(file_path: pathlib.Path):
+def cd_build_signed_package(exe_path: pathlib.Path):
     """
     Creates a tarball `package.tar.gz` with the following structure:
-    ```
-    package
-    ├─ manifest.yaml
-    ├─ artifact
-    | ├─ EXECUTABLES_TO_SIGN
-    | | ├─ qchat
-    ```
-
-    Try #2:
     ```
     package
     ├─ EXECUTABLES_TO_SIGN
     | ├─ qchat
     ```
     """
-    # working_dir = BUILD_DIR / "package"
-    # shutil.rmtree(working_dir, ignore_errors=True)
-    # (BUILD_DIR / "package" / "artifact" / "EXECUTABLES_TO_SIGN").mkdir(parents=True)
-    #
-    # name = file_path.name
-    #
-    # # Write the manifest.yaml
-    # manifest_template_path = pathlib.Path.cwd() / "build-config" / "signing" / "qchat" / "manifest.yaml.template"
-    # (working_dir / "manifest.yaml").write_text(manifest_template_path.read_text().replace("__NAME__", name))
-    #
-    # shutil.copy2(file_path, working_dir / "artifact" / "EXECUTABLES_TO_SIGN" / file_path.name)
-    # file_path.unlink()
-    #
-    # run_cmd(
-    #     ["gtar", "-czf", BUILD_DIR / "package.tar.gz", "manifest.yaml", "artifact"],
-    #     cwd=working_dir,
-    # )
-
     # Trying a different format without manifest.yaml and placing EXECUTABLES_TO_SIGN
     # at the root.
     # The docs contain conflicting information, idk what to even do here
@@ -222,11 +204,12 @@ def cd_build_signed_package(file_path: pathlib.Path):
     shutil.rmtree(working_dir, ignore_errors=True)
     (BUILD_DIR / "package" / "EXECUTABLES_TO_SIGN").mkdir(parents=True)
 
-    shutil.copy2(file_path, working_dir / "EXECUTABLES_TO_SIGN" / file_path.name)
-    file_path.unlink()
+    shutil.copy2(exe_path, working_dir / "EXECUTABLES_TO_SIGN" / exe_path.name)
+    exe_path.unlink()
 
+    run_cmd(["gtar", "-czf", "artifact.gz", "EXECUTABLES_TO_SIGN"], cwd=working_dir)
     run_cmd(
-        ["gtar", "-czf", BUILD_DIR / "package.tar.gz", "."],
+        ["gtar", "-czf", BUILD_DIR / "package.tar.gz", "artifact.gz"],
         cwd=working_dir,
     )
 
@@ -234,18 +217,16 @@ def cd_build_signed_package(file_path: pathlib.Path):
 
 
 def manifest(
-    name: str,
     identifier: str,
 ):
     """
-    Creates the required manifest argument when submitting the signing task. This has the same
-    structure as the manifest.yaml.template under `build-config/signing/qchat/manifest.yaml.template`
+    Returns the manifest arguments required when creating a new CD Signer request.
     """
     return {
         "type": "app",
         "os": "osx",
-        "name": name,
-        "outputs": [{"label": "macos", "path": name}],
+        "name": "EXECUTABLES_TO_SIGN",
+        "outputs": [{"label": "macos", "path": "EXECUTABLES_TO_SIGN"}],
         "app": {
             "identifier": identifier,
             "signing_requirements": {
@@ -256,7 +237,7 @@ def manifest(
     }
 
 
-def sign_executable(signing_data: CdSigningData, chat_path: pathlib.Path):
+def sign_executable(signing_data: CdSigningData, chat_path: pathlib.Path) -> pathlib.Path:
     name = chat_path.name
     info(f"Signing {name}")
 
@@ -269,7 +250,7 @@ def sign_executable(signing_data: CdSigningData, chat_path: pathlib.Path):
     run_cmd(["aws", "s3", "cp", package_path, f"s3://{signing_data.bucket_name}/pre-signed/package.tar.gz"])
 
     info("Sending request...")
-    request_id = cd_signer_create_request(manifest(name, "com.amazon.codewhisperer"))
+    request_id = cd_signer_create_request(manifest("com.amazon.codewhisperer"))
     cd_signer_start_request(
         request_id=request_id,
         source_key="pre-signed/package.tar.gz",
@@ -303,18 +284,60 @@ def sign_executable(signing_data: CdSigningData, chat_path: pathlib.Path):
     info("Signed!")
 
     info("Downloading...")
-    run_cmd(["aws", "s3", "cp", f"s3://{signing_data.bucket_name}/signed/signed.zip", "signed.zip"])
-    run_cmd(["unzip", "signed.zip"])
+    # CD Signer should return the signed executable under "Payload/EXECUTABLES_TO_SIGN/{executable name}"
+    run_cmd(["aws", "s3", "cp", f"s3://{signing_data.bucket_name}/signed/signed.zip", "signed.zip"], cwd=BUILD_DIR)
+
+    # Create a new directory for unzipping the signed executable.
+    payload_path = BUILD_DIR / "signed"
+    shutil.rmtree(payload_path, ignore_errors=True)
+    run_cmd(["unzip", "signed.zip", "-d", payload_path], cwd=BUILD_DIR)
+    signed_exe_path = BUILD_DIR / "signed" / "Payload" / "EXECUTABLES_TO_SIGN" / name
+    # Verify that the exe is signed
+    run_cmd(["codesign", "--verify", "--verbose=4", signed_exe_path])
+    return signed_exe_path
+
+
+def notarize_executable(signing_data: CdSigningData, executable_path: pathlib.Path):
+    # Load the Apple id and password from secrets manager.
+    secret_id = signing_data.notarizing_secret_id
+    info(f"Loading secretmanager value: {secret_id}")
+    secret_value = run_cmd_output(["aws", "--region", signing_data.aws_region, "secretsmanager", "get-secret-value", "--secret-id", secret_id])
+    secret_string = json.loads(secret_value)["SecretString"]
+    secrets = json.loads(secret_string)
+
+    # Submit the exe to Apple notary service. It must be zipped first.
+    info(f"Submitting {executable_path} to Apple notary service")
+    zip_path = BUILD_DIR / f"{executable_path.name}.zip"
+    zip_path.unlink(missing_ok=True)
+    run_cmd(["zip", "-j", zip_path, executable_path], cwd=BUILD_DIR)
+    submit_res = run_cmd_output(
+        [
+            "xcrun",
+            "notarytool",
+            "submit",
+            zip_path,
+            "--team-id",
+            APPLE_TEAM_ID,
+            "--apple-id",
+            secrets["appleId"],
+            "--password",
+            secrets["appleIdPassword"],
+            "--wait",
+            "-f", "json"
+        ]
+    )
+    debug(f"Notary service response: {submit_res}")
+
+    # Confirm notarization succeeded.
+    assert(json.loads(submit_res)["status"] == "Accepted")
 
 
 def sign_and_notarize(signing_data: CdSigningData, chat_path: pathlib.Path):
     # First, sign the application
-    sign_executable(signing_data, chat_path)
+    executable_path = sign_executable(signing_data, chat_path)
 
     # Next, notarize the application
-
-    # Last, staple the notarization to the application
-    pass
+    notarize_executable(signing_data, executable_path)
 
 
 def build_macos(chat_path: pathlib.Path, signing_data: CdSigningData | None):
@@ -382,16 +405,18 @@ def build(
     output_bucket: str | None = None,
     signing_bucket: str | None = None,
     aws_account_id: str | None = None,
+    aws_region: str | None = None,
     apple_id_secret: str | None = None,
     signing_role_name: str | None = None,
     stage_name: str | None = None,
     run_lints: bool = True,
     run_test: bool = True,
 ):
-    if signing_bucket and aws_account_id and apple_id_secret and signing_role_name:
+    if signing_bucket and aws_account_id and aws_region and apple_id_secret and signing_role_name:
         signing_data = CdSigningData(
             bucket_name=signing_bucket,
             aws_account_id=aws_account_id,
+            aws_region=aws_region,
             notarizing_secret_id=apple_id_secret,
             signing_role_name=signing_role_name,
         )
@@ -428,16 +453,6 @@ def build(
     )
 
     if isDarwin():
-        if signing_bucket and aws_account_id and apple_id_secret and signing_role_name:
-            signing_data = CdSigningData(
-                bucket_name=signing_bucket,
-                aws_account_id=aws_account_id,
-                notarizing_secret_id=apple_id_secret,
-                signing_role_name=signing_role_name,
-            )
-        else:
-            signing_data = None
-
         chat_path = build_macos(chat_path, signing_data)
         sha_path = generate_sha(chat_path)
 

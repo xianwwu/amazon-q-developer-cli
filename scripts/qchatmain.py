@@ -40,6 +40,11 @@ build_subparser.add_argument(
     help="The AWS account ID",
 )
 build_subparser.add_argument(
+    "--aws-region",
+    action=StoreIfNotEmptyAction,
+    help="The AWS region",
+)
+build_subparser.add_argument(
     "--apple-id-secret",
     action=StoreIfNotEmptyAction,
     help="The Apple ID secret",
@@ -79,6 +84,7 @@ match args.subparser:
             output_bucket=args.output_bucket,
             signing_bucket=args.signing_bucket,
             aws_account_id=args.aws_account_id,
+            aws_region=args.aws_region,
             apple_id_secret=args.apple_id_secret,
             signing_role_name=args.signing_role_name,
             stage_name=args.stage_name,

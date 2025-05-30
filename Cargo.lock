@@ -1102,6 +1102,7 @@ dependencies = [
  "ctrlc",
  "dialoguer",
  "dirs 5.0.1",
+ "embed_plist",
  "eyre",
  "fd-lock",
  "futures",
