@@ -78,6 +78,7 @@ fn write_plist() {
 fn main() {
     println!("cargo:rerun-if-changed=def.json");
 
+    #[cfg(target_os = "macos")]
     write_plist();
 
     let outdir = std::env::var("OUT_DIR").unwrap();

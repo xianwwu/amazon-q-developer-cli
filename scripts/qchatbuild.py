@@ -373,20 +373,6 @@ def build_linux(chat_path: pathlib.Path):
     if signer:
         signer.sign_file(tar_gz_path)
 
-    info(f"Building {archive_name}.tar.xz")
-    tar_xz_path = BUILD_DIR / f"{archive_name}.tar.xz"
-    run_cmd(["tar", "-cJf", tar_xz_path, archive_path])
-    generate_sha(tar_xz_path)
-    if signer:
-        signer.sign_file(tar_xz_path)
-
-    info(f"Building {archive_name}.tar.zst")
-    tar_zst_path = BUILD_DIR / f"{archive_name}.tar.zst"
-    run_cmd(["tar", "-I", "zstd", "-cf", tar_zst_path, archive_path], {"ZSTD_CLEVEL": "19"})
-    generate_sha(tar_zst_path)
-    if signer:
-        signer.sign_file(tar_zst_path)
-
     info(f"Building {archive_name}.zip")
     zip_path = BUILD_DIR / f"{archive_name}.zip"
     run_cmd(["zip", "-r", zip_path, archive_path])
