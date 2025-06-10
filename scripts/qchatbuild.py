@@ -398,6 +398,8 @@ def build(
     run_lints: bool = True,
     run_test: bool = True,
 ):
+    BUILD_DIR.mkdir(exist_ok=True)
+
     if signing_bucket and aws_account_id and aws_region and apple_id_secret and signing_role_name:
         signing_data = CdSigningData(
             bucket_name=signing_bucket,
