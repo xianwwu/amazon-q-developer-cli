@@ -1,3 +1,4 @@
+import base64
 from dataclasses import dataclass
 import json
 import pathlib
@@ -5,20 +6,21 @@ from functools import cache
 import os
 import shutil
 import time
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, List, Optional
 from build import generate_sha
 from const import APPLE_TEAM_ID, CHAT_BINARY_NAME, CHAT_PACKAGE_NAME, LINUX_ARCHIVE_NAME
-from signing import (
-    load_gpg_signer,
-)
-from util import debug, info, isDarwin, run_cmd, run_cmd_output, warn
+from util import debug, info, isDarwin, isLinux, run_cmd, run_cmd_output, warn
 from rust import cargo_cmd_name, rust_env, rust_targets
 from importlib import import_module
+
+Args = Sequence[str | os.PathLike]
+Env = Mapping[str, str | os.PathLike]
+Cwd = str | os.PathLike
 
 BUILD_DIR_RELATIVE = pathlib.Path(os.environ.get("BUILD_DIR") or "build")
 BUILD_DIR = BUILD_DIR_RELATIVE.absolute()
 
-REGION = "us-west-2"
+CD_SIGNER_REGION = "us-west-2"
 SIGNING_API_BASE_URL = "https://api.signer.builder-tools.aws.dev"
 MACOS_BUNDLE_ID = "com.amazon.codewhisperer"
 
@@ -27,12 +29,18 @@ MACOS_BUNDLE_ID = "com.amazon.codewhisperer"
 class CdSigningData:
     bucket_name: str
     '''The bucket hosting signing artifacts accessible by CD Signer.'''
-    aws_account_id: str
-    '''The id of the account hosting the build'''
-    aws_region: str
-    '''The AWS region where the app is built'''
-    notarizing_secret_id: str
-    signing_role_name: str
+    apple_notarizing_secret_arn: str
+    '''The ARN of the secret containing the Apple ID and password, used during notarization'''
+    signing_role_arn: str
+    '''The ARN of the role used by CD Signer'''
+
+
+@dataclass
+class MacOSBuildOutput:
+    chat_path: pathlib.Path
+    '''The path to the chat binary'''
+    chat_zip_path: pathlib.Path
+    '''The path to the chat binary zipped'''
 
 
 def run_cargo_tests():
@@ -127,7 +135,7 @@ def cd_signer_request(method: str, path: str, data: str | None = None):
     url = f"{SIGNING_API_BASE_URL}{path}"
     headers = {"Content-Type": "application/json"}
     request = AWSRequest(method=method, url=url, data=data, headers=headers)
-    SigV4Auth(get_creds(), "signer-builder-tools", REGION).add_auth(request)
+    SigV4Auth(get_creds(), "signer-builder-tools", CD_SIGNER_REGION).add_auth(request)
 
     for i in range(1, 8):
         debug(f"Sending request {method} to {url} with data: {data}")
@@ -167,7 +175,7 @@ def cd_signer_start_request(request_id: str, source_key: str, destination_key: s
         path=f"/signing_requests/{request_id}/start",
         data=json.dumps(
             {
-                "iamRole": f"arn:aws:iam::{signing_data.aws_account_id}:role/{signing_data.signing_role_name}",
+                "iamRole": f"{signing_data.signing_role_arn}",
                 "s3Location": {
                     "bucket": signing_data.bucket_name,
                     "sourceKey": source_key,
@@ -237,12 +245,18 @@ def manifest(
     }
 
 
-def sign_executable(signing_data: CdSigningData, chat_path: pathlib.Path) -> pathlib.Path:
-    name = chat_path.name
+def sign_executable(signing_data: CdSigningData, exe_path: pathlib.Path) -> pathlib.Path:
+    '''
+    Signs an executable with CD Signer.
+
+    Returns:
+        The path to the signed executable
+    '''
+    name = exe_path.name
     info(f"Signing {name}")
 
     info("Packaging...")
-    package_path = cd_build_signed_package(chat_path)
+    package_path = cd_build_signed_package(exe_path)
 
     info("Uploading...")
     run_cmd(["aws", "s3", "rm", "--recursive", f"s3://{signing_data.bucket_name}/signed"])
@@ -283,33 +297,40 @@ def sign_executable(signing_data: CdSigningData, chat_path: pathlib.Path) -> pat
 
     info("Signed!")
 
+    # CD Signer should return the signed executable in a zip file containing the structure:
+    # "Payload/EXECUTABLES_TO_SIGN/{executable name}".
     info("Downloading...")
-    # CD Signer should return the signed executable under "Payload/EXECUTABLES_TO_SIGN/{executable name}"
-    run_cmd(["aws", "s3", "cp", f"s3://{signing_data.bucket_name}/signed/signed.zip", "signed.zip"], cwd=BUILD_DIR)
 
     # Create a new directory for unzipping the signed executable.
+    zip_dl_path = BUILD_DIR / pathlib.Path("signed.zip")
+    run_cmd(["aws", "s3", "cp", f"s3://{signing_data.bucket_name}/signed/signed.zip", zip_dl_path])
     payload_path = BUILD_DIR / "signed"
     shutil.rmtree(payload_path, ignore_errors=True)
-    run_cmd(["unzip", "signed.zip", "-d", payload_path], cwd=BUILD_DIR)
+    run_cmd(["unzip", zip_dl_path, "-d", payload_path])
+    zip_dl_path.unlink()
     signed_exe_path = BUILD_DIR / "signed" / "Payload" / "EXECUTABLES_TO_SIGN" / name
     # Verify that the exe is signed
     run_cmd(["codesign", "--verify", "--verbose=4", signed_exe_path])
     return signed_exe_path
 
 
-def notarize_executable(signing_data: CdSigningData, executable_path: pathlib.Path):
+def notarize_executable(signing_data: CdSigningData, exe_path: pathlib.Path):
+    '''
+    Submits an executable to Apple notary service.
+    '''
     # Load the Apple id and password from secrets manager.
-    secret_id = signing_data.notarizing_secret_id
+    secret_id = signing_data.apple_notarizing_secret_arn
+    secret_region = parse_region_from_arn(signing_data.apple_notarizing_secret_arn)
     info(f"Loading secretmanager value: {secret_id}")
-    secret_value = run_cmd_output(["aws", "--region", signing_data.aws_region, "secretsmanager", "get-secret-value", "--secret-id", secret_id])
+    secret_value = run_cmd_output(["aws", "--region", secret_region, "secretsmanager", "get-secret-value", "--secret-id", secret_id])
     secret_string = json.loads(secret_value)["SecretString"]
     secrets = json.loads(secret_string)
 
     # Submit the exe to Apple notary service. It must be zipped first.
-    info(f"Submitting {executable_path} to Apple notary service")
-    zip_path = BUILD_DIR / f"{executable_path.name}.zip"
+    info(f"Submitting {exe_path} to Apple notary service")
+    zip_path = BUILD_DIR / f"{exe_path.name}.zip"
     zip_path.unlink(missing_ok=True)
-    run_cmd(["zip", "-j", zip_path, executable_path], cwd=BUILD_DIR)
+    run_cmd(["zip", "-j", zip_path, exe_path], cwd=BUILD_DIR)
     submit_res = run_cmd_output(
         [
             "xcrun",
@@ -331,27 +352,142 @@ def notarize_executable(signing_data: CdSigningData, executable_path: pathlib.Pa
     # Confirm notarization succeeded.
     assert(json.loads(submit_res)["status"] == "Accepted")
 
+    # Cleanup
+    zip_path.unlink()
 
-def sign_and_notarize(signing_data: CdSigningData, chat_path: pathlib.Path):
+
+def sign_and_notarize(signing_data: CdSigningData, chat_path: pathlib.Path) -> pathlib.Path:
+    '''
+    Signs an executable with CD Signer, and verifies it with Apple notary service.
+
+    Returns:
+        The path to the signed executable.
+    '''
     # First, sign the application
-    executable_path = sign_executable(signing_data, chat_path)
+    chat_path = sign_executable(signing_data, chat_path)
 
     # Next, notarize the application
-    notarize_executable(signing_data, executable_path)
+    notarize_executable(signing_data, chat_path)
+
+    return chat_path
+
 
 
 def build_macos(chat_path: pathlib.Path, signing_data: CdSigningData | None):
-    chat_dst = BUILD_DIR / "qchat"
+    '''
+    Creates a qchat.zip under the build directory.
+    '''
+    chat_dst = BUILD_DIR / CHAT_BINARY_NAME
     chat_dst.unlink(missing_ok=True)
     shutil.copy2(chat_path, chat_dst)
 
     if signing_data:
-        sign_and_notarize(signing_data, chat_dst)
+        chat_dst = sign_and_notarize(signing_data, chat_dst)
 
-    return chat_dst
+    zip_path = BUILD_DIR / f"{CHAT_BINARY_NAME}.zip"
+    zip_path.unlink(missing_ok=True)
+
+    info(f"Creating zip output to {zip_path}")
+    run_cmd(["zip", "-j", zip_path, chat_dst], cwd=BUILD_DIR)
+    generate_sha(zip_path)
 
 
-def build_linux(chat_path: pathlib.Path):
+class GpgSigner:
+    def __init__(self, gpg_id: str, gpg_secret_key: str, gpg_passphrase: str):
+        self.gpg_id = gpg_id
+        self.gpg_secret_key = gpg_secret_key
+        self.gpg_passphrase = gpg_passphrase
+
+        self.gpg_home = pathlib.Path.home() / ".gnupg-tmp"
+        self.gpg_home.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+        # write gpg secret key to file
+        self.gpg_secret_key_path = self.gpg_home / "gpg_secret"
+        self.gpg_secret_key_path.write_bytes(base64.b64decode(gpg_secret_key))
+
+        self.gpg_passphrase_path = self.gpg_home / "gpg_pass"
+        self.gpg_passphrase_path.write_text(gpg_passphrase)
+
+        run_cmd(["gpg", "--version"])
+
+        info("Importing GPG key")
+        run_cmd(["gpg", "--list-keys"], env=self.gpg_env())
+        run_cmd(
+            ["gpg", *self.sign_args(), "--allow-secret-key-import", "--import", self.gpg_secret_key_path],
+            env=self.gpg_env(),
+        )
+        run_cmd(["gpg", "--list-keys"], env=self.gpg_env())
+
+    def gpg_env(self) -> Env:
+        return {**os.environ, "GNUPGHOME": self.gpg_home}
+
+    def sign_args(self) -> Args:
+        return [
+            "--batch",
+            "--pinentry-mode",
+            "loopback",
+            "--no-tty",
+            "--yes",
+            "--passphrase-file",
+            self.gpg_passphrase_path,
+        ]
+
+    def sign_file(self, path: pathlib.Path) -> List[pathlib.Path]:
+        info(f"Signing {path.name}")
+        run_cmd(
+            ["gpg", "--detach-sign", *self.sign_args(), "--local-user", self.gpg_id, path],
+            env=self.gpg_env(),
+        )
+        run_cmd(
+            ["gpg", "--detach-sign", *self.sign_args(), "--armor", "--local-user", self.gpg_id, path],
+            env=self.gpg_env(),
+        )
+        return [path.with_suffix(f"{path.suffix}.asc"), path.with_suffix(f"{path.suffix}.sig")]
+
+    def clean(self):
+        info("Cleaning gpg keys")
+        shutil.rmtree(self.gpg_home, ignore_errors=True)
+
+
+def get_secretmanager_json(secret_id: str, secret_region: str):
+    info(f"Loading secretmanager value: {secret_id}")
+    secret_value = run_cmd_output(["aws", "--region", secret_region, "secretsmanager", "get-secret-value", "--secret-id", secret_id])
+    secret_string = json.loads(secret_value)["SecretString"]
+    return json.loads(secret_string)
+
+
+def load_gpg_signer() -> Optional[GpgSigner]:
+    if gpg_id := os.getenv("TEST_PGP_ID"):
+        gpg_secret_key = os.getenv("TEST_PGP_SECRET_KEY")
+        gpg_passphrase = os.getenv("TEST_PGP_PASSPHRASE")
+        if gpg_secret_key is not None and gpg_passphrase is not None:
+            info("Using test pgp key", gpg_id)
+            return GpgSigner(gpg_id=gpg_id, gpg_secret_key=gpg_secret_key, gpg_passphrase=gpg_passphrase)
+
+    pgp_secret_arn = os.getenv("SIGNING_PGP_KEY_SECRET_ARN")
+    info(f"SIGNING_PGP_KEY_SECRET_ARN: {pgp_secret_arn}")
+    if pgp_secret_arn:
+        pgp_secret_region = parse_region_from_arn(pgp_secret_arn)
+        gpg_secret_json = get_secretmanager_json(pgp_secret_arn, pgp_secret_region)
+        gpg_id = gpg_secret_json["gpg_id"]
+        gpg_secret_key = gpg_secret_json["gpg_secret_key"]
+        gpg_passphrase = gpg_secret_json["gpg_passphrase"]
+        return GpgSigner(gpg_id=gpg_id, gpg_secret_key=gpg_secret_key, gpg_passphrase=gpg_passphrase)
+    else:
+        return None
+
+
+def parse_region_from_arn(arn: str) -> str:
+    # ARN format: arn:partition:service:region:account-id:resource-type/resource-id
+    # Check if we have enough parts and the ARN starts with "arn:"
+    parts = arn.split(":")
+    if len(parts) >= 4:
+        return parts[3]
+
+    return ""
+
+
+def build_linux(chat_path: pathlib.Path, signer: GpgSigner | None):
     """
     Creates tar.gz, tar.xz, tar.zst, and zip archives under `BUILD_DIR`.
 
@@ -363,8 +499,6 @@ def build_linux(chat_path: pathlib.Path):
     archive_path = pathlib.Path(archive_name)
     archive_path.mkdir(parents=True, exist_ok=True)
     shutil.copy2(chat_path, archive_path / CHAT_BINARY_NAME)
-
-    signer = load_gpg_signer()
 
     info(f"Building {archive_name}.tar.gz")
     tar_gz_path = BUILD_DIR / f"{archive_name}.tar.gz"
@@ -388,25 +522,23 @@ def build_linux(chat_path: pathlib.Path):
 
 def build(
     release: bool,
-    output_bucket: str | None = None,
-    signing_bucket: str | None = None,
-    aws_account_id: str | None = None,
-    aws_region: str | None = None,
-    apple_id_secret: str | None = None,
-    signing_role_name: str | None = None,
     stage_name: str | None = None,
     run_lints: bool = True,
     run_test: bool = True,
 ):
     BUILD_DIR.mkdir(exist_ok=True)
 
-    if signing_bucket and aws_account_id and aws_region and apple_id_secret and signing_role_name:
+    disable_signing = os.environ.get('DISABLE_SIGNING')
+
+    gpg_signer = load_gpg_signer() if not disable_signing and isLinux() else None
+    signing_role_arn = os.environ.get('SIGNING_ROLE_ARN')
+    signing_bucket_name = os.environ.get('SIGNING_BUCKET_NAME')
+    signing_apple_notarizing_secret_arn = os.environ.get('SIGNING_APPLE_NOTARIZING_SECRET_ARN')
+    if not disable_signing and isDarwin() and signing_role_arn and signing_bucket_name and signing_apple_notarizing_secret_arn:
         signing_data = CdSigningData(
-            bucket_name=signing_bucket,
-            aws_account_id=aws_account_id,
-            aws_region=aws_region,
-            notarizing_secret_id=apple_id_secret,
-            signing_role_name=signing_role_name,
+            bucket_name=signing_bucket_name,
+            apple_notarizing_secret_arn=signing_apple_notarizing_secret_arn,
+            signing_role_arn=signing_role_arn,
         )
     else:
         signing_data = None
@@ -423,7 +555,7 @@ def build(
 
     info(f"Release: {release}")
     info(f"Targets: {targets}")
-    info(f"Signing app: {signing_data is not None}")
+    info(f"Signing app: {signing_data is not None or gpg_signer is not None}")
 
     if run_test:
         info("Running cargo tests")
@@ -441,13 +573,6 @@ def build(
     )
 
     if isDarwin():
-        chat_path = build_macos(chat_path, signing_data)
-        sha_path = generate_sha(chat_path)
-
-        if output_bucket:
-            staging_location = f"s3://{output_bucket}/staging/"
-            info(f"Build complete, sending to {staging_location}")
-            run_cmd(["aws", "s3", "cp", chat_path, staging_location])
-            run_cmd(["aws", "s3", "cp", sha_path, staging_location])
+        build_macos(chat_path, signing_data)
     else:
-        build_linux(chat_path)
+        build_linux(chat_path, gpg_signer)
