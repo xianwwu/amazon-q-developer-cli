@@ -35,11 +35,7 @@ artifacts:
   discard-paths: "yes"
   base-directory: "build"
   files:
-    - ./*.tar.gz
     - ./*.zip
     # Hashes
     - ./*.sha256
-    # Signatures
-    - ./*.asc
-    - ./*.sig
 
