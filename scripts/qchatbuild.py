@@ -22,25 +22,24 @@ BUILD_DIR = BUILD_DIR_RELATIVE.absolute()
 
 CD_SIGNER_REGION = "us-west-2"
 SIGNING_API_BASE_URL = "https://api.signer.builder-tools.aws.dev"
-MACOS_BUNDLE_ID = "com.amazon.codewhisperer"
 
 
 @dataclass
 class CdSigningData:
     bucket_name: str
-    '''The bucket hosting signing artifacts accessible by CD Signer.'''
+    """The bucket hosting signing artifacts accessible by CD Signer."""
     apple_notarizing_secret_arn: str
-    '''The ARN of the secret containing the Apple ID and password, used during notarization'''
+    """The ARN of the secret containing the Apple ID and password, used during notarization"""
     signing_role_arn: str
-    '''The ARN of the role used by CD Signer'''
+    """The ARN of the role used by CD Signer"""
 
 
 @dataclass
 class MacOSBuildOutput:
     chat_path: pathlib.Path
-    '''The path to the chat binary'''
+    """The path to the chat binary"""
     chat_zip_path: pathlib.Path
-    '''The path to the chat binary zipped'''
+    """The path to the chat binary zipped"""
 
 
 def run_cargo_tests():
@@ -246,12 +245,12 @@ def manifest(
 
 
 def sign_executable(signing_data: CdSigningData, exe_path: pathlib.Path) -> pathlib.Path:
-    '''
+    """
     Signs an executable with CD Signer.
 
     Returns:
         The path to the signed executable
-    '''
+    """
     name = exe_path.name
     info(f"Signing {name}")
 
@@ -315,14 +314,16 @@ def sign_executable(signing_data: CdSigningData, exe_path: pathlib.Path) -> path
 
 
 def notarize_executable(signing_data: CdSigningData, exe_path: pathlib.Path):
-    '''
+    """
     Submits an executable to Apple notary service.
-    '''
+    """
     # Load the Apple id and password from secrets manager.
     secret_id = signing_data.apple_notarizing_secret_arn
     secret_region = parse_region_from_arn(signing_data.apple_notarizing_secret_arn)
     info(f"Loading secretmanager value: {secret_id}")
-    secret_value = run_cmd_output(["aws", "--region", secret_region, "secretsmanager", "get-secret-value", "--secret-id", secret_id])
+    secret_value = run_cmd_output(
+        ["aws", "--region", secret_region, "secretsmanager", "get-secret-value", "--secret-id", secret_id]
+    )
     secret_string = json.loads(secret_value)["SecretString"]
     secrets = json.loads(secret_string)
 
@@ -344,25 +345,26 @@ def notarize_executable(signing_data: CdSigningData, exe_path: pathlib.Path):
             "--password",
             secrets["appleIdPassword"],
             "--wait",
-            "-f", "json"
+            "-f",
+            "json",
         ]
     )
     debug(f"Notary service response: {submit_res}")
 
     # Confirm notarization succeeded.
-    assert(json.loads(submit_res)["status"] == "Accepted")
+    assert json.loads(submit_res)["status"] == "Accepted"
 
     # Cleanup
     zip_path.unlink()
 
 
 def sign_and_notarize(signing_data: CdSigningData, chat_path: pathlib.Path) -> pathlib.Path:
-    '''
+    """
     Signs an executable with CD Signer, and verifies it with Apple notary service.
 
     Returns:
         The path to the signed executable.
-    '''
+    """
     # First, sign the application
     chat_path = sign_executable(signing_data, chat_path)
 
@@ -372,11 +374,10 @@ def sign_and_notarize(signing_data: CdSigningData, chat_path: pathlib.Path) -> p
     return chat_path
 
 
-
 def build_macos(chat_path: pathlib.Path, signing_data: CdSigningData | None):
-    '''
+    """
     Creates a qchat.zip under the build directory.
-    '''
+    """
     chat_dst = BUILD_DIR / CHAT_BINARY_NAME
     chat_dst.unlink(missing_ok=True)
     shutil.copy2(chat_path, chat_dst)
@@ -451,7 +452,9 @@ class GpgSigner:
 
 def get_secretmanager_json(secret_id: str, secret_region: str):
     info(f"Loading secretmanager value: {secret_id}")
-    secret_value = run_cmd_output(["aws", "--region", secret_region, "secretsmanager", "get-secret-value", "--secret-id", secret_id])
+    secret_value = run_cmd_output(
+        ["aws", "--region", secret_region, "secretsmanager", "get-secret-value", "--secret-id", secret_id]
+    )
     secret_string = json.loads(secret_value)["SecretString"]
     return json.loads(secret_string)
 
@@ -528,13 +531,19 @@ def build(
 ):
     BUILD_DIR.mkdir(exist_ok=True)
 
-    disable_signing = os.environ.get('DISABLE_SIGNING')
+    disable_signing = os.environ.get("DISABLE_SIGNING")
 
     gpg_signer = load_gpg_signer() if not disable_signing and isLinux() else None
-    signing_role_arn = os.environ.get('SIGNING_ROLE_ARN')
-    signing_bucket_name = os.environ.get('SIGNING_BUCKET_NAME')
-    signing_apple_notarizing_secret_arn = os.environ.get('SIGNING_APPLE_NOTARIZING_SECRET_ARN')
-    if not disable_signing and isDarwin() and signing_role_arn and signing_bucket_name and signing_apple_notarizing_secret_arn:
+    signing_role_arn = os.environ.get("SIGNING_ROLE_ARN")
+    signing_bucket_name = os.environ.get("SIGNING_BUCKET_NAME")
+    signing_apple_notarizing_secret_arn = os.environ.get("SIGNING_APPLE_NOTARIZING_SECRET_ARN")
+    if (
+        not disable_signing
+        and isDarwin()
+        and signing_role_arn
+        and signing_bucket_name
+        and signing_apple_notarizing_secret_arn
+    ):
         signing_data = CdSigningData(
             bucket_name=signing_bucket_name,
             apple_notarizing_secret_arn=signing_apple_notarizing_secret_arn,

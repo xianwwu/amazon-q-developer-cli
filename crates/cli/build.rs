@@ -7,6 +7,10 @@ use quote::{
     quote,
 };
 
+// TODO(brandonskiser): update bundle identifier for signed builds
+#[cfg(target_os = "macos")]
+const MACOS_BUNDLE_IDENTIFIER: &str = "com.amazon.codewhisperer";
+
 const DEF: &str = include_str!("./telemetry_definitions.json");
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -53,7 +57,7 @@ fn write_plist() {
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.amazon.codewhisperer</string>
+	<string>{}</string>
 	<key>CFBundleName</key>
 	<string>{}</string>
 	<key>CFBundleVersion</key>
@@ -67,6 +71,7 @@ fn write_plist() {
 </dict>
 </plist>
 "#,
+        MACOS_BUNDLE_IDENTIFIER,
         option_env!("AMAZON_Q_BUILD_HASH").unwrap_or("unknown"),
         option_env!("AMAZON_Q_BUILD_DATETIME").unwrap_or("unknown"),
         env!("CARGO_PKG_VERSION")
