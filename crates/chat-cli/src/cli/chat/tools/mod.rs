@@ -7,6 +7,7 @@ pub mod knowledge;
 pub mod launch_agent;
 pub mod thinking;
 pub mod use_aws;
+pub mod todo;
 
 use std::borrow::Borrow;
 use std::io::Write;
@@ -37,6 +38,7 @@ use serde::{
 };
 use thinking::Thinking;
 use use_aws::UseAws;
+use todo::TodoInput;
 
 use super::consts::MAX_TOOL_RESPONSE_SIZE;
 use super::util::images::RichImageBlocks;
@@ -74,6 +76,7 @@ pub enum Tool {
     Knowledge(Knowledge),
     Thinking(Thinking),
     SubAgentWrapper(Vec<SubAgent>),
+    Todo(TodoInput),
 }
 
 impl Tool {
@@ -92,6 +95,7 @@ impl Tool {
             Tool::Knowledge(_) => "knowledge",
             Tool::Thinking(_) => "thinking (prerelease)",
             Tool::SubAgentWrapper(_) => "launch_agent",
+            Tool::Todo(_) => "todo_list"
         }
         .to_owned()
     }
@@ -108,6 +112,7 @@ impl Tool {
             Tool::Thinking(_) => PermissionEvalResult::Allow,
             Tool::Knowledge(_) => PermissionEvalResult::Ask,
             Tool::SubAgentWrapper(_) => PermissionEvalResult::Ask,
+            Tool::Todo(_) => PermissionEvalResult::Allow,
         }
     }
 
@@ -128,6 +133,8 @@ impl Tool {
                 };
                 wrapper.invoke(stdout).await
             },
+            Tool::Todo(todo) => todo.clone().invoke(os, stdout).await,
+
         }
     }
 
@@ -148,6 +155,7 @@ impl Tool {
                 };
                 wrapper.queue_description(output)
             },
+            Tool::Todo(todo) => todo.queue_description(os, output),
         }
     }
 
@@ -169,6 +177,7 @@ impl Tool {
                 }
                 Ok(())
             },
+            Tool::Todo(todo) => todo.validate(os).await,
         }
     }
 }
