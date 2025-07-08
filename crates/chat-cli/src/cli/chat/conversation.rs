@@ -4,6 +4,7 @@ use std::collections::{
     VecDeque,
 };
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
 use crossterm::style::Color;
@@ -19,6 +20,10 @@ use tracing::{
     debug,
     error,
     warn,
+};
+
+use eyre::{
+    Result, 
 };
 
 use super::consts::{
@@ -73,6 +78,8 @@ use crate::cli::chat::cli::hooks::{
 use crate::mcp_client::Prompt;
 use crate::os::Os;
 
+use super::tools::todo::TodoState;
+
 const CONTEXT_ENTRY_START_HEADER: &str = "--- CONTEXT ENTRY BEGIN ---\n";
 const CONTEXT_ENTRY_END_HEADER: &str = "--- CONTEXT ENTRY END ---\n\n";
 
@@ -105,6 +112,9 @@ pub struct ConversationState {
     /// Model explicitly selected by the user in this conversation state via `/model`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+
+    // Current todo list
+    pub todo_state: Option<TodoState>,
 }
 
 impl ConversationState {
@@ -157,6 +167,7 @@ impl ConversationState {
             context_message_length: None,
             latest_summary: None,
             model: current_model_id,
+            todo_state: Some(TodoState::default()),
         }
     }
 
@@ -834,6 +845,41 @@ impl ConversationState {
                 msg.user_input_message_context = Some(user_input_message_context);
             },
         }
+    }
+
+    pub async fn create_todo_request(&self, os: &Os, path: PathBuf) -> Result<FigConversationState> {
+        let contents = self.can_resume_todo(os, &path).await?;
+        let request = format!(
+            "[SYSTEM NOTE: This is an automated request, not from the user] 
+            Read the TODO list contents below and understand the task description, completed tasks, and provided context. 
+            Call the Load command of the todo_list tool with the given file path as an argument to display the TODO list to the user and officially resume execution of the TODO list tasks.
+            TODO LIST CONTENTS: {}
+            FILE PATH: {}",
+            contents,
+            path.display()
+        ); 
+        
+        let request_message = UserInputMessage {
+            content: request,
+            user_input_message_context: None,
+            user_intent: None,
+            images: None,
+            model_id: self.model.clone(),
+        };
+
+        Ok(FigConversationState {
+            conversation_id: Some(self.conversation_id.clone()),
+            user_input_message: request_message,
+            history: None,
+        }) 
+    }
+
+    // For now, just check that file path is valid and deserializable
+    // QUESTION: How do you pass errors cleanly in the todo_request functions?
+    pub async fn can_resume_todo(&self, os: &Os, path: &PathBuf) -> Result<String> {
+        let contents = os.fs.read_to_string(path).await?;
+        let _ = serde_json::from_str::<TodoState>(&contents)?;
+        Ok(contents)
     }
 }
 

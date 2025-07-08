@@ -73,7 +73,7 @@ impl Tool {
             Tool::GhIssue(_) => "gh_issue",
             Tool::Knowledge(_) => "knowledge",
             Tool::Thinking(_) => "thinking (prerelease)",
-            Tool::Todo(_) => "todoooooo"
+            Tool::Todo(_) => "todo_list"
         }
         .to_owned()
     }
@@ -104,8 +104,7 @@ impl Tool {
             Tool::GhIssue(gh_issue) => gh_issue.invoke(os, stdout).await,
             Tool::Knowledge(knowledge) => knowledge.invoke(os, stdout).await,
             Tool::Thinking(think) => think.invoke(stdout).await,
-            Tool::Todo(todo) => todo.clone().invoke(os, stdout).await,
-
+            Tool::Todo(todo) => todo.invoke(os, stdout).await,
         }
     }
 
@@ -247,7 +246,7 @@ impl ToolPermissions {
             "report_issue" => "trusted".dark_green().bold(),
             "knowledge" => "trusted".dark_green().bold(),
             "thinking" => "trusted (prerelease)".dark_green().bold(),
-            "todoooooo" => "trusted".dark_green().bold(),
+            "todo_list" => "trusted".dark_green().bold(),
             _ if self.trust_all => "trusted".dark_grey().bold(),
             _ => "not trusted".dark_grey(),
         };
