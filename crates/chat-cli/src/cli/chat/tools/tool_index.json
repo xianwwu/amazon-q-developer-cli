@@ -235,7 +235,7 @@
   },
   "todo": {
     "name": "todo_list",
-    "description": "A tool for creating a TODO list and keeping track of tasks. This tool should be requested EVERY time the user gives you a task that will take multiple steps. A TODO list should be made BEFORE executing any steps. Steps should be marked off AS YOU COMPLETE THEM. DO NOT display your own todo list; this is done for you.",
+    "description": "A tool for creating a TODO list and keeping track of tasks. This tool should be requested EVERY time the user gives you a task that will take multiple steps. A TODO list should be made BEFORE executing any steps. Steps should be marked off AS YOU COMPLETE THEM. DO NOT display your own todo list AT ANY POINT; this is done for you.",
     "input_schema": {
       "type": "object",
       "properties": {
@@ -245,21 +245,21 @@
           "description": "The command to run. Allowed options are `add`, `complete`."
         },
         "tasks": {
-          "description": "Required parameter of `create` command containing the list of tasks to be added to the TODO list.",
+          "description": "Required parameter of `create` command containing the list of DISTINCT tasks to be added to the TODO list.",
           "type": "array",
           "items": {
             "type": "string"
           }
         },
         "completed_indices": {
-          "description": "Required parameter of `complete` command containing the 0-INDEXED numbers of EVERY completed task. Each task should be marked as completed IMMEDIATELY after it is finished.",
+          "description": "Required parameter of `complete` command containing the 0-INDEXED numbers of EVERY completed task. Each task should be marked as completed IMMEDIATELY after it is finished. DO NOT display your own version of a TODO list.",
           "type": "array",
           "items": {
             "type": "integer"
           }
         },
         "task_description": {
-          "description": "Required paramter of `create` command containing a summary of the given task. The summary should be detailed enough to refer to without knowing the problem context beforehand.",
+          "description": "Required paramter of `create` command containing a BRIEF summary of the given task. The summary should be detailed enough to refer to without knowing the problem context beforehand.",
           "type": "string"
         },
         "context_update": {
@@ -267,7 +267,7 @@
           "type": "string"
         },
         "path": {
-          "description": "Required paramter of `load` command containing path of todo list to load"
+          "description": "Required parameter of `load` command containing path of todo list to load"
         }
       },
       "required": ["command"]

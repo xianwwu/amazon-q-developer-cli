@@ -977,6 +977,7 @@ impl ChatSession {
         os: &mut Os,
         path: PathBuf,
     ) -> Result<ChatState, ChatError> {
+        
         let request_state = self
             .conversation
             .create_todo_request(os, path)
@@ -984,6 +985,7 @@ impl ChatSession {
 
         match request_state {
             Ok(state) => {
+                self.conversation.reset_next_user_message();
                 self.conversation.set_next_user_message(state.user_input_message.content).await;
             },
             Err(_) => {
@@ -1006,23 +1008,22 @@ impl ChatSession {
         let response = os.client.send_message(conv_state).await?;
 
         let mut result =  self.handle_response(os, response).await?;
-        match result {
-            ChatState::ExecuteTools => {
-                result = self.tool_use_execute(os).await?;
-            },
-            ChatState::ValidateTools(tool_uses) => {
-                result = self.validate_tools(os, tool_uses).await?;
-            },
-            ChatState::HandleResponseStream(response) => {
-                result = self.handle_response(os, response).await?;
-            },
-            other => {
-                return Ok(other);
-            },
-        }
-        Ok(result)
-
-
+        loop {
+            match result {
+                ChatState::ExecuteTools => {
+                    result = self.tool_use_execute(os).await?;
+                },
+                ChatState::ValidateTools(tool_uses) => {
+                    result = self.validate_tools(os, tool_uses).await?;
+                },
+                ChatState::HandleResponseStream(response) => {
+                    result = self.handle_response(os, response).await?;
+                },
+                other => {
+                    return Ok(other);
+                },
+            }
+        };
         // Ok(ChatState::PromptUser {
         //     skip_printing_tools: true,
         // })

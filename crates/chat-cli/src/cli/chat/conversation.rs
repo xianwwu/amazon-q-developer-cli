@@ -852,7 +852,8 @@ impl ConversationState {
         let request = format!(
             "[SYSTEM NOTE: This is an automated request, not from the user] 
             Read the TODO list contents below and understand the task description, completed tasks, and provided context. 
-            Call the Load command of the todo_list tool with the given file path as an argument to display the TODO list to the user and officially resume execution of the TODO list tasks.
+            Call the `load` command of the todo_list tool with the given file path as an argument to display the TODO list to the user and officially resume execution of the TODO list tasks.
+            You do not need to display the tasks to the user yourself. You can begin completing the tasks after calling the `load` command.
             TODO LIST CONTENTS: {}
             FILE PATH: {}",
             contents,
