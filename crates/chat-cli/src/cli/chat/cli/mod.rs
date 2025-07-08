@@ -12,6 +12,7 @@ pub mod prompts;
 pub mod subscribe;
 pub mod tools;
 pub mod usage;
+pub mod todos;
 
 use clap::Parser;
 use clear::ClearArgs;
@@ -26,6 +27,7 @@ use persist::PersistSubcommand;
 use profile::AgentSubcommand;
 use prompts::PromptsArgs;
 use tools::ToolsArgs;
+use todos::TodoSubcommand;
 
 use crate::cli::chat::cli::subscribe::SubscribeArgs;
 use crate::cli::chat::cli::usage::UsageArgs;
@@ -82,6 +84,8 @@ pub enum SlashCommand {
     Persist(PersistSubcommand),
     // #[command(flatten)]
     // Root(RootSubcommand),
+    #[command(subcommand)]
+    Todos(TodoSubcommand),
 }
 
 impl SlashCommand {
@@ -120,6 +124,8 @@ impl SlashCommand {
             //         skip_printing_tools: true,
             //     })
             // },
+
+            Self::Todos(subcommand) => subcommand.execute(os, session).await,
         }
     }
 

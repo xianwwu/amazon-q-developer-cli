@@ -133,7 +133,7 @@ impl Tool {
                 };
                 wrapper.invoke(stdout).await
             },
-            Tool::Todo(todo) => todo.clone().invoke(os, stdout).await,
+            Tool::Todo(todo) => todo.invoke(os, stdout).await,
 
         }
     }

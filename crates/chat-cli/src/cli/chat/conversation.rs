@@ -4,6 +4,7 @@ use std::collections::{
     VecDeque,
 };
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
 use crossterm::style::Color;
@@ -21,6 +22,10 @@ use tracing::{
 };
 
 use super::cli::compact::CompactStrategy;
+use eyre::{
+    Result, 
+};
+
 use super::consts::{
     DUMMY_TOOL_NAME,
     MAX_CHARS,
@@ -62,6 +67,8 @@ use crate::cli::chat::cli::hooks::{
 use crate::mcp_client::Prompt;
 use crate::os::Os;
 
+use super::tools::todo::TodoState;
+
 const CONTEXT_ENTRY_START_HEADER: &str = "--- CONTEXT ENTRY BEGIN ---\n";
 const CONTEXT_ENTRY_END_HEADER: &str = "--- CONTEXT ENTRY END ---\n\n";
 
@@ -96,6 +103,9 @@ pub struct ConversationState {
     /// Model explicitly selected by the user in this conversation state via `/model`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+
+    // Current todo list
+    pub todo_state: Option<TodoState>,
 }
 
 impl ConversationState {
@@ -137,6 +147,7 @@ impl ConversationState {
             latest_summary: None,
             agents,
             model: current_model_id,
+            todo_state: Some(TodoState::default()),
         }
     }
 
