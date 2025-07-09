@@ -1,69 +1,30 @@
-use std::collections::{
-    HashMap,
-    HashSet,
-    VecDeque,
-};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
 use crossterm::style::Color;
-use crossterm::{
-    execute,
-    style,
-};
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use tracing::{
-    debug,
-    warn,
-};
+use crossterm::{execute, style};
+use serde::{Deserialize, Serialize};
+use tracing::{debug, warn};
 
 use super::cli::compact::CompactStrategy;
-use eyre::{
-    Result, 
-};
+use eyre::Result;
 
-use super::consts::{
-    DUMMY_TOOL_NAME,
-    MAX_CHARS,
-    MAX_CONVERSATION_STATE_HISTORY_LEN,
-};
+use super::consts::{DUMMY_TOOL_NAME, MAX_CHARS, MAX_CONVERSATION_STATE_HISTORY_LEN};
 use super::context::ContextManager;
-use super::message::{
-    AssistantMessage,
-    ToolUseResult,
-    UserMessage,
-};
-use super::token_counter::{
-    CharCount,
-    CharCounter,
-};
+use super::message::{AssistantMessage, ToolUseResult, UserMessage};
+use super::token_counter::{CharCount, CharCounter};
 use super::tool_manager::ToolManager;
-use super::tools::{
-    InputSchema,
-    QueuedTool,
-    ToolOrigin,
-    ToolSpec,
-};
+use super::tools::{InputSchema, QueuedTool, ToolOrigin, ToolSpec};
 use super::util::serde_value_to_document;
 use crate::api_client::model::{
-    ChatMessage,
-    ConversationState as FigConversationState,
-    ImageBlock,
-    Tool,
-    ToolInputSchema,
-    ToolSpecification,
+    ChatMessage, ConversationState as FigConversationState, ImageBlock, Tool, ToolInputSchema, ToolSpecification,
     UserInputMessage,
 };
 use crate::cli::agent::Agents;
 use crate::cli::chat::ChatError;
-use crate::cli::chat::cli::hooks::{
-    Hook,
-    HookTrigger,
-};
+use crate::cli::chat::cli::hooks::{Hook, HookTrigger};
 use crate::mcp_client::Prompt;
 use crate::os::Os;
 
@@ -614,6 +575,41 @@ impl ConversationState {
         }
         self.transcript.push_back(message);
     }
+
+    pub async fn create_todo_request(&self, os: &Os, path: PathBuf) -> Result<FigConversationState> {
+        let contents = self.can_resume_todo(os, &path).await?;
+        let request = format!(
+            "[SYSTEM NOTE: This is an automated request, not from the user] 
+            Read the TODO list contents below and understand the task description, completed tasks, and provided context. 
+            Call the `load` command of the todo_list tool with the given file path as an argument to display the TODO list to the user and officially resume execution of the TODO list tasks.
+            You do not need to display the tasks to the user yourself. You can begin completing the tasks after calling the `load` command.
+            TODO LIST CONTENTS: {}
+            FILE PATH: {}",
+            contents,
+            path.display()
+        );
+
+        let request_message = UserInputMessage {
+            content: request,
+            user_input_message_context: None,
+            user_intent: None,
+            images: None,
+            model_id: self.model.clone(),
+        };
+
+        Ok(FigConversationState {
+            conversation_id: Some(self.conversation_id.clone()),
+            user_input_message: request_message,
+            history: None,
+        })
+    }
+
+    // For now, just check that file path is valid and deserializable
+    pub async fn can_resume_todo(&self, os: &Os, path: &PathBuf) -> Result<String> {
+        let contents = os.fs.read_to_string(path).await?;
+        let _ = serde_json::from_str::<TodoState>(&contents)?;
+        Ok(contents)
+    }
 }
 
 /// Represents a conversation state that can be converted into a [FigConversationState] (the type
@@ -891,16 +887,8 @@ mod tests {
 
     use super::super::message::AssistantToolUse;
     use super::*;
-    use crate::api_client::model::{
-        AssistantResponseMessage,
-        ToolResultStatus,
-    };
-    use crate::cli::agent::{
-        Agent,
-        Agents,
-        CreateHooks,
-        PromptHooks,
-    };
+    use crate::api_client::model::{AssistantResponseMessage, ToolResultStatus};
+    use crate::cli::agent::{Agent, Agents, CreateHooks, PromptHooks};
     use crate::cli::chat::tool_manager::ToolManager;
 
     const AMAZONQ_FILENAME: &str = "AmazonQ.md";
@@ -1061,12 +1049,16 @@ mod tests {
 
             conversation.push_assistant_message(
                 &mut os,
-                AssistantMessage::new_tool_use(None, i.to_string(), vec![AssistantToolUse {
-                    id: "tool_id".to_string(),
-                    name: "tool name".to_string(),
-                    args: serde_json::Value::Null,
-                    ..Default::default()
-                }]),
+                AssistantMessage::new_tool_use(
+                    None,
+                    i.to_string(),
+                    vec![AssistantToolUse {
+                        id: "tool_id".to_string(),
+                        name: "tool name".to_string(),
+                        args: serde_json::Value::Null,
+                        ..Default::default()
+                    }],
+                ),
             );
             conversation.add_tool_results(vec![ToolUseResult {
                 tool_use_id: "tool_id".to_string(),
@@ -1088,12 +1080,16 @@ mod tests {
             if i % 3 == 0 {
                 conversation.push_assistant_message(
                     &mut os,
-                    AssistantMessage::new_tool_use(None, i.to_string(), vec![AssistantToolUse {
-                        id: "tool_id".to_string(),
-                        name: "tool name".to_string(),
-                        args: serde_json::Value::Null,
-                        ..Default::default()
-                    }]),
+                    AssistantMessage::new_tool_use(
+                        None,
+                        i.to_string(),
+                        vec![AssistantToolUse {
+                            id: "tool_id".to_string(),
+                            name: "tool name".to_string(),
+                            args: serde_json::Value::Null,
+                            ..Default::default()
+                        }],
+                    ),
                 );
                 conversation.add_tool_results(vec![ToolUseResult {
                     tool_use_id: "tool_id".to_string(),

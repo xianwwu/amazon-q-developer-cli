@@ -1,7 +1,5 @@
-#![allow(warnings)]
-
 use clap::Subcommand;
-use std::{io, path::PathBuf};
+use std::path::PathBuf;
 use crate::{cli::chat::tools::todo::TodoState, os::Os};
 use crossterm::{
     execute,
@@ -14,10 +12,7 @@ use crate::cli::chat::{
     ChatState,
 };
 
-use eyre::{
-    Result,
-    bail,
-};
+use eyre::Result;
 
 use crate::cli::chat::tools::todo::{
     build_path,
@@ -71,21 +66,21 @@ impl TodoSubcommand {
                             execute!(
                                 session.stderr,
                                 style::Print("No to-do lists to show"),
-                            );
+                            )?;
                         }
                         for e in entries {
                             execute!(
                                 session.stderr,
                                 style::Print(e),
                                 style::Print("\n"),
-                            );
+                            )?;
                         }
                     }
-                    Err(e) => { 
+                    Err(_) => { 
                         execute!(
                             session.stderr,
                             style::Print("Could not show to-do lists"),
-                        ); 
+                        )?; 
                     }
                 }
             },
@@ -99,14 +94,14 @@ impl TodoSubcommand {
                             execute!(
                                 session.stderr,
                                 style::Print("No to-do lists to show"),
-                            );
+                            )?;
                         } else {
                             let selection = FuzzySelect::new()
                                 .with_prompt("Select task:")
                                 .items(&entries)
                                 .report(false)
                                 .interact_opt()
-                                .unwrap_or(None); // FIX: workaround for ^C during selection
+                                .unwrap_or(None); 
 
                             if let Some(index) = selection {
                                 if index < entries.len() {
@@ -114,19 +109,22 @@ impl TodoSubcommand {
                                         session.stderr,
                                         style::Print("⟳ Resuming: ".magenta()),
                                         style::Print(format!("{}\n", entries[index].description.clone())),
-                                    );
+                                    )?;
                                     return session.resume_todo(os, entries[index].path.clone()).await;
                                 }
                             }
                         }
                     }
+                    // %%% FIX %%%
                     Err(e) => println!("{:?}", e),
+                    // %%% --- %%%
                 };
             },
         };
         Ok(ChatState::PromptUser { skip_printing_tools: true })
     }
 
+    /// Convert all to-do list state files to displayable entries
     async fn get_descriptions_and_statuses(self, os: &Os) -> Result<Vec<TodoDisplayEntry>> {
         let mut out = Vec::new();
         let mut entries = os.fs.read_dir(
@@ -167,7 +165,7 @@ fn prewrap(text: &str) -> String {
     let mut current_line_length = 0;
     let words: Vec<&str> = text.split_whitespace().collect();
     
-    for (i, word) in words.iter().enumerate() {
+    for (_, word) in words.iter().enumerate() {
         let word_length = word.len();
         
         // If adding this word would exceed the line length and we're not at the start of a line
