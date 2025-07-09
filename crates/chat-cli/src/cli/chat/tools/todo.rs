@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use std::io::Write;
@@ -28,11 +27,6 @@ Design your own super simple programming task with 4 steps. Make a todo list for
 Implement a basic input to Python type converter where the user can input either a string or integer and it gets converted to the corresponding Python object.
 */
 
-// ########### HARDCODED VALUES ##############
-pub const CURRENT_TODO_STATE_PATH: &str = ".aws/amazonq/todos/CURRENT_STATE.txt";
-pub const TODO_STATE_FOLDER_PATH: &str = ".aws/amazonq/todos";
-// ########### ---------------- ##############
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "command")]
 pub enum TodoInput {
@@ -52,7 +46,7 @@ pub enum TodoInput {
 
     #[serde(rename = "load")]
     Load {
-        path: String,
+        id: String,
     }
 }
 
@@ -67,26 +61,17 @@ pub struct TodoState {
 
 impl TodoState {
 
-    /// Loads a TodoState from the given path
-    pub async fn load(os: &Os, path: &str) -> Result<Self> {
-        if os.fs.exists(path) {
-            let json_str = os.fs.read_to_string(path).await?;
-            match serde_json::from_str::<Self>(&json_str) {
-                Ok(state_struct) => Ok(state_struct),
-                Err(_) => bail!("File is not a valid TodoState"),
-            }
-        } else {
-            bail!("File does not exist");
+    /// Loads a TodoState with the given id
+    pub fn load(os: &Os, id: &str) -> Result<Self> {
+        match os.database.get_todo(id)? {
+            Some(state) => Ok(state),
+            None => bail!("No to-do list with id {}", id)
         }
     }
 
-    /// Saves this TodoState to the given path
-    pub async fn save(&self, os: &Os, path: &str) -> Result<()> {
-        if !os.fs.exists(path) {
-            os.fs.create_new(path).await?;
-        }
-        let json_str = serde_json::to_string(self)?;
-        os.fs.write(path, json_str).await?;
+    /// Saves this TodoState with the given id
+    pub fn save(&self, os: &Os, id: &str) -> Result<()> {
+        os.database.set_todo(id, &self)?;
         Ok(())
     }
 
@@ -133,38 +118,23 @@ impl TodoState {
         Ok(())
     }
 
-    /// Gets the current to-do list path from the fixed state file
-    pub async fn get_current_todo_path(os: &Os) -> Result<Option<String>> {
-        let state_file_path = build_path(os, CURRENT_TODO_STATE_PATH, "")?;
-        if !os.fs.exists(&state_file_path) {
-            return Ok(None);
-        }
-        
-        let path = os.fs.read_to_string(&state_file_path).await?;
-        if path.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(path.to_string()))
-        }
+    pub fn get_current_todo_id(os: &Os) -> Result<Option<String>> {
+        Ok(os.database.get_current_todo_id()?)
     }
 
-    /// Sets the current to-do list path in the fixed state file
-    pub async fn set_current_todo_path(os: &Os, path: &str) -> Result<()> {
-        os.fs.write(
-            build_path(os, CURRENT_TODO_STATE_PATH, "")?, 
-            path
-        ).await?;
+    pub fn set_current_todo_id(os: &Os, id: &str) -> Result<()> {
+        os.database.set_current_todo_id(id)?;
         Ok(())
     }
 
     /// Generates a new unique filename to be used for new to-do lists
-    pub fn generate_new_filename(prefix: &str, extension: &str) -> String {
+    pub fn generate_new_id() -> String {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_millis();
         
-        format!("{}{}{}", prefix, timestamp, extension)
+        format!("{}", timestamp)
     }
 }
 
@@ -180,21 +150,21 @@ impl TodoInput {
                     context: Vec::new(),
                     modified_files: Vec::new(),
                 };
-                let path = build_path(
-                    os, 
-                    TODO_STATE_FOLDER_PATH, 
-                    &TodoState::generate_new_filename("todo", ".json")
-                )?;
-                state.save(os, &path.to_string_lossy()).await?;
-                TodoState::set_current_todo_path(os, &path.to_string_lossy()).await?;
+                let new_id = TodoState::generate_new_id();
+                state.save(os, &new_id)?;
+                TodoState::set_current_todo_id(os, &new_id)?;
                 state
             },
-            TodoInput::Complete { completed_indices, context_update, modified_files } => {
-                let current_path = match TodoState::get_current_todo_path(os).await? {
-                    Some(path) => path,
-                    None => bail!("No todo list is currently loaded"),
+            TodoInput::Complete { 
+                completed_indices, 
+                context_update, 
+                modified_files } => {
+                
+                let current_id = match TodoState::get_current_todo_id(os)? {
+                    Some(id) => id,
+                    None => bail!("No to-do list currently loaded")
                 };
-                let mut state = TodoState::load(os, &current_path).await?;
+                let mut state = TodoState::load(os, &current_id)?;
                 
                 completed_indices.iter().for_each(|i| {
                     state.completed[*i] = true;
@@ -205,13 +175,12 @@ impl TodoInput {
                 if let Some(files) = modified_files {
                     state.modified_files.extend_from_slice(&files);
                 }
-                state.save(os, &current_path).await?;
+                state.save(os, &current_id)?;
                 state
             },
-            TodoInput::Load { path } => { 
-                let state = TodoState::load(os, &path).await?;
-                TodoState::set_current_todo_path(os, path).await?;
-                state
+            TodoInput::Load { id } => { 
+                TodoState::set_current_todo_id(os, id)?;
+                TodoState::load(os, &id)?
             }  
         };
         state.display_list(output)?;
@@ -220,7 +189,7 @@ impl TodoInput {
         Ok(Default::default())
     }
 
-    pub fn queue_description(&self, os: &Os, output: &mut impl Write) -> Result<()> {
+    pub fn queue_description(&self, _os: &Os, _output: &mut impl Write) -> Result<()> {
         Ok(())
     }
 
@@ -236,46 +205,24 @@ impl TodoInput {
                 }
             }
             TodoInput::Complete { completed_indices, context_update, .. } => {
-                let current_path = match TodoState::get_current_todo_path(os).await? {
-                    Some(path) => path,
+                let current_id = match TodoState::get_current_todo_id(os)? {
+                    Some(id) => id,
                     None => bail!("No todo list is currently loaded"),
                 };
-                let state = TodoState::load(os, &current_path).await?;
+                let state = TodoState::load(os, &current_id)?;
                 if completed_indices.iter().any(|i| *i >= state.completed.len()) {
                     bail!("Completed index is out of bounds");
                 } else if context_update.len() == 0 {
                     bail!("No context update was provided");
                 }
             }
-            TodoInput::Load { path } => {
-                if !os.fs.exists(&path) {
-                    bail!("Path does not exist");
-                } else if let Ok(state) = TodoState::load(os, &path).await {
-                    if state.tasks.len() == 0 {
-                        bail!("Loaded todo list is empty");
-                    }
-                } else {
-                    bail!("Could not load todo list");
+            TodoInput::Load { id } => {
+                let state = TodoState::load(os, &id)?;
+                if state.tasks.len() == 0 {
+                    bail!("Loaded todo list is empty");
                 }
             }
         }
         Ok(())
-    }
-}
-
-/// Builds an absolute paths from the two given parts
-pub fn build_path(os: &Os, part1: &str, part2: &str) -> Result<PathBuf> {
-    if let Some(home_dir) = os.env.home() {
-        let mut path = PathBuf::new();
-        path.push(home_dir);
-        path.push(part1);
-       
-        // Only push part2 if it's non-empty to avoid trailing slashes on files
-        if part2.len() > 0 {
-            path.push(part2);
-        }
-        Ok(path)
-    } else {
-        bail!("Could not determine home directory");
     }
 }

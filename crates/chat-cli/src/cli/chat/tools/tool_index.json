@@ -273,8 +273,9 @@
             "type": "string"
           }
         },
-        "path": {
-          "description": "Required parameter of `load` command containing path of todo list to load"
+        "id": {
+          "description": "Required parameter of `load` command containing ID of todo list to load",
+          "type": "string"
         }
       },
       "required": ["command"]

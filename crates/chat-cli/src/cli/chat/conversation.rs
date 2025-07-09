@@ -4,7 +4,6 @@ use std::collections::{
     VecDeque,
 };
 use std::io::Write;
-use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
 use crossterm::style::Color;
@@ -24,6 +23,7 @@ use tracing::{
 
 use eyre::{
     Result, 
+    bail,
 };
 
 use super::consts::{
@@ -847,17 +847,20 @@ impl ConversationState {
         }
     }
 
-    pub async fn create_todo_request(&self, os: &Os, path: PathBuf) -> Result<FigConversationState> {
-        let contents = self.can_resume_todo(os, &path).await?;
+    pub async fn create_todo_request(&self, os: &Os, id: &str) -> Result<FigConversationState> {
+        let contents = match os.database.get_todo(id)? {
+            Some(todo_list) => serde_json::to_string(&todo_list)?,
+            None => bail!("No todo list with id {}", id)
+        };
         let request = format!(
-            "[SYSTEM NOTE: This is an automated request, not from the user] 
-            Read the TODO list contents below and understand the task description, completed tasks, and provided context. 
-            Call the `load` command of the todo_list tool with the given file path as an argument to display the TODO list to the user and officially resume execution of the TODO list tasks.
-            You do not need to display the tasks to the user yourself. You can begin completing the tasks after calling the `load` command.
-            TODO LIST CONTENTS: {}
-            FILE PATH: {}",
+            "[SYSTEM NOTE: This is an automated request, not from the user]\n
+            Read the TODO list contents below and understand the task description, completed tasks, and provided context.\n 
+            Call the `load` command of the todo_list tool with the given ID as an argument to display the TODO list to the user and officially resume execution of the TODO list tasks.\n
+            You do not need to display the tasks to the user yourself. You can begin completing the tasks after calling the `load` command.\n
+            TODO LIST CONTENTS: {}\n
+            ID: {}\n",
             contents,
-            path.display()
+            id
         ); 
         
         let request_message = UserInputMessage {
@@ -873,13 +876,6 @@ impl ConversationState {
             user_input_message: request_message,
             history: None,
         }) 
-    }
-
-    // For now, just check that file path is valid and deserializable
-    pub async fn can_resume_todo(&self, os: &Os, path: &PathBuf) -> Result<String> {
-        let contents = os.fs.read_to_string(path).await?;
-        let _ = serde_json::from_str::<TodoState>(&contents)?;
-        Ok(contents)
     }
 }
 
