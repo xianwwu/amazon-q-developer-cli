@@ -40,6 +40,8 @@ use crate::util::directories::{
     database_path,
 };
 
+use crate::cli::TodoState;
+
 macro_rules! migrations {
     ($($name:expr),*) => {{
         &[
@@ -69,7 +71,8 @@ const MIGRATIONS: &[Migration] = migrations![
     "004_state_table",
     "005_auth_table",
     "006_make_state_blob",
-    "007_conversations_table"
+    "007_conversations_table",
+    "008_todos_table"
 ];
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -159,6 +162,8 @@ pub enum Table {
     Conversations,
     /// The auth table contains SSO and Builder ID credentials.
     Auth,
+    /// The todos table contains todo list states.
+    Todos,
 }
 
 impl std::fmt::Display for Table {
@@ -167,6 +172,7 @@ impl std::fmt::Display for Table {
             Table::State => write!(f, "state"),
             Table::Conversations => write!(f, "conversations"),
             Table::Auth => write!(f, "auth_kv"),
+            Table::Todos => write!(f, "todos"),
         }
     }
 }
@@ -360,6 +366,28 @@ impl Database {
         self.delete_entry(Table::Auth, key)
     }
 
+    pub fn get_todo(&self, id: &str) -> Result<Option<TodoState>, DatabaseError> {
+        self.get_json_entry(Table::Todos, id)
+    }
+
+    pub fn set_todo(&self, id: &str, state: &TodoState) -> Result<(), DatabaseError> {
+        self.set_json_entry(Table::Todos, id, state)?;
+        Ok(())
+    }
+
+    pub fn get_current_todo_id(&self) -> Result<Option<String>, DatabaseError> {
+        self.get_entry(Table::State, "current_todo_id")
+    }
+
+    pub fn set_current_todo_id(&self, id: &str) -> Result<(), DatabaseError> {
+        self.set_entry(Table::State, "current_todo_id", id)?;
+        Ok(())
+    }
+
+    pub fn get_all_todos(&self) -> Result<Map<String, Value>, DatabaseError> {
+        self.all_entries(Table::Todos)
+    }
+    
     // Private functions. Do not expose.
 
     fn migrate(self) -> Result<Self, DatabaseError> {

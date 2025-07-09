@@ -1,5 +1,4 @@
 use clap::Subcommand;
-use std::path::PathBuf;
 use crate::{cli::chat::tools::todo::TodoState, os::Os};
 use crossterm::{
     execute,
@@ -14,28 +13,23 @@ use crate::cli::chat::{
 
 use eyre::Result;
 
-use crate::cli::chat::tools::todo::{
-    build_path,
-    TODO_STATE_FOLDER_PATH,
-};
-
 use dialoguer::{
     FuzzySelect
 };
 
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum TodoSubcommand {
-    // Task/prompt to generate TODO list for
     Show,
     ClearFinished,
     Select,
 }
 
+/// Used for displaying completed and in-progress todo lists
 pub struct TodoDisplayEntry {
     pub num_completed: usize,
     pub num_tasks: usize,
     pub description: String,
-    pub path: PathBuf,
+    pub id: String,
 }
 
 impl std::fmt::Display for TodoDisplayEntry {
@@ -60,7 +54,7 @@ impl TodoSubcommand {
     pub async fn execute(self, os: &mut Os, session: &mut ChatSession) -> Result<ChatState, ChatError> {
         match self {
             Self::Show => {
-                match self.get_descriptions_and_statuses(os).await {
+                match self.get_descriptions_and_statuses(os) {
                     Ok(entries) => {
                         if entries.len() == 0 {
                             execute!(
@@ -88,7 +82,7 @@ impl TodoSubcommand {
                 ();
             },
             Self::Select => {
-                match self.get_descriptions_and_statuses(os).await {
+                match self.get_descriptions_and_statuses(os) {
                     Ok(entries) => {
                         if entries.len() == 0 {
                             execute!(
@@ -110,7 +104,7 @@ impl TodoSubcommand {
                                         style::Print("⟳ Resuming: ".magenta()),
                                         style::Print(format!("{}\n", entries[index].description.clone())),
                                     )?;
-                                    return session.resume_todo(os, entries[index].path.clone()).await;
+                                    return session.resume_todo(os, &entries[index].id).await;
                                 }
                             }
                         }
@@ -125,23 +119,29 @@ impl TodoSubcommand {
     }
 
     /// Convert all to-do list state files to displayable entries
-    async fn get_descriptions_and_statuses(self, os: &Os) -> Result<Vec<TodoDisplayEntry>> {
+    fn get_descriptions_and_statuses(self, os: &Os) -> Result<Vec<TodoDisplayEntry>> {
         let mut out = Vec::new();
-        let mut entries = os.fs.read_dir(
-            build_path(os, TODO_STATE_FOLDER_PATH, "")?
-        ).await?;
-
-        while let Some(entry) = entries.next_entry().await? {
-            let contents = os.fs.read_to_string(entry.path()).await?;
-            let temp_struct = match serde_json::from_str::<TodoState>(&contents) {
-                Ok(state) => state,
-                Err(_) => continue,
+        let entries = os.database.get_all_todos()?;
+        for (id, value) in entries.iter() {
+            let temp_struct = match value.as_str() {
+                Some(s) => { match serde_json::from_str::<TodoState>(s) {
+                    Ok(state) => state,
+                    Err(_) => continue,
+                }},
+                None => continue,
             };
-            out.push( TodoDisplayEntry {
+            // For some reason this doesn't work
+            // Has to do with the Value::String wrapping in os.database.all_entries() rather than Value::from_str()
+            // let temp_struct = match serde_json::from_value::<TodoState>(value.clone()) {
+            //     Ok(state) => state,
+            //     Err(_) => continue,
+            // };
+
+            out.push(TodoDisplayEntry {
                 num_completed: temp_struct.completed.iter().filter(|b| **b).count(),
                 num_tasks: temp_struct.completed.len(),
                 description: prewrap(&temp_struct.task_description),
-                path: entry.path(),
+                id: id.to_string(),
             });
         }
         Ok(out)
