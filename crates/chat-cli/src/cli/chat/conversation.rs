@@ -876,7 +876,6 @@ impl ConversationState {
     }
 
     // For now, just check that file path is valid and deserializable
-    // QUESTION: How do you pass errors cleanly in the todo_request functions?
     pub async fn can_resume_todo(&self, os: &Os, path: &PathBuf) -> Result<String> {
         let contents = os.fs.read_to_string(path).await?;
         let _ = serde_json::from_str::<TodoState>(&contents)?;

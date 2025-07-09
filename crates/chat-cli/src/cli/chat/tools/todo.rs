@@ -1,7 +1,4 @@
-#![allow(warnings)]
-
-use core::task;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use std::io::Write;
@@ -11,7 +8,6 @@ use serde::{
 };
 
 use crossterm::{
-    execute,
     queue,
     style,
 };
@@ -20,13 +16,8 @@ use eyre::{
     Result,
     bail,
 };
-use uuid::timestamp::context;
 
-use super::{
-    InvokeOutput,
-    MAX_TOOL_RESPONSE_SIZE,
-    OutputKind,
-};
+use super::InvokeOutput;
 
 use crate::os::Os;
 
@@ -34,12 +25,13 @@ use crate::os::Os;
 Demo prompts:
 Create a Python package layout with a blank main file and a blank utilities file. Start by making a todo list.
 Design your own super simple programming task with 4 steps. Make a todo list for the task, and begin executing those steps.
+Implement a basic input to Python type converter where the user can input either a string or integer and it gets converted to the corresponding Python object.
 */
 
 // ########### HARDCODED VALUES ##############
 pub const CURRENT_TODO_STATE_PATH: &str = ".aws/amazonq/todos/CURRENT_STATE.txt";
 pub const TODO_STATE_FOLDER_PATH: &str = ".aws/amazonq/todos";
-// ########### --------------------- ##############
+// ########### ---------------- ##############
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "command")]
@@ -55,6 +47,7 @@ pub enum TodoInput {
     Complete { 
         completed_indices: Vec<usize>,
         context_update: String,
+        modified_files: Option<Vec<String>>,
     },
 
     #[serde(rename = "load")]
@@ -68,7 +61,8 @@ pub struct TodoState {
     pub tasks: Vec<String>,
     pub completed: Vec<bool>,
     pub task_description: String,
-    pub context: String,
+    pub context: Vec<String>,
+    pub modified_files: Vec<String>,
 }
 
 impl TodoState {
@@ -141,18 +135,21 @@ impl TodoState {
 
     /// Gets the current to-do list path from the fixed state file
     pub async fn get_current_todo_path(os: &Os) -> Result<Option<String>> {
-        let temp = build_path(os, CURRENT_TODO_STATE_PATH, "")?;
-        let path = os.fs.read_to_string(
-            build_path(os, CURRENT_TODO_STATE_PATH, "")?
-        ).await?;
-        if path.len() > 0 {
-            return Ok(Some(path));
+        let state_file_path = build_path(os, CURRENT_TODO_STATE_PATH, "")?;
+        if !os.fs.exists(&state_file_path) {
+            return Ok(None);
         }
-        Ok(None)
+        
+        let path = os.fs.read_to_string(&state_file_path).await?;
+        if path.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(path.to_string()))
+        }
     }
 
     /// Sets the current to-do list path in the fixed state file
-    pub async fn set_current_todo_path(os: &Os, path: &str) -> Result<()> {;
+    pub async fn set_current_todo_path(os: &Os, path: &str) -> Result<()> {
         os.fs.write(
             build_path(os, CURRENT_TODO_STATE_PATH, "")?, 
             path
@@ -180,7 +177,8 @@ impl TodoInput {
                     tasks: tasks.clone(),
                     completed: vec![false; tasks.len()],
                     task_description: task_description.clone(),
-                    context: String::new(),
+                    context: Vec::new(),
+                    modified_files: Vec::new(),
                 };
                 let path = build_path(
                     os, 
@@ -191,21 +189,27 @@ impl TodoInput {
                 TodoState::set_current_todo_path(os, &path.to_string_lossy()).await?;
                 state
             },
-            TodoInput::Complete { completed_indices, context_update} => {
+            TodoInput::Complete { completed_indices, context_update, modified_files } => {
                 let current_path = match TodoState::get_current_todo_path(os).await? {
                     Some(path) => path,
                     None => bail!("No todo list is currently loaded"),
                 };
                 let mut state = TodoState::load(os, &current_path).await?;
+                
                 completed_indices.iter().for_each(|i| {
                     state.completed[*i] = true;
                 });
-                state.context = context_update.clone();
+                
+                state.context.push(context_update.clone());
+                
+                if let Some(files) = modified_files {
+                    state.modified_files.extend_from_slice(&files);
+                }
                 state.save(os, &current_path).await?;
                 state
             },
             TodoInput::Load { path } => { 
-                let mut state = TodoState::load(os, &path).await?;
+                let state = TodoState::load(os, &path).await?;
                 TodoState::set_current_todo_path(os, path).await?;
                 state
             }  
@@ -225,18 +229,22 @@ impl TodoInput {
             TodoInput::Create { tasks, task_description } => {
                 if tasks.len() == 0 {
                     bail!("No tasks were provided");
+                } else if tasks.iter().any(|task| task.trim().is_empty()) {
+                    bail!("Tasks cannot be empty");
                 } else if task_description.is_empty() {
                     bail!("No task description was provided");
                 }
             }
-            TodoInput::Complete { completed_indices, context_update } => {
+            TodoInput::Complete { completed_indices, context_update, .. } => {
                 let current_path = match TodoState::get_current_todo_path(os).await? {
                     Some(path) => path,
                     None => bail!("No todo list is currently loaded"),
                 };
-                let mut state = TodoState::load(os, &current_path).await?;
-                if completed_indices.iter().any(|i| *i > state.completed.len()) {
+                let state = TodoState::load(os, &current_path).await?;
+                if completed_indices.iter().any(|i| *i >= state.completed.len()) {
                     bail!("Completed index is out of bounds");
+                } else if context_update.len() == 0 {
+                    bail!("No context update was provided");
                 }
             }
             TodoInput::Load { path } => {
