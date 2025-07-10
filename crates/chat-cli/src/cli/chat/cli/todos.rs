@@ -28,6 +28,9 @@ pub enum TodoSubcommand {
 
     /// View a to-do list
     View,
+
+    /// Delete a to-do list
+    Delete,
 }
 
 /// Used for displaying completed and in-progress todo lists
@@ -61,7 +64,7 @@ impl TodoSubcommand {
             Self::Show => match Self::get_descriptions_and_statuses(os) {
                 Ok(entries) => {
                     if entries.is_empty() {
-                        execute!(session.stderr, style::Print("No to-do lists to show\n"),)?;
+                        execute!(session.stderr, style::Print("No to-do lists to show!\n"),)?;
                     }
                     for e in entries {
                         execute!(session.stderr, style::Print(e), style::Print("\n"),)?;
@@ -96,58 +99,39 @@ impl TodoSubcommand {
                         style::Print("✔ Cleared finished to-do lists!\n".green())
                     )?;
                 } else {
-                    execute!(
-                        session.stderr,
-                        style::Print("No finished to-do lists to clear!\n".green())
-                    )?;
+                    execute!(session.stderr, style::Print("No finished to-do lists to clear!\n"))?;
                 }
             },
-            Self::Resume => {
-                match Self::get_descriptions_and_statuses(os) {
-                    Ok(entries) => {
-                        if entries.is_empty() {
-                            execute!(session.stderr, style::Print("No to-do lists to show\n"),)?;
-                        } else {
-                            let selection = FuzzySelect::new()
-                                .with_prompt("Select a to-do list to resume:")
-                                .items(&entries)
-                                .report(false)
-                                .interact_opt()
-                                .unwrap_or(None);
-
-                            if let Some(index) = selection {
-                                if index < entries.len() {
-                                    execute!(
-                                        session.stderr,
-                                        style::Print("⟳ Resuming: ".magenta()),
-                                        style::Print(format!("{}\n", entries[index].description.clone())),
-                                    )?;
-                                    return session.resume_todo(os, &entries[index].id).await;
-                                }
+            Self::Resume => match Self::get_descriptions_and_statuses(os) {
+                Ok(entries) => {
+                    if entries.is_empty() {
+                        execute!(session.stderr, style::Print("No to-do lists to resume!\n"),)?;
+                    } else {
+                        if let Some(index) = fuzzy_select_todos(&entries, "Select a to-do list to resume:") {
+                            if index < entries.len() {
+                                execute!(
+                                    session.stderr,
+                                    style::Print("⟳ Resuming: ".magenta()),
+                                    style::Print(format!("{}\n", entries[index].description.clone())),
+                                )?;
+                                return session.resume_todo(os, &entries[index].id).await;
                             }
                         }
-                    },
-                    Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
-                };
+                    }
+                },
+                Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
             },
             Self::View => match Self::get_descriptions_and_statuses(os) {
                 Ok(entries) => {
                     if entries.is_empty() {
-                        execute!(session.stderr, style::Print("No to-do lists to view\n"))?;
+                        execute!(session.stderr, style::Print("No to-do lists to view!\n"))?;
                     } else {
-                        let selection = FuzzySelect::new()
-                            .with_prompt("Select a to-do list to view:")
-                            .items(&entries)
-                            .report(false)
-                            .interact_opt()
-                            .unwrap_or(None);
-
-                        if let Some(index) = selection {
+                        if let Some(index) = fuzzy_select_todos(&entries, "Select a to-do list to view:") {
                             if index < entries.len() {
                                 let list = match TodoState::load(os, &entries[index].id) {
                                     Ok(list) => list,
                                     Err(_) => {
-                                        return Err(ChatError::Custom("Could not load requested to-do list".into()));
+                                        return Err(ChatError::Custom("Could not load the selected to-do list".into()));
                                     },
                                 };
                                 execute!(
@@ -161,10 +145,38 @@ impl TodoSubcommand {
                                 match list.display_list(&mut session.stderr) {
                                     Ok(_) => {},
                                     Err(_) => {
-                                        return Err(ChatError::Custom("Could not display requested to-do list".into()));
+                                        return Err(ChatError::Custom(
+                                            "Could not display the selected to-do list".into(),
+                                        ));
                                     },
                                 };
                                 execute!(session.stderr, style::Print("\n"),)?;
+                            }
+                        }
+                    }
+                },
+                Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
+            },
+            Self::Delete => match Self::get_descriptions_and_statuses(os) {
+                Ok(entries) => {
+                    if entries.is_empty() {
+                        execute!(session.stderr, style::Print("No to-do lists to delete!\n"))?;
+                    } else {
+                        if let Some(index) = fuzzy_select_todos(&entries, "Select a to-do list to delete:") {
+                            if index < entries.len() {
+                                match os.database.delete_todo(&entries[index].id) {
+                                    Ok(_) => {},
+                                    Err(_) => {
+                                        return Err(ChatError::Custom(
+                                            "Could not delete the selected to-do list".into(),
+                                        ));
+                                    },
+                                };
+                                execute!(
+                                    session.stderr,
+                                    style::Print("✔ Deleted to-do list: ".green()),
+                                    style::Print(format!("{}\n", entries[index].description.clone().dark_grey()))
+                                )?;
                             }
                         }
                     }
@@ -206,6 +218,15 @@ impl TodoSubcommand {
         }
         Ok(out)
     }
+}
+
+fn fuzzy_select_todos(entries: &Vec<TodoDisplayEntry>, prompt_str: &str) -> Option<usize> {
+    FuzzySelect::new()
+        .with_prompt(prompt_str)
+        .items(&entries)
+        .report(false)
+        .interact_opt()
+        .unwrap_or(None)
 }
 
 // const MAX_LINE_LENGTH: usize = 80;

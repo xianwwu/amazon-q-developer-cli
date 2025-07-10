@@ -988,7 +988,6 @@ impl ChatSession {
             },
         };
 
-        // Use the normal sendable conversation state which includes tool definitions
         let conv_state = self
             .conversation
             .as_sendable_conversation_state(os, &mut self.stderr, false)
