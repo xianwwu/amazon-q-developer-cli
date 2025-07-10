@@ -102,7 +102,7 @@ impl TodoState {
             queue!(
                 output,
                 style::SetForegroundColor(style::Color::Reset),
-                style::Print(format!(" ☐ {}", task)),
+                style::Print(format!(" ☐ {task}")),
             )?;
         }
         Ok(())
@@ -124,7 +124,7 @@ impl TodoState {
             .expect("Time went backwards")
             .as_millis();
 
-        format!("{}", timestamp)
+        format!("{timestamp}")
     }
 }
 

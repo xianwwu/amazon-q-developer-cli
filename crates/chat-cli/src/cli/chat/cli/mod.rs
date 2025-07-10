@@ -84,6 +84,7 @@ pub enum SlashCommand {
     Persist(PersistSubcommand),
     // #[command(flatten)]
     // Root(RootSubcommand),
+    /// View, manage, and resume to-do lists
     #[command(subcommand)]
     Todos(TodoSubcommand),
 }

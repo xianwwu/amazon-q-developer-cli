@@ -389,6 +389,10 @@ impl Database {
         self.all_entries(Table::Todos)
     }
 
+    pub fn delete_todo(&self, id: &str) -> Result<(), DatabaseError> {
+        self.delete_entry(Table::Todos, id)
+    }
+
     // Private functions. Do not expose.
 
     fn migrate(self) -> Result<Self, DatabaseError> {

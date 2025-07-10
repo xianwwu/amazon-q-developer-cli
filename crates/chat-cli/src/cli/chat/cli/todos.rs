@@ -17,16 +17,16 @@ use crate::os::Os;
 
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum TodoSubcommand {
-    // Show all tracked to-do lists
+    /// Show all tracked to-do lists
     Show,
 
-    // Clear completed to-do lists
+    /// Delete all completed to-do lists
     ClearFinished,
-    
-    // Resume a selected to-do list
+
+    /// Resume a selected to-do list
     Resume,
-   
-    // View a to-do list
+
+    /// View a to-do list
     View,
 }
 
@@ -61,7 +61,7 @@ impl TodoSubcommand {
             Self::Show => match Self::get_descriptions_and_statuses(os) {
                 Ok(entries) => {
                     if entries.is_empty() {
-                        execute!(session.stderr, style::Print("No to-do lists to show"),)?;
+                        execute!(session.stderr, style::Print("No to-do lists to show\n"),)?;
                     }
                     for e in entries {
                         execute!(session.stderr, style::Print(e), style::Print("\n"),)?;
@@ -70,16 +70,46 @@ impl TodoSubcommand {
                 Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
             },
             Self::ClearFinished => {
-
+                let entries = match os.database.get_all_todos() {
+                    Ok(e) => e,
+                    Err(_) => return Err(ChatError::Custom("Could not get all to-do lists".into())),
+                };
+                let mut cleared_one = false;
+                for (id, value) in entries.iter() {
+                    let temp_struct = match value.as_str() {
+                        Some(s) => match serde_json::from_str::<TodoState>(s) {
+                            Ok(state) => state,
+                            Err(_) => continue,
+                        },
+                        None => continue,
+                    };
+                    if temp_struct.completed.iter().all(|b| *b) {
+                        match os.database.delete_todo(id) {
+                            Ok(_) => cleared_one = true,
+                            Err(_) => return Err(ChatError::Custom("Could not delete to-do list".into())),
+                        };
+                    }
+                }
+                if cleared_one {
+                    execute!(
+                        session.stderr,
+                        style::Print("✔ Cleared finished to-do lists!\n".green())
+                    )?;
+                } else {
+                    execute!(
+                        session.stderr,
+                        style::Print("No finished to-do lists to clear!\n".green())
+                    )?;
+                }
             },
             Self::Resume => {
                 match Self::get_descriptions_and_statuses(os) {
                     Ok(entries) => {
                         if entries.is_empty() {
-                            execute!(session.stderr, style::Print("No to-do lists to show"),)?;
+                            execute!(session.stderr, style::Print("No to-do lists to show\n"),)?;
                         } else {
                             let selection = FuzzySelect::new()
-                                .with_prompt("Select task to resume:")
+                                .with_prompt("Select a to-do list to resume:")
                                 .items(&entries)
                                 .report(false)
                                 .interact_opt()
@@ -100,41 +130,47 @@ impl TodoSubcommand {
                     Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
                 };
             },
-            Self::View => {
-                match Self::get_descriptions_and_statuses(os) {
-                    Ok(entries) => {
-                        if entries.is_empty() {
-                            execute!(session.stderr, style::Print("No to-do lists to view"))?;
-                        } else {
-                            let selection = FuzzySelect::new()
-                                .with_prompt("Select task to view:")
-                                .items(&entries)
-                                .report(false)
-                                .interact_opt()
-                                .unwrap_or(None);
+            Self::View => match Self::get_descriptions_and_statuses(os) {
+                Ok(entries) => {
+                    if entries.is_empty() {
+                        execute!(session.stderr, style::Print("No to-do lists to view\n"))?;
+                    } else {
+                        let selection = FuzzySelect::new()
+                            .with_prompt("Select a to-do list to view:")
+                            .items(&entries)
+                            .report(false)
+                            .interact_opt()
+                            .unwrap_or(None);
 
-                            if let Some(index) = selection {
-                                if index < entries.len() {
-                                    let list = match TodoState::load(os, &entries[index].id) {
-                                        Ok(list) => list,
-                                        Err(_) => {
-                                            return Err(ChatError::Custom("Could not load requested to-do list".into()));
-                                        }
-                                    };
-                                    match list.display_list(&mut session.stderr) {
-                                        Ok(_) => {},
-                                        Err(_) => {
-                                            return Err(ChatError::Custom("Could not display requested to-do list".into()));
-                                        }
-                                    };
-                                    execute!(session.stderr, style::Print("\n"),)?;
-                                }
+                        if let Some(index) = selection {
+                            if index < entries.len() {
+                                let list = match TodoState::load(os, &entries[index].id) {
+                                    Ok(list) => list,
+                                    Err(_) => {
+                                        return Err(ChatError::Custom("Could not load requested to-do list".into()));
+                                    },
+                                };
+                                execute!(
+                                    session.stderr,
+                                    style::Print(format!(
+                                        "{} {}\n",
+                                        "Viewing:".magenta(),
+                                        entries[index].description.clone()
+                                    ))
+                                )?;
+                                match list.display_list(&mut session.stderr) {
+                                    Ok(_) => {},
+                                    Err(_) => {
+                                        return Err(ChatError::Custom("Could not display requested to-do list".into()));
+                                    },
+                                };
+                                execute!(session.stderr, style::Print("\n"),)?;
                             }
                         }
-                    },
-                    Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
-                }
-            }
+                    }
+                },
+                Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
+            },
         }
         Ok(ChatState::PromptUser {
             skip_printing_tools: true,
@@ -155,7 +191,7 @@ impl TodoSubcommand {
             };
             // For some reason this doesn't work
             // Has to do with the Value::String wrapping in os.database.all_entries() rather than
-            // Value::from_str() 
+            // Value::from_str()
             // let temp_struct = match
             // serde_json::from_value::<TodoState>(value.clone()) {     Ok(state) => state,
             //     Err(_) => continue,
@@ -164,7 +200,7 @@ impl TodoSubcommand {
             out.push(TodoDisplayEntry {
                 num_completed: temp_struct.completed.iter().filter(|b| **b).count(),
                 num_tasks: temp_struct.completed.len(),
-                description: prewrap(&temp_struct.task_description),
+                description: temp_struct.task_description,
                 id: id.clone(),
             });
         }
@@ -172,40 +208,42 @@ impl TodoSubcommand {
     }
 }
 
-const MAX_LINE_LENGTH: usize = 80;
+// const MAX_LINE_LENGTH: usize = 80;
 
-// FIX: Hacky workaround for cleanly wrapping lines
-/// Insert newlines every n characters, not within a word and not at the end.
-///
-/// Generated by Q
-fn prewrap(text: &str) -> String {
-    if text.is_empty() || MAX_LINE_LENGTH == 0 {
-        return text.to_string();
-    }
+// // FIX: Hacky workaround for cleanly wrapping lines
+// /// Insert newlines every n characters, not within a word and not at the end.
+// /// This function is very hacky and barely works (do not use).
+// ///
+// /// Generated by Q
+// ///
+// fn _prewrap(text: &str) -> String {
+//     if text.is_empty() || MAX_LINE_LENGTH == 0 {
+//         return text.to_string();
+//     }
 
-    let mut result = String::new();
-    let mut current_line_length = 0;
-    let words: Vec<&str> = text.split_whitespace().collect();
+//     let mut result = String::new();
+//     let mut current_line_length = 0;
+//     let words: Vec<&str> = text.split_whitespace().collect();
 
-    for word in words.iter() {
-        let word_length = word.len();
+//     for word in words.iter() {
+//         let word_length = word.len();
 
-        // If adding this word would exceed the line length and we're not at the start of a line
-        if current_line_length > 0 && current_line_length + 1 + word_length > MAX_LINE_LENGTH {
-            result.push('\n');
-            result.push_str(&" ".repeat("> ".len()));
-            current_line_length = 0;
-        }
+//         // If adding this word would exceed the line length and we're not at the start of a line
+//         if current_line_length > 0 && current_line_length + 1 + word_length > MAX_LINE_LENGTH {
+//             result.push('\n');
+//             result.push_str(&" ".repeat("> ".len()));
+//             current_line_length = 0;
+//         }
 
-        // Add space before word if not at start of line
-        if current_line_length > 0 {
-            result.push(' ');
-            current_line_length += 1;
-        }
+//         // Add space before word if not at start of line
+//         if current_line_length > 0 {
+//             result.push(' ');
+//             current_line_length += 1;
+//         }
 
-        result.push_str(word);
-        current_line_length += word_length;
-    }
+//         result.push_str(word);
+//         current_line_length += word_length;
+//     }
 
-    result
-}
+//     result
+// }
