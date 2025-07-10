@@ -34,13 +34,14 @@ use tracing::{
 };
 use uuid::Uuid;
 
-use crate::cli::ConversationState;
+use crate::cli::{
+    ConversationState,
+    TodoState,
+};
 use crate::util::directories::{
     DirectoryError,
     database_path,
 };
-
-use crate::cli::TodoState;
 
 macro_rules! migrations {
     ($($name:expr),*) => {{
@@ -387,7 +388,7 @@ impl Database {
     pub fn get_all_todos(&self) -> Result<Map<String, Value>, DatabaseError> {
         self.all_entries(Table::Todos)
     }
-    
+
     // Private functions. Do not expose.
 
     fn migrate(self) -> Result<Self, DatabaseError> {

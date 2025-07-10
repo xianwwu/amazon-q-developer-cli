@@ -11,6 +11,10 @@ use crossterm::{
     execute,
     style,
 };
+use eyre::{
+    Result,
+    bail,
+};
 use serde::{
     Deserialize,
     Serialize,
@@ -19,11 +23,6 @@ use tracing::{
     debug,
     error,
     warn,
-};
-
-use eyre::{
-    Result, 
-    bail,
 };
 
 use super::consts::{
@@ -46,6 +45,7 @@ use super::token_counter::{
     CharCounter,
 };
 use super::tool_manager::ToolManager;
+use super::tools::todo::TodoState;
 use super::tools::{
     InputSchema,
     QueuedTool,
@@ -77,8 +77,6 @@ use crate::cli::chat::cli::hooks::{
 };
 use crate::mcp_client::Prompt;
 use crate::os::Os;
-
-use super::tools::todo::TodoState;
 
 const CONTEXT_ENTRY_START_HEADER: &str = "--- CONTEXT ENTRY BEGIN ---\n";
 const CONTEXT_ENTRY_END_HEADER: &str = "--- CONTEXT ENTRY END ---\n\n";
@@ -850,7 +848,7 @@ impl ConversationState {
     pub async fn create_todo_request(&self, os: &Os, id: &str) -> Result<FigConversationState> {
         let contents = match os.database.get_todo(id)? {
             Some(todo_list) => serde_json::to_string(&todo_list)?,
-            None => bail!("No todo list with id {}", id)
+            None => bail!("No todo list with id {}", id),
         };
         let request = format!(
             "[SYSTEM NOTE: This is an automated request, not from the user]\n
@@ -861,8 +859,8 @@ impl ConversationState {
             ID: {}\n",
             contents,
             id
-        ); 
-        
+        );
+
         let request_message = UserInputMessage {
             content: request,
             user_input_message_context: None,
@@ -875,7 +873,7 @@ impl ConversationState {
             conversation_id: Some(self.conversation_id.clone()),
             user_input_message: request_message,
             history: None,
-        }) 
+        })
     }
 }
 

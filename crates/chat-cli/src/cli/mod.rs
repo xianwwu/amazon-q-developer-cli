@@ -16,6 +16,7 @@ use std::process::ExitCode;
 
 use anstream::println;
 pub use chat::ConversationState;
+pub use chat::tools::todo::TodoState;
 use clap::{
     ArgAction,
     CommandFactory,
@@ -51,8 +52,6 @@ use crate::util::{
     CLI_BINARY_NAME,
     GOV_REGIONS,
 };
-
-pub use chat::tools::todo::TodoState;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {

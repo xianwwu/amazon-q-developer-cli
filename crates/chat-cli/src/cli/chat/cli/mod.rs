@@ -10,9 +10,9 @@ pub mod persist;
 pub mod profile;
 pub mod prompts;
 pub mod subscribe;
+pub mod todos;
 pub mod tools;
 pub mod usage;
-pub mod todos;
 
 use clap::Parser;
 use clear::ClearArgs;
@@ -26,8 +26,8 @@ use model::ModelArgs;
 use persist::PersistSubcommand;
 use profile::ProfileSubcommand;
 use prompts::PromptsArgs;
-use tools::ToolsArgs;
 use todos::TodoSubcommand;
+use tools::ToolsArgs;
 
 use crate::cli::chat::cli::subscribe::SubscribeArgs;
 use crate::cli::chat::cli::usage::UsageArgs;
@@ -124,7 +124,6 @@ impl SlashCommand {
             //         skip_printing_tools: true,
             //     })
             // },
-
             Self::Todos(subcommand) => subcommand.execute(os, session).await,
         }
     }

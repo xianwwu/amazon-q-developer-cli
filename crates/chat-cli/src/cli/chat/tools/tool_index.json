@@ -252,7 +252,7 @@
           }
         },
         "task_description": {
-          "description": "Required paramter of `create` command containing a BRIEF summary of the given task. The summary should be detailed enough to refer to without knowing the problem context beforehand.",
+          "description": "Required parameter of `create` command containing a BRIEF summary of the given task. The summary should be detailed enough to refer to without knowing the problem context beforehand.",
           "type": "string"
         },
         "completed_indices": {

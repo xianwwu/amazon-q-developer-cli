@@ -5,8 +5,8 @@ pub mod fs_write;
 pub mod gh_issue;
 pub mod knowledge;
 pub mod thinking;
-pub mod use_aws;
 pub mod todo;
+pub mod use_aws;
 
 use std::collections::{
     HashMap,
@@ -36,8 +36,8 @@ use serde::{
     Serialize,
 };
 use thinking::Thinking;
-use use_aws::UseAws;
 use todo::TodoInput;
+use use_aws::UseAws;
 
 use super::consts::MAX_TOOL_RESPONSE_SIZE;
 use super::util::images::RichImageBlocks;
@@ -73,7 +73,7 @@ impl Tool {
             Tool::GhIssue(_) => "gh_issue",
             Tool::Knowledge(_) => "knowledge",
             Tool::Thinking(_) => "thinking (prerelease)",
-            Tool::Todo(_) => "todo_list"
+            Tool::Todo(_) => "todo_list",
         }
         .to_owned()
     }
