@@ -1,5 +1,7 @@
 #!/bin/bash
 set -e
+apt-get update
+apt-get install -y curl wget gnupg2 software-properties-common git
 
 # Install Node.js and npm
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
