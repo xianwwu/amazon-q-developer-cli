@@ -52,7 +52,7 @@ jobs:
     - name: Run terminal benchmark
       run: |
         cd terminal-bench-test
-        tb run --agent-import-path main:AmazonQCLIAgent --dataset-name terminal-bench-core --dataset-version head
+        tb run --agent-import-path main:AmazonQCLIAgent --task-id hello-world --livestream
 
     - name: Upload results
       uses: actions/upload-artifact@v4
