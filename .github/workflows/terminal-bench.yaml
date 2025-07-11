@@ -52,10 +52,11 @@ jobs:
     - name: Run terminal benchmark
       run: |
         cd terminal-bench-test
-        tb run --agent-import-path main:AmazonQCLIAgent --task-id hello-world --livestream
+        tb run --agent-import-path main:AmazonQCLIAgent --dataset-name terminal-bench-core --dataset-version head
 
     - name: Upload results
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: benchmark-results
-        path: terminal-bench-test/results/
+        path: terminal-bench-test/runs/
