@@ -21,6 +21,12 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
         self.region = 'us-east-1'
 
     @property
+    def _env(self) -> dict[str, str]:
+        # SIGv4 = 1 for AWS credentials
+        env = {}
+        return env
+
+    @property
     def _install_agent_script_path(self) -> os.PathLike:
         return Path(__file__).parent / "setup_amazon_q.sh"
 
