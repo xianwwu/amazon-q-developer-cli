@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
-# if git hash empty then set to latest automatically.
+# if git hash empty then set to latest auto
 git_hash=${GITHUB_SHA:+"$(git rev-parse --short "$GITHUB_SHA")"}
-git_hash=${git_hash:-"00286fbe0688fe19fef9a5149bb9f9172f96783c"}
+git_hash=${git_hash:-"latest"}
 apt-get update
 apt-get install -y curl wget unzip jq
 
