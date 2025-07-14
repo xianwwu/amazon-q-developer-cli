@@ -6,6 +6,8 @@ apt-get install -y curl wget gnupg2 software-properties-common git
 # Install Node.js and npm
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 apt-get install -y nodejs
+apt-get install -y build-essential gcc g++ make
+apt-get install -y pkg-config libssl-dev
 
 # Install Rust and Cargo
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
