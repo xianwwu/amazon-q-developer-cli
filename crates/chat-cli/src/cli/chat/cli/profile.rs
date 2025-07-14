@@ -146,6 +146,7 @@ impl AgentSubcommand {
             Self::Delete { .. } => "delete",
             Self::Set { .. } => "set",
             Self::Rename { .. } => "rename",
+            Self::Schema => "schema",
         }
     }
 }
