@@ -21,3 +21,20 @@ export AMAZON_Q_SIGV4=1
 git clone https://github.com/aws/amazon-q-developer-cli.git
 cd amazon-q-developer-cli
 echo "Amazon Q CLI installation completed successfully"
+
+
+# Create AWS credentials from environment variables
+mkdir -p ~/.aws
+cat > ~/.aws/credentials << EOF
+[default]
+aws_access_key_id = ${AWS_ACCESS_KEY_ID}
+aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
+aws_session_token = ${AWS_SESSION_TOKEN}
+EOF
+chmod 600 ~/.aws/credentials
+
+cat > ~/.aws/config << EOF
+[default]
+region = us-east-1
+EOF
+chmod 600 ~/.aws/config
