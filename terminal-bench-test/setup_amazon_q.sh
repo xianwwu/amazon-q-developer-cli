@@ -35,15 +35,25 @@ ORIGINAL_AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
 
 # Assume role and capture temporary credentials --> needed for s3 bucket access for build
 echo "Assuming role FigIoChat-S3Access-Role-Gamma..."
-TEMP_CREDENTIALS=$(aws sts assume-role --role-arn arn:aws:iam::${FIGCHAT_GAMMA_ID}:role/FigIoChat-S3Access-Role-Gamma --role-session-name S3AccessSession)
-
-# Extract and export temporary credentials -> jq is just used 
-export AWS_ACCESS_KEY_ID=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.AccessKeyId')
-export AWS_SECRET_ACCESS_KEY=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SecretAccessKey')
-export AWS_SESSION_TOKEN=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SessionToken')
+if [ -n "${FIGCHAT_GAMMA_ID}" ]; then
+  TEMP_CREDENTIALS=$(aws sts assume-role --role-arn arn:aws:iam::${FIGCHAT_GAMMA_ID}:role/FigIoChat-S3Access-Role-Gamma --role-session-name S3AccessSession 2>/dev/null || echo '{}')
+  
+  # Check if role assumption was successful
+  if [ "$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.AccessKeyId' 2>/dev/null)" != "null" ] && [ "$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.AccessKeyId' 2>/dev/null)" != "" ]; then
+    echo "Role assumption successful, using temporary credentials"
+    export AWS_ACCESS_KEY_ID=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.AccessKeyId')
+    export AWS_SECRET_ACCESS_KEY=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SecretAccessKey')
+    export AWS_SESSION_TOKEN=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SessionToken')
+  else
+    echo "Role assumption failed, continuing with original credentials"
+  fi
+else
+  echo "FIGCHAT_GAMMA_ID not set, skipping role assumption"
+fi
 
 # Download specific build from S3 based on commit hash
 echo "Downloading Amazon Q CLI build from S3..."
+# Use hardcoded bucket ID if FIGCHAT_GAMMA_ID is not set
 S3_BUCKET="fig-io-chat-build-output-${FIGCHAT_GAMMA_ID}-us-east-1"
 S3_PREFIX="main/${git_hash}/x86_64-unknown-linux-musl"
 echo "Downloading qchat.zip from s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip"
