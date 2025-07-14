@@ -49,14 +49,24 @@ S3_PREFIX="main/${git_hash}/x86_64-unknown-linux-musl"
 echo "Downloading qchat.zip from s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip"
 aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip ./qchat.zip --region us-east-1
 
-
 # Handle the zip file, copy the qchat executable to /usr/local/bin + symlink from old code
 echo "Extracting qchat.zip..."
 unzip -q qchat.zip
 mkdir -p /usr/local/bin
-cp -f ./qchat/qchat /usr/local/bin/qchat
-chmod +x /usr/local/bin/qchat
-ln -sf /usr/local/bin/qchat /usr/local/bin/q
+
+# Find the qchat executable -> copy
+find . -type f -name "qchat" -exec cp {} /usr/local/bin/qchat \;
+
+if [ -f "/usr/local/bin/qchat" ]; then
+    chmod +x /usr/local/bin/qchat
+    ln -sf /usr/local/bin/qchat /usr/local/bin/q
+    echo "qchat installed successfully"
+else
+    echo "ERROR: qchat executable not found in the zip file"
+    # List the contents of the extracted files to debug
+    find . -type f | grep -v "aws" | head -20
+    exit 1
+fi
 
 # Restore credentials to run Q
 export AWS_ACCESS_KEY_ID=${ORIGINAL_AWS_ACCESS_KEY_ID}
@@ -73,9 +83,3 @@ EOF
 echo "Cleaning q zip"
 rm -f qchat.zip
 rm -rf qchat
-
-
-
-
-
-

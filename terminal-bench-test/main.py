@@ -53,6 +53,7 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
                     env["AWS_REGION"] = config["default"]["region"]
             except Exception as e:
                 print(f"Warning: Failed to read AWS config: {e}")
+        env['FIGCHAT_GAMMA_ID'] = os.environ.get('FIGCHAT_GAMMA_ID', '')
         return env
 
     @property
