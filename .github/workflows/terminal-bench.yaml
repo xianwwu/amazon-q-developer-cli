@@ -25,6 +25,8 @@ on:
 jobs:
   run-benchmark:
     runs-on: ubuntu-latest
+    env:
+      FIGCHAT_GAMMA_ID: ${{ secrets.figchat_gamma_id }}
     permissions:
       id-token: write
       contents: read
@@ -37,6 +39,7 @@ jobs:
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
         sudo rm -rf /usr/local/lib/android
         sudo rm -rf /usr/share/swift
+        sudo apt-get clean
         df -h
 
     - name: Checkout repository

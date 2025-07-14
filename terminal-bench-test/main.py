@@ -66,8 +66,8 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
         # q chat with 30 min max timeout and also we wait on input. Using qchat cuz sigv4. 
         # non-interactive for now --> check if needed or not
             TerminalCommand(
-                command=f"cargo run --bin chat_cli -- chat --no-interactive --trust-all-tools {escaped_description}",
-                max_timeout_sec=1200, 
+                command=f"qchat chat --no-interactive --trust-all-tools {escaped_description}",
+                max_timeout_sec=370, 
                 block=True,
             )
         ]
