@@ -20,6 +20,4 @@ cd /app
 export AMAZON_Q_SIGV4=1
 git clone https://github.com/aws/amazon-q-developer-cli.git
 cd amazon-q-developer-cli
-npm run setup
-
 echo "Amazon Q CLI installation completed successfully"

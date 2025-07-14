@@ -23,7 +23,7 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
     @property
     def _env(self) -> dict[str, str]:
         # SIGv4 = 1 for AWS credentials
-        env = {}
+        env = {"AMAZON_Q_SIGV4":1}
         return env
 
     @property
@@ -38,7 +38,7 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
         # non-interactive for now --> check if needed or not
             TerminalCommand(
                 command=f"cargo run --bin chat_cli -- chat --no-interactive --trust-all-tools {escaped_description}",
-                max_timeout_sec=370, 
+                max_timeout_sec=1200, 
                 block=True,
             )
         ]
