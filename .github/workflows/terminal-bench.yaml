@@ -26,7 +26,7 @@ jobs:
   run-benchmark:
     runs-on: ubuntu-latest
     env:
-      FIGCHAT_GAMMA_ID: ${{ secrets.figchat_gamma_id }}
+      FIGCHAT_GAMMA_ID: ${{ secrets.FIGCHAT_GAMMA_ID }}
     permissions:
       id-token: write
       contents: read
