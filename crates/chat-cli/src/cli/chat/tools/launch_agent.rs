@@ -152,7 +152,7 @@ impl SubAgent {
             task_handles.push(handle.1);
         }
 
-        // 300ms wait for q to spawn chat child process and wait on that pid
+        // 1s wait for q to spawn chat child process and wait on that pid
         tokio::time::sleep(Duration::from_secs(1)).await;
         for child_pid in child_pids {
             grand_child_pids.push(get_grandchild_pid(child_pid).await?);
@@ -162,26 +162,8 @@ impl SubAgent {
         drop(progress_tx);
         let mut completed = 0;
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(2));
-        let mut first_print = true;
         let mut spinner: Option<Spinner> = None;
-
-        // Move cursor to top of current
-        // Right after this section:
-        let num_empty_lines = 9;
-        let lines_to_move_up = 3 * agents.len() + num_empty_lines;
-        queue!(
-            updates,
-            cursor::MoveUp(lines_to_move_up as u16),
-            cursor::MoveToColumn(0),
-            Clear(ClearType::CurrentLine),
-            style::SetAttribute(Attribute::Bold),
-            style::Print(" ● "),
-            style::SetForegroundColor(Color::Green),
-            style::Print(format!("Successfully launched {} Q agent(s)\n\n", agents.len())),
-            style::ResetColor,
-            style::Print("─".repeat(50)),
-            style::Print("\n\n"),
-        )?;
+        let mut all_agents_done = false;
 
         // Displays subagent status update every 5 seconds until join
         loop {
@@ -197,10 +179,7 @@ impl SubAgent {
                     spinner = Some(Spinner::new(Spinners::Dots,
                         format!("Progress: {}/{} agents complete", completed, agents.len())));
                     if completed >= agents.len() {
-                        if let Some(mut temp_spinner) = spinner.take() {
-                            temp_spinner.stop_with_message("All agents have completed.".to_string());
-                        }
-                        break;
+                        all_agents_done = true;
                     }
                 }
 
@@ -208,7 +187,9 @@ impl SubAgent {
 
                     // Stop spinner FIRST before any cursor operations for smoothness
                     if let Some(mut temp_spinner) = spinner.take() {
-                        temp_spinner.stop();
+                        if !all_agents_done {
+                            temp_spinner.stop();
+                        }
                     }
                     updates.flush()?;
 
@@ -230,36 +211,42 @@ impl SubAgent {
                         };
 
                         status_output.push_str(&format!(
-                            "{}  • {}{}{}{} ({}){}\n    {}{}{}\n\n",
+                            "{}  • {}{}{}{} {}{}{}\n    {}{}{}\n\n",
                             style::SetForegroundColor(Color::Blue),
                             style::SetForegroundColor(Color::White),
                             style::SetAttribute(Attribute::Bold),
                             agent.agent_display_name,
                             style::ResetColor,
-                            agent.agent_cli_name.clone().unwrap_or_else(|| "Default".to_string()),
+                            style::SetForegroundColor(Color::DarkGrey),
+                            format!("({})", agent.agent_cli_name.clone().unwrap_or_else(|| "Default".to_string())),
                             style::ResetColor,
                             style::SetForegroundColor(Color::Cyan),
                             status,
                             style::ResetColor
                         ));
+
+
                         // 1 for agent line + 1 for status + 1 for empty line
                         new_lines_printed += 3;
                     }
 
                     // batch update - move cursor back to top & clear, then display everything
-                    if !first_print {
-                        queue!(
+                    queue!(
                             updates,
-                            cursor::MoveUp(new_lines_printed as u16),
+                            cursor::MoveUp(new_lines_printed as u16 + 6),
                             cursor::MoveToColumn(0),
                             Clear(ClearType::FromCursorDown),
                             style::Print(status_output)
                         )?;
-                    } else {
-                        queue!(updates, cursor::MoveToColumn(0), Clear(ClearType::FromCursorDown), style::Print(status_output))?;
-                        first_print = false;
-                    }
                     updates.flush()?;
+
+                    // force all subagents to display `Agent complete` when done...
+                    if all_agents_done {
+                        if let Some(mut temp_spinner) = spinner.take() {
+                            temp_spinner.stop_with_message("All agents have completed.".to_string());
+                        }
+                        break;
+                    }
 
                     spinner = Some(Spinner::new(Spinners::Dots,
                         format!("Progress: {}/{} agents complete", completed, agents.len())));
