@@ -29,6 +29,9 @@ pub enum TodoSubcommand {
 
     /// Delete a to-do list
     Delete,
+
+    /// Display current to-do list
+    Show
 }
 
 /// Used for displaying completed and in-progress todo lists
@@ -170,6 +173,26 @@ impl TodoSubcommand {
                 },
                 Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
             },
+            Self::Show => {
+                if let Some(id) = TodoState::get_current_todo_id(os).unwrap_or(None) {
+                   let state =  match TodoState::load(os, &id) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            return Err(ChatError::Custom("Could not load current to-do list".into()));
+                        },
+                    };
+                    match state.display_list(&mut session.stderr) {
+                        Ok(_) => execute!(session.stderr, style::Print("\n"))?,
+                        Err(_) => {
+                            return Err(ChatError::Custom("Could not display current to-do list".into()));
+                        },
+                    };
+                } else {
+                    execute!(session.stderr, style::Print("No to-do list currently loaded\n"))?;
+                }
+
+            }
+
         }
         Ok(ChatState::PromptUser {
             skip_printing_tools: true,
