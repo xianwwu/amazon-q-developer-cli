@@ -17,8 +17,6 @@ use crate::os::Os;
 
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum TodoSubcommand {
-    /// Show all tracked to-do lists
-    Show,
 
     /// Delete all completed to-do lists
     ClearFinished,
@@ -61,17 +59,6 @@ impl std::fmt::Display for TodoDisplayEntry {
 impl TodoSubcommand {
     pub async fn execute(self, os: &mut Os, session: &mut ChatSession) -> Result<ChatState, ChatError> {
         match self {
-            Self::Show => match Self::get_descriptions_and_statuses(os) {
-                Ok(entries) => {
-                    if entries.is_empty() {
-                        execute!(session.stderr, style::Print("No to-do lists to show!\n"),)?;
-                    }
-                    for e in entries {
-                        execute!(session.stderr, style::Print(e), style::Print("\n"),)?;
-                    }
-                },
-                Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
-            },
             Self::ClearFinished => {
                 let entries = match os.database.get_all_todos() {
                     Ok(e) => e,

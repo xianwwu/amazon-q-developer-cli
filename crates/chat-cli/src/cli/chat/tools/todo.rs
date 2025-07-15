@@ -13,6 +13,7 @@ use eyre::{
     Result,
     bail,
 };
+
 use serde::{
     Deserialize,
     Serialize,
@@ -152,6 +153,7 @@ impl TodoInput {
                 let new_id = TodoState::generate_new_id();
                 state.save(os, &new_id)?;
                 TodoState::set_current_todo_id(os, &new_id)?;
+                state.display_list(output)?;
                 state
             },
             TodoInput::Complete {
@@ -175,11 +177,29 @@ impl TodoInput {
                     state.modified_files.extend_from_slice(files);
                 }
                 state.save(os, &current_id)?;
+
+                let last_completed = completed_indices.iter().max().unwrap();
+                if *last_completed == state.tasks.len() - 1 {
+                    // Display the whole list only at the end
+                    state.display_list(output)?;
+                } else {
+                    // Display only completed tasks and next task
+                    let mut display_list= TodoState::default();
+                    display_list.tasks = completed_indices.iter().map(|i| state.tasks[*i].clone()).collect();  
+                    display_list.tasks.push(state.tasks[*last_completed + 1].clone());
+                    for _ in 0..completed_indices.len() {
+                        display_list.completed.push(true);
+                    }
+                    display_list.completed.push(false);
+                    display_list.display_list(output)?;
+                }
                 state
             },
             TodoInput::Load { id } => {
                 TodoState::set_current_todo_id(os, id)?;
-                TodoState::load(os, id)?
+                let state= TodoState::load(os, id)?;
+                state.display_list(output)?;
+                state
             },
             TodoInput::Add {
                 new_tasks,
@@ -199,6 +219,7 @@ impl TodoInput {
                     state.task_description = description.clone();
                 }
                 state.save(os, &current_id)?;
+                state.display_list(output)?;
                 state
             },
             TodoInput::Remove {
@@ -218,11 +239,11 @@ impl TodoInput {
                     state.task_description = description.clone();
                 }
                 state.save(os, &current_id)?;
+                state.display_list(output)?;
                 state
             },
         };
-        state.display_list(output)?;
-        output.flush()?;
+        
 
         Ok(InvokeOutput { output: super::OutputKind::Json(serde_json::to_value(state)?) })
     }
@@ -255,7 +276,9 @@ impl TodoInput {
                     None => bail!("No todo list is currently loaded"),
                 };
                 let state = TodoState::load(os, &current_id)?;
-                if completed_indices.iter().any(|i| *i >= state.completed.len()) {
+                if completed_indices.is_empty() {
+                    bail!("At least one completed index must be provided");
+                } else if completed_indices.iter().any(|i| *i >= state.completed.len()) {
                     bail!("Completed index is out of bounds");
                 } else if context_update.is_empty() {
                     bail!("No context update was provided");
