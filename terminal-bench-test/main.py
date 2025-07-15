@@ -25,7 +25,10 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
         # SIGv4 = 1 for AWS credentials
         env = {}
         env["AMAZON_Q_SIGV4"] = 1
-        env['FIGCHAT_GAMMA_ID'] = os.environ.get('FIGCHAT_GAMMA_ID', '')
+        env["FIGCHAT_GAMMA_ID"] = os.environ.get("FIGCHAT_GAMMA_ID", '')
+        env["AWS_ACCESS_KEY_ID"] = os.environ.get("AWS_ACCESS_KEY_ID", '')
+        env["AWS_SECRET_ACCESS_KEY"] = os.environ.get("AWS_SECRET_ACCESS_KEY", '')
+        env["AWS_SESSION_TOKEN"] = os.environ.get("AWS_SESSION_TOKEN", '')
         return env
 
     @property
