@@ -38,17 +38,9 @@ S3_BUCKET="fig-io-chat-build-output-${FIGCHAT_GAMMA_ID}-us-east-1"
 S3_PREFIX="main/${GIT_HASH}/x86_64-unknown-linux-musl"
 echo "Downloading qchat.zip from s3://.../${S3_PREFIX}/qchat.zip"
 
-# Try download, fall back to latest commit hash if it fails
-# exit code = 0 means success/true in bash, all others are false
+# Try download, if hash is invalid we fail.
 AWS_ACCESS_KEY_ID="$QCHAT_ACCESSKEY" AWS_SECRET_ACCESS_KEY="$Q_SECRET_ACCESS_KEY" AWS_SESSION_TOKEN="$Q_SESSION_TOKEN" \
-  aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip ./qchat.zip --region us-east-1 || {
-    echo "Falling back to latest build"
-    S3_PREFIX="main/latest/x86_64-unknown-linux-musl"
-    AWS_ACCESS_KEY_ID="$QCHAT_ACCESSKEY" AWS_SECRET_ACCESS_KEY="$Q_SECRET_ACCESS_KEY" AWS_SESSION_TOKEN="$Q_SESSION_TOKEN" \
-      aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip ./qchat.zip --region us-east-1
-  }
-
-
+  aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip ./qchat.zip --region us-east-1
 
 # Handle the zip file, copy the qchat executable to /usr/local/bin + symlink from old code
 echo "Extracting qchat.zip..."
