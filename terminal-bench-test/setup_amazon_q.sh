@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 # if git hash empty then set to latest auto
-git_hash=${GITHUB_SHA:+"$(git rev-parse --short "$GITHUB_SHA")"}
-git_hash=${git_hash:-"latest"}
 apt-get update
 apt-get install -y curl wget unzip jq
 
@@ -36,19 +34,27 @@ Q_SESSION_TOKEN=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SessionToken')
 
 # Download specific build from S3 based on commit hash
 echo "Downloading Amazon Q CLI build from S3..."
-# Use hardcoded bucket ID if FIGCHAT_GAMMA_ID is not set
 S3_BUCKET="fig-io-chat-build-output-${FIGCHAT_GAMMA_ID}-us-east-1"
-S3_PREFIX="main/${git_hash}/x86_64-unknown-linux-musl"
-echo "Downloading qchat.zip from s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip"
+S3_PREFIX="main/${GIT_HASH}/x86_64-unknown-linux-musl"
+echo "Downloading qchat.zip from s3://.../${S3_PREFIX}/qchat.zip"
+
+# Try download, fall back to latest commit hash if it fails
+# exit code = 0 means success/true in bash, all others are false
 AWS_ACCESS_KEY_ID="$QCHAT_ACCESSKEY" AWS_SECRET_ACCESS_KEY="$Q_SECRET_ACCESS_KEY" AWS_SESSION_TOKEN="$Q_SESSION_TOKEN" \
-    aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip ./qchat.zip --region us-east-1
+  aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip ./qchat.zip --region us-east-1 || {
+    echo "Falling back to latest build"
+    S3_PREFIX="main/latest/x86_64-unknown-linux-musl"
+    AWS_ACCESS_KEY_ID="$QCHAT_ACCESSKEY" AWS_SECRET_ACCESS_KEY="$Q_SECRET_ACCESS_KEY" AWS_SESSION_TOKEN="$Q_SESSION_TOKEN" \
+      aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip ./qchat.zip --region us-east-1
+  }
+
 
 
 # Handle the zip file, copy the qchat executable to /usr/local/bin + symlink from old code
 echo "Extracting qchat.zip..."
 unzip -q qchat.zip
 
-# move it to /usr/local/bin/qchat
+# move it to /usr/local/bin/qchat for path as qchat may not work otherwise
 if cp qchat /usr/local/bin/ && chmod +x /usr/local/bin/qchat; then
     ln -sf /usr/local/bin/qchat /usr/local/bin/q
     echo "qchat installed successfully"

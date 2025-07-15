@@ -45,6 +45,17 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Set git hash
+      run: |
+        if [ -n "$GITHUB_SHA" ]; then
+          git_hash=$(git rev-parse --short "$GITHUB_SHA")
+        else
+          git_hash="latest"
+        fi
+        # appends to github_env file
+        echo "GIT_HASH=$git_hash" >> $GITHUB_ENV
+        echo "Git hash set to: $git_hash"
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:

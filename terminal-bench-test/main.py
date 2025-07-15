@@ -29,6 +29,7 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
         env["AWS_ACCESS_KEY_ID"] = os.environ.get("AWS_ACCESS_KEY_ID", '')
         env["AWS_SECRET_ACCESS_KEY"] = os.environ.get("AWS_SECRET_ACCESS_KEY", '')
         env["AWS_SESSION_TOKEN"] = os.environ.get("AWS_SESSION_TOKEN", '')
+        env["GIT_HASH"] = os.environ.get("GIT_HASH", '')
         return env
 
     @property
