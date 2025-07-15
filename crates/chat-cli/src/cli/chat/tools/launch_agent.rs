@@ -164,6 +164,7 @@ impl SubAgent {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(2));
         let mut spinner: Option<Spinner> = None;
         let mut all_agents_done = false;
+        let mut first_print = true;
 
         // Displays subagent status update every 5 seconds until join
         loop {
@@ -231,13 +232,21 @@ impl SubAgent {
                     }
 
                     // batch update - move cursor back to top & clear, then display everything
-                    queue!(
-                            updates,
-                            cursor::MoveUp(new_lines_printed as u16 + 6),
-                            cursor::MoveToColumn(0),
-                            Clear(ClearType::FromCursorDown),
-                            style::Print(status_output)
-                        )?;
+                    if !first_print {
+                        queue!(
+                                updates,
+                                cursor::MoveUp(new_lines_printed as u16),
+                                cursor::MoveToColumn(0),
+                                Clear(ClearType::FromCursorDown),
+                                style::Print(status_output)
+                            )?;
+                    } else {
+                        queue!(
+                                updates,
+                                style::Print(status_output)
+                            )?;
+                        first_print = false;
+                    }
                     updates.flush()?;
 
                     // force all subagents to display `Agent complete` when done...
