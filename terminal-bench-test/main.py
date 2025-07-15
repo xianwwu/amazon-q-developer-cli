@@ -23,36 +23,8 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
     @property
     def _env(self) -> dict[str, str]:
         # SIGv4 = 1 for AWS credentials
-        env = {"AMAZON_Q_SIGV4":1}
-        aws_credentials_path = os.path.expanduser("~/.aws/credentials")
-        aws_config_path = os.path.expanduser("~/.aws/config")
-        
-        if os.path.exists(aws_credentials_path):
-            try:
-                import configparser
-                config = configparser.ConfigParser()
-                config.read(aws_credentials_path)
-                
-                if "default" in config:
-                    if "aws_access_key_id" in config["default"]:
-                        env["AWS_ACCESS_KEY_ID"] = config["default"]["aws_access_key_id"]
-                    if "aws_secret_access_key" in config["default"]:
-                        env["AWS_SECRET_ACCESS_KEY"] = config["default"]["aws_secret_access_key"]
-                    if "aws_session_token" in config["default"]:
-                        env["AWS_SESSION_TOKEN"] = config["default"]["aws_session_token"]
-            except Exception as e:
-                print(f"Warning: Failed to read AWS credentials: {e}")
-        
-        if os.path.exists(aws_config_path):
-            try:
-                import configparser
-                config = configparser.ConfigParser()
-                config.read(aws_config_path)
-                
-                if "default" in config and "region" in config["default"]:
-                    env["AWS_REGION"] = config["default"]["region"]
-            except Exception as e:
-                print(f"Warning: Failed to read AWS config: {e}")
+        env = {}
+        env["AMAZON_Q_SIGV4"] = 1
         env['FIGCHAT_GAMMA_ID'] = os.environ.get('FIGCHAT_GAMMA_ID', '')
         return env
 

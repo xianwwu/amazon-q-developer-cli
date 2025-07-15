@@ -27,29 +27,18 @@ region = us-east-1
 EOF
 chmod 600 ~/.aws/config
 
-
 # Save original credentials
 ORIGINAL_AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
 ORIGINAL_AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
 ORIGINAL_AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
 
 # Assume role and capture temporary credentials --> needed for s3 bucket access for build
-echo "Assuming arn:aws:iam::${FIGCHAT_GAMMA_ID}:role/FigIoChat-S3Access-Role-Gamma..."
-if [ -n "${FIGCHAT_GAMMA_ID}" ]; then
-  TEMP_CREDENTIALS=$(aws sts assume-role --role-arn arn:aws:iam::${FIGCHAT_GAMMA_ID}:role/FigIoChat-S3Access-Role-Gamma --role-session-name S3AccessSession 2>/dev/null || echo '{}')
-  
-  # Check if role assumption was successful
-  if [ "$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.AccessKeyId' 2>/dev/null)" != "null" ] && [ "$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.AccessKeyId' 2>/dev/null)" != "" ]; then
-    echo "Role assumption successful, using temporary credentials"
-    export AWS_ACCESS_KEY_ID=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.AccessKeyId')
-    export AWS_SECRET_ACCESS_KEY=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SecretAccessKey')
-    export AWS_SESSION_TOKEN=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SessionToken')
-  else
-    echo "Role assumption failed, continuing with original credentials"
-  fi
-else
-  echo "FIGCHAT_GAMMA_ID not set, skipping role assumption"
-fi
+echo "Assuming AWS s3 role"
+TEMP_CREDENTIALS=$(aws sts assume-role --role-arn arn:aws:iam::${FIGCHAT_GAMMA_ID}:role/FigIoChat-S3Access-Role-Gamma --role-session-name S3AccessSession 2>/dev/null || echo '{}')
+echo $TEMP_CREDENTIALS
+QCHAT_ACCESSKEY=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.AccessKeyId')
+Q_SECRET_ACCESS_KEY=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SecretAccessKey')
+# export AWS_SESSION_TOKEN=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SessionToken')
 
 # Download specific build from S3 based on commit hash
 echo "Downloading Amazon Q CLI build from S3..."
@@ -57,32 +46,23 @@ echo "Downloading Amazon Q CLI build from S3..."
 S3_BUCKET="fig-io-chat-build-output-${FIGCHAT_GAMMA_ID}-us-east-1"
 S3_PREFIX="main/${git_hash}/x86_64-unknown-linux-musl"
 echo "Downloading qchat.zip from s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip"
-aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip ./qchat.zip --region us-east-1
+AWS_ACCESS_KEY_ID="$QCHAT_ACCESSKEY" AWS_SECRET_ACCESS_KEY="$Q_SECRET_ACCESS_KEY"\
+    aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/qchat.zip ./qchat.zip --region us-east-1
 
 # Handle the zip file, copy the qchat executable to /usr/local/bin + symlink from old code
 echo "Extracting qchat.zip..."
 unzip -q qchat.zip
-mkdir -p /usr/local/bin
 
-# Find the qchat executable -> copy
-find . -type f -name "qchat" -exec cp {} /usr/local/bin/qchat \;
-
-if [ -f "/usr/local/bin/qchat" ]; then
-    chmod +x /usr/local/bin/qchat
+# move it to /usr/local/bin/qchat
+if cp qchat /usr/local/bin/ && chmod +x /usr/local/bin/qchat; then
     ln -sf /usr/local/bin/qchat /usr/local/bin/q
     echo "qchat installed successfully"
 else
-    echo "ERROR: qchat executable not found in the zip file"
-    # List the contents of the extracted files to debug
-    find . -type f | grep -v "aws" | head -20
+    echo "ERROR: Failed to install qchat"
     exit 1
 fi
 
 # Restore credentials to run Q
-export AWS_ACCESS_KEY_ID=${ORIGINAL_AWS_ACCESS_KEY_ID}
-export AWS_SECRET_ACCESS_KEY=${ORIGINAL_AWS_SECRET_ACCESS_KEY}
-export AWS_SESSION_TOKEN=${ORIGINAL_AWS_SESSION_TOKEN}
-
 cat > ~/.aws/credentials << EOF
 [default]
 aws_access_key_id = ${ORIGINAL_AWS_ACCESS_KEY_ID}
