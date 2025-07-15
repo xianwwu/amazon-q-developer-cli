@@ -34,7 +34,7 @@ ORIGINAL_AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
 ORIGINAL_AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
 
 # Assume role and capture temporary credentials --> needed for s3 bucket access for build
-echo "Assuming role FigIoChat-S3Access-Role-Gamma..."
+echo "Assuming arn:aws:iam::${FIGCHAT_GAMMA_ID}:role/FigIoChat-S3Access-Role-Gamma..."
 if [ -n "${FIGCHAT_GAMMA_ID}" ]; then
   TEMP_CREDENTIALS=$(aws sts assume-role --role-arn arn:aws:iam::${FIGCHAT_GAMMA_ID}:role/FigIoChat-S3Access-Role-Gamma --role-session-name S3AccessSession 2>/dev/null || echo '{}')
   
