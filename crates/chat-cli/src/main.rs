@@ -7,7 +7,6 @@ mod logging;
 mod mcp_client;
 mod os;
 mod request;
-mod subagents;
 mod telemetry;
 mod util;
 use std::process::ExitCode;
