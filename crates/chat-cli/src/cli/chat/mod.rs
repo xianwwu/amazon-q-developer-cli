@@ -37,7 +37,11 @@ use std::time::{
 };
 
 use amzn_codewhisperer_client::types::SubscriptionStatus;
-use clap::{Args, CommandFactory, Parser};
+use clap::{
+    Args,
+    CommandFactory,
+    Parser,
+};
 use cli::compact::CompactStrategy;
 pub use conversation::ConversationState;
 use conversation::TokenWarningLevel;
