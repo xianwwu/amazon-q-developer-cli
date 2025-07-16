@@ -219,7 +219,7 @@ impl SubAgent {
                             agent.agent_display_name,
                             style::ResetColor,
                             style::SetForegroundColor(Color::DarkGrey),
-                            format!("({})", agent.agent_cli_name.clone().unwrap_or_else(|| "Default".to_string())),
+                            format_args!("({})", agent.agent_cli_name.clone().unwrap_or_else(|| "Default".to_string())),
                             style::ResetColor,
                             style::SetForegroundColor(Color::Cyan),
                             status,
@@ -297,7 +297,7 @@ async fn get_agent_status(child_pid: u32) -> Result<String, eyre::Error> {
                 return Ok("No response".to_string());
             }
             let response_str = std::str::from_utf8(&buffer[..n]).unwrap_or("<invalid utf8>");
-            match serde_json::from_str::<serde_json::Value>(&response_str) {
+            match serde_json::from_str::<serde_json::Value>(response_str) {
                 Ok(json) => {
                     let status = json.get("status").and_then(|v| v.as_str()).unwrap_or("Running");
                     let tokens = json.get("tokens_used").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -329,7 +329,6 @@ async fn spawn_agent_task(
 
     let debug_log = std::fs::OpenOptions::new()
         .create(true)
-        .write(true)
         .append(true)
         .open("debug.log")?;
     let debug_log_stderr = debug_log.try_clone()?;
@@ -342,7 +341,7 @@ async fn spawn_agent_task(
 
     let child_pid = child
         .id()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Failed to get child PID"))?;
+        .ok_or_else(|| std::io::Error::other("Failed to get child PID"))?;
 
     // Only wrapping this in async tokio task causing each process on main thread
     // Allows extraction of child_pid before waiting on completion for status update
@@ -368,10 +367,9 @@ async fn get_grandchild_pid(parent_pid: u32) -> std::result::Result<u32, std::io
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         if let Some(first_line) = stdout.lines().next() {
-            return first_line
-                .trim()
-                .parse::<u32>()
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Failed to parse PID"));
+            return first_line.trim().parse::<u32>().map_err(|err| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Failed to parse PID: {}", err))
+            });
         }
     }
     Err(std::io::Error::new(

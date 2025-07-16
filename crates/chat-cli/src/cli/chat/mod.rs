@@ -636,7 +636,7 @@ impl ChatSession {
 
         let backend_state = self
             .conversation
-            .backend_conversation_state(&os, false, &mut self.stdout)
+            .backend_conversation_state(os, false, &mut self.stdout)
             .await;
         let data = backend_state?.calculate_conversation_size();
         let mut tokens_guard = tokens_used.lock().await;
@@ -646,7 +646,7 @@ impl ChatSession {
         let mut status_guard = status.lock().await;
         let default_state = ChatState::default();
         let current_chat_state = self.inner.as_ref().unwrap_or(&default_state);
-        *status_guard = self.get_current_status(current_chat_state).to_string();
+        *status_guard = self.get_current_status(current_chat_state);
         std::mem::drop(tokens_guard);
         std::mem::drop(status_guard);
         std::mem::drop(percent_guard);
@@ -1116,7 +1116,6 @@ impl ChatSession {
                             match stream.read(&mut buffer).await {
                                 Ok(0) => {
                                     eprintln!("Client disconnected");
-                                    continue;
                                 },
                                 Ok(n) => {
                                     let command = std::str::from_utf8(&buffer[..n]).unwrap_or("").trim();
