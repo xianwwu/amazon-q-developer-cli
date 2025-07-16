@@ -14,22 +14,24 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
     def name() -> str:
         return "Amazon Q CLI"
 
-    def __init__(self, model_name: str | None = None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._model_name = model_name
-        self._start_url = 'https://amzn.awsapps.com/start'
-        self.region = 'us-east-1'
 
+    """
+    Makes necessary env vars available in docker containers
+    """
     @property
     def _env(self) -> dict[str, str]:
         # SIGv4 = 1 for AWS credentials
-        env = {}
-        env["AMAZON_Q_SIGV4"] = 1
-        env["FIGCHAT_GAMMA_ID"] = os.environ.get("FIGCHAT_GAMMA_ID", '')
-        env["AWS_ACCESS_KEY_ID"] = os.environ.get("AWS_ACCESS_KEY_ID", '')
-        env["AWS_SECRET_ACCESS_KEY"] = os.environ.get("AWS_SECRET_ACCESS_KEY", '')
-        env["AWS_SESSION_TOKEN"] = os.environ.get("AWS_SESSION_TOKEN", '')
-        env["GIT_HASH"] = os.environ.get("GIT_HASH", '')
+        env = {
+            "AMAZON_Q_SIGV4": 1,
+            "AWS_ACCESS_KEY_ID": os.environ.get("AWS_ACCESS_KEY_ID", ''),
+            "AWS_SECRET_ACCESS_KEY": os.environ.get("AWS_SECRET_ACCESS_KEY", ''),
+            "AWS_SESSION_TOKEN": os.environ.get("AWS_SESSION_TOKEN", ''),
+            "GIT_HASH": os.environ.get("GIT_HASH", ''),
+            "CHAT_DOWNLOAD_ROLE_ARN": os.environ.get("CHAT_DOWNLOAD_ROLE_ARN", ''),
+            "CHAT_BUILD_BUCKET_NAME": os.environ.get("CHAT_BUILD_BUCKET_NAME", '')
+        }
         return env
 
     @property
@@ -40,11 +42,10 @@ class AmazonQCLIAgent(AbstractInstalledAgent):
         escaped_description = shlex.quote(task_description)
         
         return [
-        # q chat with 30 min max timeout and also we wait on input. Using qchat cuz sigv4. 
-        # non-interactive for now --> check if needed or not
+        # q chat with 30 min max timeout and also we wait on input. Using qchat because of sigv4. 
             TerminalCommand(
                 command=f"qchat chat --no-interactive --trust-all-tools {escaped_description}",
-                max_timeout_sec=370, 
+                max_timeout_sec=1800, 
                 block=True,
             )
         ]
