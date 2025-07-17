@@ -46,6 +46,7 @@ pub struct SubAgent {
     pub agent_display_name: String,
     /// The prompt to send to the new agent
     pub prompt: String,
+    /// Display string that summarizes prompt
     pub prompt_summary: String,
     /// Optional model to use for the agent (defaults to the system default)
     pub agent_cli_name: Option<String>,
@@ -139,7 +140,7 @@ impl SubAgent {
         let mut grand_child_pids: Vec<u32> = Vec::new();
         std::fs::write("debug.log", "")?;
 
-        // mpsc to track number of agents completed to progress bar
+        // mpsc to track number of agents completed -> progress bar display
         let (progress_tx, mut progress_rx) = mpsc::channel::<u32>(agents.len());
 
         // Spawns a new async task for each subagent with enhanced prompt
@@ -152,7 +153,7 @@ impl SubAgent {
             task_handles.push(handle.1);
         }
 
-        // 1s wait for q to spawn chat child process and wait on that pid
+        // 1sec wait for q to spawn chat child process and wait on that pid
         tokio::time::sleep(Duration::from_secs(1)).await;
         for child_pid in child_pids {
             grand_child_pids.push(get_grandchild_pid(child_pid).await?);
@@ -166,7 +167,7 @@ impl SubAgent {
         let mut all_agents_done = false;
         let mut first_print = true;
 
-        // Displays subagent status update every 5 seconds until join
+        // Displays subagent status update every 2 seconds until join
         loop {
             tokio::select! {
 
@@ -176,7 +177,7 @@ impl SubAgent {
                         temp_spinner.stop();
                     }
 
-                    // update progress spinner only when needed + break from status display when all agents return
+                    // update progress spinner only when needed
                     spinner = Some(Spinner::new(Spinners::Dots,
                         format!("Progress: {}/{} agents complete", completed, agents.len())));
                     if completed >= agents.len() {
@@ -186,7 +187,7 @@ impl SubAgent {
 
                 _ = interval.tick() => {
 
-                    // Stop spinner FIRST before any cursor operations for smoothness
+                    // Stop spinner first before any cursor operations for smoothness
                     if let Some(mut temp_spinner) = spinner.take() {
                         if !all_agents_done {
                             temp_spinner.stop();
@@ -225,7 +226,6 @@ impl SubAgent {
                             status,
                             style::ResetColor
                         ));
-
 
                         // 1 for agent line + 1 for status + 1 for empty line
                         new_lines_printed += 3;
@@ -272,7 +272,7 @@ impl SubAgent {
         })
     }
 
-    /// non-empty prompt validation
+    /// Non-empty prompt validation
     pub async fn validate(&self, _os: &Os) -> Result<()> {
         if self.prompt.trim().is_empty() {
             return Err(eyre::eyre!("Prompt cannot be empty"));
@@ -281,7 +281,7 @@ impl SubAgent {
     }
 }
 
-/// Uses same Unix Domain Socket mechanism as `q agent send` to query status from subagent
+/// Uses Unix Domain Socket mechanism to query status from subagent
 async fn get_agent_status(child_pid: u32) -> Result<String, eyre::Error> {
     let socket_path = format!("/tmp/qchat/{}", child_pid);
     if !std::path::Path::new(&socket_path).exists() {
@@ -316,14 +316,13 @@ async fn spawn_agent_task(
     agent_cli_name: Option<String>,
     tx: tokio::sync::mpsc::Sender<u32>,
 ) -> Result<(u32, tokio::task::JoinHandle<Result<String, eyre::Error>>), eyre::Error> {
-    // Run subagent with trust all tools + Q_SUBAGENT env var = 1
+    // Run subagent with desired agent config + Q_SUBAGENT env var = 1
     let mut cmd = tokio::process::Command::new("q");
     cmd.arg("chat");
     if let Some(agent_arg) = agent_cli_name {
         cmd.arg(format!("--agent={}", agent_arg));
     }
     cmd.arg("--no-interactive");
-    cmd.arg("--trust-all-tools");
     cmd.arg(prompt);
     cmd.env("Q_SUBAGENT", "1");
 
@@ -338,12 +337,10 @@ async fn spawn_agent_task(
         .stderr(std::process::Stdio::from(debug_log_stderr))
         .stdin(std::process::Stdio::null())
         .spawn()?;
-
     let child_pid = child
         .id()
         .ok_or_else(|| std::io::Error::other("Failed to get child PID"))?;
 
-    // Only wrapping this in async tokio task causing each process on main thread
     // Allows extraction of child_pid before waiting on completion for status update
     let handle = tokio::spawn(async move {
         let output = capture_stdout_and_log(child.stdout.take().unwrap(), debug_log).await?;
@@ -355,8 +352,8 @@ async fn spawn_agent_task(
     Ok((child_pid, handle))
 }
 
-// returns a single process with whose parent is parent_pid. Necessary since Q spawns chat as
-// child_process.
+/// Returns a single process whose parent is parent_pid. Necessary since Q spawns chat as
+/// child_process.
 async fn get_grandchild_pid(parent_pid: u32) -> std::result::Result<u32, std::io::Error> {
     let output = tokio::process::Command::new("pgrep")
         .arg("-P")
@@ -413,12 +410,11 @@ fn process_agent_results(
             },
         }
     }
-
     Ok(all_stdout)
 }
 
 /// Async function that captures stdout from a reader and extracts summary only from stdout
-/// Reads until STDOUT pipe closes ie when child process exits
+/// Reads until STDOUT pipe closes i.e. when child process exits
 async fn capture_stdout_and_log(
     stdout: tokio::process::ChildStdout,
     mut debug_log: std::fs::File,

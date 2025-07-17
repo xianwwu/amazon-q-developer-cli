@@ -323,7 +323,6 @@ impl ChatArgs {
             model_id,
             tool_config,
             !self.no_interactive,
-            None,
         )
         .await?
         .spawn(os)
@@ -507,8 +506,6 @@ pub struct ChatSession {
     pending_prompts: VecDeque<Prompt>,
     interactive: bool,
     inner: Option<ChatState>,
-    /// Channel for agent piping
-    message_receiver: Option<tokio::sync::mpsc::Receiver<String>>,
     last_tool_use: Option<(String, String)>,
 }
 
@@ -528,7 +525,6 @@ impl ChatSession {
         model_id: Option<String>,
         tool_config: HashMap<String, ToolSpec>,
         interactive: bool,
-        message_receiver: Option<tokio::sync::mpsc::Receiver<String>>,
     ) -> Result<Self> {
         let valid_model_id = match model_id {
             Some(id) => id,
@@ -611,7 +607,6 @@ impl ChatSession {
             pending_prompts: VecDeque::new(),
             interactive,
             inner: Some(ChatState::default()),
-            message_receiver,
             last_tool_use: None,
         })
     }
@@ -1077,7 +1072,6 @@ impl ChatSession {
         Arc<tokio::sync::Mutex<usize>>,
         Arc<tokio::sync::Mutex<f32>>,
         Arc<tokio::sync::Mutex<String>>,
-        Option<tokio::sync::mpsc::Receiver<String>>,
     ) {
         let profile = Arc::new(tokio::sync::Mutex::new(String::from("unknown")));
         let tokens_used = Arc::new(tokio::sync::Mutex::new(0));
@@ -1098,9 +1092,6 @@ impl ChatSession {
         // Remove existing socket if it exists
         let _ = std::fs::remove_file(&socket_path);
         let start = Instant::now();
-
-        // Create MPSC for piping between agents
-        let (message_sender, message_receiver) = tokio::sync::mpsc::channel::<String>(32);
 
         // Spawn async listening task
         tokio::spawn(async move {
@@ -1134,18 +1125,6 @@ impl ChatSession {
                                             eprintln!("Failed to write response: {}", e);
                                         }
                                     // TODO: handle errors differently instead of printing to stderr
-                                    // something in the mpsc or not.
-                                    } else if command.starts_with("PROMPT ") {
-                                        let message_content = command.strip_prefix("PROMPT ").unwrap_or(command).trim();
-                                        // pass prompt to main chat loop through mpsc
-                                        if let Err(e) = message_sender.send(message_content.to_string()).await {
-                                            eprintln!("Failed to send message: {}", e);
-                                        }
-                                    } else if command.starts_with("SUMMARY ") {
-                                        let message_content = command.strip_prefix("PROMPT ").unwrap_or(command).trim();
-                                        if let Err(e) = message_sender.send(message_content.to_string()).await {
-                                            eprintln!("Failed to send concatenated summary: {}", e);
-                                        }
                                     } else {
                                         // Unknown command
                                         eprintln!("Failed to write response due to unknown prefix");
@@ -1167,21 +1146,12 @@ impl ChatSession {
             }
         });
 
-        (
-            profile,
-            tokens_used,
-            context_window_percent,
-            status,
-            Some(message_receiver),
-        )
+        (profile, tokens_used, context_window_percent, status)
     }
 
     async fn spawn(&mut self, os: &mut Os) -> Result<()> {
         // socket setup before displaying any text to user
-        let (profile, tokens_used, context_window_percent, status, message_receiver) = Self::setup_agent_socket().await;
-        if let Some(mr) = message_receiver {
-            self.message_receiver = Some(mr);
-        }
+        let (profile, tokens_used, context_window_percent, status) = Self::setup_agent_socket().await;
         let mut agent_socket_values = AgentSocketInfo {
             profile,
             tokens_used,
@@ -2778,7 +2748,6 @@ mod tests {
             None,
             tool_config,
             true,
-            None,
         )
         .await
         .unwrap()
@@ -2920,7 +2889,6 @@ mod tests {
             None,
             tool_config,
             true,
-            None,
         )
         .await
         .unwrap()
@@ -3017,7 +2985,6 @@ mod tests {
             None,
             tool_config,
             true,
-            None,
         )
         .await
         .unwrap()
@@ -3092,7 +3059,6 @@ mod tests {
             None,
             tool_config,
             true,
-            None,
         )
         .await
         .unwrap()
@@ -3143,7 +3109,6 @@ mod tests {
             None,
             tool_config,
             true,
-            None,
         )
         .await
         .unwrap()
