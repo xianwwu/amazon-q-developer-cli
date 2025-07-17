@@ -12,7 +12,6 @@ on:
         required: true
         default: 'latest'
         type: string
-       
 jobs:
   run-benchmark:
     # avoids disk storage issues
