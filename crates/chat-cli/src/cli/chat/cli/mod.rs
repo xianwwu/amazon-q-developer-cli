@@ -9,6 +9,7 @@ pub mod model;
 pub mod persist;
 pub mod profile;
 pub mod prompts;
+pub mod snapshot;
 pub mod subscribe;
 pub mod tools;
 pub mod usage;
@@ -27,6 +28,7 @@ use profile::AgentSubcommand;
 use prompts::PromptsArgs;
 use tools::ToolsArgs;
 
+use crate::cli::chat::cli::snapshot::SnapshotSubcommand;
 use crate::cli::chat::cli::subscribe::SubscribeArgs;
 use crate::cli::chat::cli::usage::UsageArgs;
 use crate::cli::chat::{
@@ -76,6 +78,9 @@ pub enum SlashCommand {
     Mcp(McpArgs),
     /// Select a model for the current conversation session
     Model(ModelArgs),
+    /// View and manage snapshots
+    #[command(subcommand)]
+    Snapshot(SnapshotSubcommand),
     /// Upgrade to a Q Developer Pro subscription for increased query limits
     Subscribe(SubscribeArgs),
     #[command(flatten)]
@@ -110,6 +115,7 @@ impl SlashCommand {
             Self::Mcp(args) => args.execute(session).await,
             Self::Model(args) => args.execute(session).await,
             Self::Subscribe(args) => args.execute(os, session).await,
+            Self::Snapshot(subcommand) => subcommand.execute(os, session).await,
             Self::Persist(subcommand) => subcommand.execute(os, session).await,
             // Self::Root(subcommand) => {
             //     if let Err(err) = subcommand.execute(os, database, telemetry).await {
@@ -139,6 +145,7 @@ impl SlashCommand {
             Self::Usage(_) => "usage",
             Self::Mcp(_) => "mcp",
             Self::Model(_) => "model",
+            Self::Snapshot(_) => "snapshot",
             Self::Subscribe(_) => "subscribe",
             Self::Persist(sub) => match sub {
                 PersistSubcommand::Save { .. } => "save",

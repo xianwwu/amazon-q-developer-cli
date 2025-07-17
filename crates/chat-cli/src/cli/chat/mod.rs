@@ -13,6 +13,7 @@ mod prompt_parser;
 mod server_messenger;
 #[cfg(unix)]
 mod skim_integration;
+pub mod snapshots;
 mod token_counter;
 pub mod tool_manager;
 pub mod tools;

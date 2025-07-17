@@ -121,6 +121,7 @@ webpki-roots.workspace = true
 whoami.workspace = true
 winnow.workspace = true
 schemars.workspace = true
+git2 = "0.20.2"
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
