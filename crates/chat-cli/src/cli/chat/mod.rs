@@ -126,6 +126,7 @@ use crate::cli::chat::cli::prompts::{
     GetPromptError,
     PromptsSubcommand,
 };
+use crate::cli::chat::snapshots::SnapshotManager;
 use crate::database::settings::Setting;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
@@ -486,6 +487,9 @@ pub struct ChatSession {
     pending_prompts: VecDeque<Prompt>,
     interactive: bool,
     inner: Option<ChatState>,
+
+    /// For managing snapshots
+    snapshot_manager: Option<SnapshotManager>,
 }
 
 impl ChatSession {
@@ -586,6 +590,7 @@ impl ChatSession {
             pending_prompts: VecDeque::new(),
             interactive,
             inner: Some(ChatState::default()),
+            snapshot_manager: None,
         })
     }
 
