@@ -601,6 +601,7 @@ impl ChatSession {
         let ctrl_c_stream = ctrl_c();
         let result = match self.inner.take().expect("state must always be Some") {
             ChatState::PromptUser { skip_printing_tools } => {
+
                 match (self.interactive, self.tool_uses.is_empty()) {
                     (false, true) => {
                         self.inner = Some(ChatState::Exit);
@@ -1307,6 +1308,55 @@ impl ChatSession {
                 skip_printing_tools: true,
             })
         }
+    }
+
+    async fn summarize_turn(&mut self, os: &mut Os) -> Result<String> {
+
+        if self.conversation.history().is_empty() {
+            bail!("No turn to commit!");
+        }
+
+        let request_state = self.conversation.create_turn_summary_request(os).await;
+        match request_state {
+            Ok(state) => {
+                self.conversation.reset_next_user_message();
+                self.conversation
+                    .set_next_user_message(state.user_input_message.content)
+                    .await;
+            },
+            Err(_) => bail!("Turn summary could not be created"),
+        };
+
+        let conv_state = self
+            .conversation
+            .as_sendable_conversation_state(os, &mut self.stderr, false)
+            .await?;
+
+        let response = os.client.send_message(conv_state).await?;
+        let mut parser = ResponseParser::new(response);
+        let mut commit_msg = String::new();
+
+        // Since this is an internal tool call, manually handle the tool requests from Q
+        loop {
+            match parser.recv().await {
+                Ok(msg_event) => {
+                    match msg_event {
+                        parser::ResponseEvent::AssistantText(text) => commit_msg.push_str(&text),
+                        parser::ResponseEvent::EndStream { .. } => break,
+                        parser::ResponseEvent::ToolUse(_) => bail!("Tool use requested during summary"),
+                        parser::ResponseEvent::ToolUseStart{ .. } => bail!("Tool use requested during summary"),
+                    };
+                },
+                Err(_) => bail!("Error while parsing summary of last turn"),
+            };
+        };
+
+        // FIX: hacky? not really sure how this works honestly LOL
+        self.conversation.reset_next_user_message();
+
+        Ok(commit_msg)
+
+
     }
 
     /// Read input from the user.
@@ -2032,6 +2082,39 @@ impl ChatSession {
                         style::Print(format!("{citation}\n")),
                         style::SetForegroundColor(Color::Reset)
                     )?;
+                }
+
+                // Create snapshot if any files were modified
+                if self.snapshot_manager.is_some() {
+                    match self.snapshot_manager.as_ref().unwrap().any_modified(os).await {
+                        Ok(true) => (),
+                        Ok(false) => break,
+                        // Try again in staging if error occurs
+                        Err(_) => ()
+                    };
+                    match self.summarize_turn(os).await {
+                        Ok(summary) => {
+                            if let Some(manager) = &mut self.snapshot_manager {
+                                match manager.create_snapshot(os, &summary).await {
+                                    Ok(Some(oid)) => execute!(
+                                        self.stderr,
+                                        style::Print(style::Print(format!("Created snapshot: {oid}\n\n").blue()))
+                                    )?,
+                                    Ok(None) => (),
+                                    Err(_) => {
+                                        debug!("Failed to create automatic snapshot");
+                                        execute!(
+                                            self.stderr,
+                                            style::Print(style::Print(format!("Could not create automatic snapshot\n\n").blue()))
+                                        )?;
+                                    }
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            debug!("Failed to generate turn summary for snapshot: {}", e);
+                        }
+                    }
                 }
 
                 break;

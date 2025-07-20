@@ -502,6 +502,51 @@ impl ConversationState {
         }
     }
 
+    pub async fn create_turn_summary_request(
+        &mut self,
+        os: &Os,
+    ) -> Result<FigConversationState, ChatError> {
+        let summary_content =
+            "[SYSTEM NOTE: This is an automated summarization request, not from the user]\n\n\
+                    FORMAT REQUIREMENTS: Create a structured, concise summary of the last user message and your response. 
+                    DO NOT respond conversationally. DO NOT address the user directly.\n\n\
+                    Your task is to create a structured summary document containing:\n\
+                    1) A brief summary of the user's request
+                    2) A brief summary of your reasons and approach to fulfilling the user's request
+                    FORMAT THE SUMMARY IN THIRD PERSON, NOT AS A DIRECT RESPONSE. Example format:\n\n\
+                    - User request: user request summary
+                    - Response: approach and reason for making changes
+                    Remember this is a DOCUMENT not a chat response.\n\
+                    FILTER OUT CHAT CONVENTIONS (greetings, offers to help, etc).".to_string();
+
+        let conv_state = self.backend_conversation_state(os, false, &mut vec![]).await?;
+        let summary_message = Some(UserMessage::new_prompt(summary_content.clone()));
+
+        // Create the history according to the passed compact strategy.
+        let history = conv_state.history.cloned().last();
+
+        // Only send the dummy tool spec in order to prevent the model from ever attempting a tool
+        // use.
+        let mut tools = self.tools.clone();
+        tools.retain(|k, v| match k {
+            ToolOrigin::Native => {
+                v.retain(|tool| match tool {
+                    Tool::ToolSpecification(tool_spec) => tool_spec.name == DUMMY_TOOL_NAME,
+                });
+                true
+            },
+            ToolOrigin::McpServer(_) => false,
+        });
+
+        Ok(FigConversationState {
+            conversation_id: Some(self.conversation_id.clone()),
+            user_input_message: summary_message
+                .unwrap_or(UserMessage::new_prompt(summary_content)) // should not happen
+                .into_user_input_message(self.model.clone(), &tools),
+            history: Some(flatten_history(history.iter())),
+        })
+    }
+
     /// Returns pairs of user and assistant messages to include as context in the message history
     /// including both summaries and context files if available, and the dropped context files.
     ///
@@ -602,6 +647,10 @@ impl ConversationState {
             self.transcript.pop_front();
         }
         self.transcript.push_back(message);
+    }
+
+    pub fn pop_from_history(&mut self) {
+        self.history.pop_back();
     }
 }
 
