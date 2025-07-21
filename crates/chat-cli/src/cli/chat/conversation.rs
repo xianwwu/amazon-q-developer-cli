@@ -1,36 +1,71 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{
+    HashMap,
+    HashSet,
+    VecDeque,
+};
 use std::io::Write;
 use std::sync::atomic::Ordering;
 
 use crossterm::style::Color;
-use crossterm::{execute, style};
-use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
-
-use super::cli::compact::CompactStrategy;
+use crossterm::{
+    execute,
+    style,
+};
 use eyre::{
-    Result, 
+    Result,
     bail,
 };
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use tracing::{
+    debug,
+    warn,
+};
 
-use super::consts::{DUMMY_TOOL_NAME, MAX_CHARS, MAX_CONVERSATION_STATE_HISTORY_LEN};
+use super::cli::compact::CompactStrategy;
+use super::consts::{
+    DUMMY_TOOL_NAME,
+    MAX_CHARS,
+    MAX_CONVERSATION_STATE_HISTORY_LEN,
+};
 use super::context::ContextManager;
-use super::message::{AssistantMessage, ToolUseResult, UserMessage};
-use super::token_counter::{CharCount, CharCounter};
+use super::message::{
+    AssistantMessage,
+    ToolUseResult,
+    UserMessage,
+};
+use super::token_counter::{
+    CharCount,
+    CharCounter,
+};
 use super::tool_manager::ToolManager;
-use super::tools::{InputSchema, QueuedTool, ToolOrigin, ToolSpec};
+use super::tools::todo::TodoState;
+use super::tools::{
+    InputSchema,
+    QueuedTool,
+    ToolOrigin,
+    ToolSpec,
+};
 use super::util::serde_value_to_document;
 use crate::api_client::model::{
-    ChatMessage, ConversationState as FigConversationState, ImageBlock, Tool, ToolInputSchema, ToolSpecification,
+    ChatMessage,
+    ConversationState as FigConversationState,
+    ImageBlock,
+    Tool,
+    ToolInputSchema,
+    ToolSpecification,
     UserInputMessage,
 };
 use crate::cli::agent::Agents;
 use crate::cli::chat::ChatError;
-use crate::cli::chat::cli::hooks::{Hook, HookTrigger};
+use crate::cli::chat::cli::hooks::{
+    Hook,
+    HookTrigger,
+};
 use crate::mcp_client::Prompt;
 use crate::os::Os;
-
-use super::tools::todo::TodoState;
 
 const CONTEXT_ENTRY_START_HEADER: &str = "--- CONTEXT ENTRY BEGIN ---\n";
 const CONTEXT_ENTRY_END_HEADER: &str = "--- CONTEXT ENTRY END ---\n\n";
@@ -577,11 +612,11 @@ impl ConversationState {
         }
         self.transcript.push_back(message);
     }
-    
+
     pub async fn create_todo_request(&self, os: &Os, id: &str) -> Result<FigConversationState> {
         let contents = match os.database.get_todo(id)? {
             Some(todo_list) => serde_json::to_string(&todo_list)?,
-            None => bail!("No todo list with id {}", id)
+            None => bail!("No todo list with id {}", id),
         };
         let request = format!(
             "[SYSTEM NOTE: This is an automated request, not from the user]\n
@@ -592,8 +627,8 @@ impl ConversationState {
             ID: {}\n",
             contents,
             id
-        ); 
-        
+        );
+
         let request_message = UserInputMessage {
             content: request,
             user_input_message_context: None,
@@ -885,8 +920,16 @@ mod tests {
 
     use super::super::message::AssistantToolUse;
     use super::*;
-    use crate::api_client::model::{AssistantResponseMessage, ToolResultStatus};
-    use crate::cli::agent::{Agent, Agents, CreateHooks, PromptHooks};
+    use crate::api_client::model::{
+        AssistantResponseMessage,
+        ToolResultStatus,
+    };
+    use crate::cli::agent::{
+        Agent,
+        Agents,
+        CreateHooks,
+        PromptHooks,
+    };
     use crate::cli::chat::tool_manager::ToolManager;
 
     const AMAZONQ_FILENAME: &str = "AmazonQ.md";
@@ -1047,16 +1090,12 @@ mod tests {
 
             conversation.push_assistant_message(
                 &mut os,
-                AssistantMessage::new_tool_use(
-                    None,
-                    i.to_string(),
-                    vec![AssistantToolUse {
-                        id: "tool_id".to_string(),
-                        name: "tool name".to_string(),
-                        args: serde_json::Value::Null,
-                        ..Default::default()
-                    }],
-                ),
+                AssistantMessage::new_tool_use(None, i.to_string(), vec![AssistantToolUse {
+                    id: "tool_id".to_string(),
+                    name: "tool name".to_string(),
+                    args: serde_json::Value::Null,
+                    ..Default::default()
+                }]),
             );
             conversation.add_tool_results(vec![ToolUseResult {
                 tool_use_id: "tool_id".to_string(),
@@ -1078,16 +1117,12 @@ mod tests {
             if i % 3 == 0 {
                 conversation.push_assistant_message(
                     &mut os,
-                    AssistantMessage::new_tool_use(
-                        None,
-                        i.to_string(),
-                        vec![AssistantToolUse {
-                            id: "tool_id".to_string(),
-                            name: "tool name".to_string(),
-                            args: serde_json::Value::Null,
-                            ..Default::default()
-                        }],
-                    ),
+                    AssistantMessage::new_tool_use(None, i.to_string(), vec![AssistantToolUse {
+                        id: "tool_id".to_string(),
+                        name: "tool name".to_string(),
+                        args: serde_json::Value::Null,
+                        ..Default::default()
+                    }]),
                 );
                 conversation.add_tool_results(vec![ToolUseResult {
                     tool_use_id: "tool_id".to_string(),

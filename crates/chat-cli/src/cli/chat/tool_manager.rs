@@ -1,29 +1,77 @@
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 use std::future::Future;
-use std::hash::{DefaultHasher, Hasher};
-use std::io::{BufWriter, Write};
+use std::hash::{
+    DefaultHasher,
+    Hasher,
+};
+use std::io::{
+    BufWriter,
+    Write,
+};
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock as SyncRwLock};
-use std::time::{Duration, Instant};
+use std::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
+use std::sync::{
+    Arc,
+    RwLock as SyncRwLock,
+};
+use std::time::{
+    Duration,
+    Instant,
+};
 
-use crossterm::{cursor, execute, queue, style, terminal};
+use crossterm::{
+    cursor,
+    execute,
+    queue,
+    style,
+    terminal,
+};
 use eyre::Report;
-use futures::{StreamExt, future, stream};
+use futures::{
+    StreamExt,
+    future,
+    stream,
+};
 use regex::Regex;
 use tokio::signal::ctrl_c;
-use tokio::sync::{Mutex, Notify, RwLock};
+use tokio::sync::{
+    Mutex,
+    Notify,
+    RwLock,
+};
 use tokio::task::JoinHandle;
-use tracing::{error, warn};
+use tracing::{
+    error,
+    warn,
+};
 
-use crate::api_client::model::{ToolResult, ToolResultContentBlock, ToolResultStatus};
-use crate::cli::agent::{Agent, McpServerConfig};
+use crate::api_client::model::{
+    ToolResult,
+    ToolResultContentBlock,
+    ToolResultStatus,
+};
+use crate::cli::agent::{
+    Agent,
+    McpServerConfig,
+};
 use crate::cli::chat::cli::prompts::GetPromptError;
 use crate::cli::chat::message::AssistantToolUse;
-use crate::cli::chat::server_messenger::{ServerMessengerBuilder, UpdateEventMessage};
-use crate::cli::chat::tools::custom_tool::{CustomTool, CustomToolClient};
+use crate::cli::chat::server_messenger::{
+    ServerMessengerBuilder,
+    UpdateEventMessage,
+};
+use crate::cli::chat::tools::custom_tool::{
+    CustomTool,
+    CustomToolClient,
+};
 use crate::cli::chat::tools::execute::ExecuteCommand;
 use crate::cli::chat::tools::fs_read::FsRead;
 use crate::cli::chat::tools::fs_write::FsWrite;
@@ -33,9 +81,17 @@ use crate::cli::chat::tools::launch_agent::SubAgentWrapper;
 use crate::cli::chat::tools::thinking::Thinking;
 use crate::cli::chat::tools::todo::TodoInput;
 use crate::cli::chat::tools::use_aws::UseAws;
-use crate::cli::chat::tools::{Tool, ToolOrigin, ToolSpec};
+use crate::cli::chat::tools::{
+    Tool,
+    ToolOrigin,
+    ToolSpec,
+};
 use crate::database::settings::Setting;
-use crate::mcp_client::{JsonRpcResponse, Messenger, PromptGet};
+use crate::mcp_client::{
+    JsonRpcResponse,
+    Messenger,
+    PromptGet,
+};
 use crate::os::Os;
 use crate::telemetry::TelemetryThread;
 use crate::util::MCP_SERVER_TOOL_DELIMITER;
@@ -833,12 +889,10 @@ impl ToolManager {
 
                 tool_specs.remove("execute_bash");
 
-                tool_specs.insert(
-                    "execute_cmd".to_string(),
-                    ToolSpec {
-                        name: "execute_cmd".to_string(),
-                        description: "Execute the specified Windows command.".to_string(),
-                        input_schema: InputSchema(json!({
+                tool_specs.insert("execute_cmd".to_string(), ToolSpec {
+                    name: "execute_cmd".to_string(),
+                    description: "Execute the specified Windows command.".to_string(),
+                    input_schema: InputSchema(json!({
                     "type": "object",
                     "properties": {
                     "command": {
@@ -851,9 +905,8 @@ impl ToolManager {
                     }
                     },
                         "required": ["command"]})),
-                        tool_origin: ToolOrigin::Native,
-                    },
-                );
+                    tool_origin: ToolOrigin::Native,
+                });
             }
 
             tool_specs
@@ -1317,13 +1370,10 @@ fn process_tool_specs(
             out_of_spec_tool_names.push(OutOfSpecName::EmptyDescription(spec.name.clone()));
             continue;
         }
-        tn_map.insert(
-            model_tool_name.clone(),
-            ToolInfo {
-                server_name: server_name.to_string(),
-                host_tool_name: spec.name.clone(),
-            },
-        );
+        tn_map.insert(model_tool_name.clone(), ToolInfo {
+            server_name: server_name.to_string(),
+            host_tool_name: spec.name.clone(),
+        });
         spec.name = model_tool_name;
         spec.tool_origin = ToolOrigin::McpServer(server_name.to_string());
         number_of_tools += 1;

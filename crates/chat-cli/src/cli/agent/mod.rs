@@ -535,6 +535,7 @@ impl Agents {
             "report_issue" => "trusted".dark_green().bold(),
             "thinking" => "trusted (prerelease)".dark_green().bold(),
             "launch_agent" => "not trusted (prerelease)".dark_green().bold(),
+            "todo_list" => "trusted (prerelease)".dark_green().bold(),
             _ if self.trust_all_tools => "trusted".dark_grey().bold(),
             _ => "not trusted".dark_grey(),
         };

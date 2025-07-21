@@ -6,8 +6,8 @@ pub mod gh_issue;
 pub mod knowledge;
 pub mod launch_agent;
 pub mod thinking;
-pub mod use_aws;
 pub mod todo;
+pub mod use_aws;
 
 use std::borrow::Borrow;
 use std::io::Write;
@@ -37,8 +37,8 @@ use serde::{
     Serialize,
 };
 use thinking::Thinking;
-use use_aws::UseAws;
 use todo::TodoInput;
+use use_aws::UseAws;
 
 use super::consts::MAX_TOOL_RESPONSE_SIZE;
 use super::util::images::RichImageBlocks;
@@ -49,7 +49,7 @@ use crate::cli::agent::{
 use crate::os::Os;
 
 pub const DEFAULT_APPROVE: [&str; 1] = ["fs_read"];
-pub const NATIVE_TOOLS: [&str; 8] = [
+pub const NATIVE_TOOLS: [&str; 9] = [
     "fs_read",
     "fs_write",
     #[cfg(windows)]
@@ -61,6 +61,7 @@ pub const NATIVE_TOOLS: [&str; 8] = [
     "knowledge",
     "thinking",
     "launch_agent",
+    "todo_list",
 ];
 
 /// Represents an executable tool use.
@@ -95,7 +96,7 @@ impl Tool {
             Tool::Knowledge(_) => "knowledge",
             Tool::Thinking(_) => "thinking (prerelease)",
             Tool::SubAgentWrapper(_) => "launch_agent",
-            Tool::Todo(_) => "todo_list"
+            Tool::Todo(_) => "todo_list",
         }
         .to_owned()
     }
@@ -134,7 +135,6 @@ impl Tool {
                 wrapper.invoke(stdout).await
             },
             Tool::Todo(todo) => todo.invoke(os, stdout).await,
-
         }
     }
 
