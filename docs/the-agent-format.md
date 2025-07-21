@@ -141,7 +141,7 @@ Resources are data and content that your agent has access to. As of today, only 
     "file://AmazonQ.md",
     "file://~/Documents/my-repo/README.md",
     "file:///tmp/my-application-logs.txt"
-  }
+  ]
 }
 ```
 
