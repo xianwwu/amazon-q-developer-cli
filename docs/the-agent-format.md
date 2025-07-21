@@ -12,6 +12,7 @@ Every manifest file consists of the following sections:
 - [`allowedTools`](#the-allowed-tools-field) — Tools that can be used without prompting.
 - [`toolsSettings`](#the-tools-settings-field) — Configuration for specific tools.
 - [`resources`](#the-resources-field) — Resources available to the agent.
+- [`hooks`](#the-hooks-field) — Commands ran at specific trigger points.
 
 ### The `name` field
 
