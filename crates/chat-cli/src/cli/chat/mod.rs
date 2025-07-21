@@ -601,7 +601,6 @@ impl ChatSession {
         let ctrl_c_stream = ctrl_c();
         let result = match self.inner.take().expect("state must always be Some") {
             ChatState::PromptUser { skip_printing_tools } => {
-
                 match (self.interactive, self.tool_uses.is_empty()) {
                     (false, true) => {
                         self.inner = Some(ChatState::Exit);
@@ -1311,7 +1310,6 @@ impl ChatSession {
     }
 
     async fn summarize_turn(&mut self, os: &mut Os) -> Result<String> {
-
         if self.conversation.history().is_empty() {
             bail!("No turn to commit!");
         }
@@ -1344,19 +1342,17 @@ impl ChatSession {
                         parser::ResponseEvent::AssistantText(text) => commit_msg.push_str(&text),
                         parser::ResponseEvent::EndStream { .. } => break,
                         parser::ResponseEvent::ToolUse(_) => bail!("Tool use requested during summary"),
-                        parser::ResponseEvent::ToolUseStart{ .. } => bail!("Tool use requested during summary"),
+                        parser::ResponseEvent::ToolUseStart { .. } => bail!("Tool use requested during summary"),
                     };
                 },
                 Err(_) => bail!("Error while parsing summary of last turn"),
             };
-        };
+        }
 
         // FIX: hacky? not really sure how this works honestly LOL
         self.conversation.reset_next_user_message();
 
         Ok(commit_msg)
-
-
     }
 
     /// Read input from the user.
@@ -2084,39 +2080,6 @@ impl ChatSession {
                     )?;
                 }
 
-                // Create snapshot if any files were modified
-                if self.snapshot_manager.is_some() {
-                    match self.snapshot_manager.as_ref().unwrap().any_modified(os).await {
-                        Ok(true) => (),
-                        Ok(false) => break,
-                        // Try again in staging if error occurs
-                        Err(_) => ()
-                    };
-                    match self.summarize_turn(os).await {
-                        Ok(summary) => {
-                            if let Some(manager) = &mut self.snapshot_manager {
-                                match manager.create_snapshot(os, &summary).await {
-                                    Ok(Some(oid)) => execute!(
-                                        self.stderr,
-                                        style::Print(style::Print(format!("Created snapshot: {oid}\n\n").blue()))
-                                    )?,
-                                    Ok(None) => (),
-                                    Err(_) => {
-                                        debug!("Failed to create automatic snapshot");
-                                        execute!(
-                                            self.stderr,
-                                            style::Print(style::Print(format!("Could not create automatic snapshot\n\n").blue()))
-                                        )?;
-                                    }
-                                }
-                            }
-                        },
-                        Err(e) => {
-                            debug!("Failed to generate turn summary for snapshot: {}", e);
-                        }
-                    }
-                }
-
                 break;
             }
         }
@@ -2126,6 +2089,69 @@ impl ChatSession {
         } else {
             self.tool_uses.clear();
             self.pending_tool_index = None;
+
+            // Create snapshot if any files were modified
+            if self.snapshot_manager.is_some() {
+                match self.snapshot_manager.as_ref().unwrap().any_modified(os).await {
+                    Ok(true) => (),
+                    Ok(false) => {
+                        return Ok(ChatState::PromptUser {
+                            skip_printing_tools: false,
+                        })
+                    },
+                    // Try again in staging if error occurs
+                    Err(_) => (),
+                };
+
+                // Create spinner for long wait
+                // Can't use with_spinner because of mutable references
+                execute!(self.stderr, cursor::Hide, style::SetForegroundColor(Color::Blue))?;
+                let spinner = if self.interactive {
+                    Some(Spinner::new(Spinners::Dots, "Generating snapshot...".to_string()))
+                } else {
+                    None
+                };
+
+                let summary_result = self.summarize_turn(os).await;
+
+                // Remove spinner; summarizing takes the longest
+                if let Some(mut s) = spinner {
+                    s.stop();
+                    queue!(
+                        self.stderr,
+                        terminal::Clear(terminal::ClearType::CurrentLine),
+                        cursor::MoveToColumn(0),
+                        cursor::Show,
+                        style::SetForegroundColor(Color::Reset)
+                    )?;
+                }
+                match summary_result {
+                    Ok(summary) => {
+                        if let Some(manager) = &mut self.snapshot_manager {
+                            match manager.create_snapshot(os, &summary).await {
+                                Ok(Some(oid)) => execute!(
+                                    self.stderr,
+                                    style::Print(style::Print(format!("Created snapshot: {oid}\n\n").blue()))
+                                )?,
+                                Ok(None) => (),
+                                Err(e) => {
+                                    debug!("Failed to create automatic snapshot");
+
+                                    execute!(
+                                        self.stderr,
+                                        style::Print(style::Print(
+                                            format!("Could not create automatic snapshot: {}\n\n", e).blue()
+                                        ))
+                                    )?;
+                                },
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        debug!("Failed to generate turn summary for snapshot: {}", e);
+                    },
+                }
+            }
 
             Ok(ChatState::PromptUser {
                 skip_printing_tools: false,

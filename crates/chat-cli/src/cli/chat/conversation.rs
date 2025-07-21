@@ -502,21 +502,18 @@ impl ConversationState {
         }
     }
 
-    pub async fn create_turn_summary_request(
-        &mut self,
-        os: &Os,
-    ) -> Result<FigConversationState, ChatError> {
+    pub async fn create_turn_summary_request(&mut self, os: &Os) -> Result<FigConversationState, ChatError> {
         let summary_content =
             "[SYSTEM NOTE: This is an automated summarization request, not from the user]\n\n\
                     FORMAT REQUIREMENTS: Create a structured, concise summary of the last user message and your response. 
                     DO NOT respond conversationally. DO NOT address the user directly.\n\n\
                     Your task is to create a structured summary document containing:\n\
-                    1) A brief summary of the user's request
-                    2) A brief summary of your reasons and approach to fulfilling the user's request
+                    1) A brief summary of the user's request\n
+                    2) A brief summary of your reasons and approach to fulfilling the user's request\n
                     FORMAT THE SUMMARY IN THIRD PERSON, NOT AS A DIRECT RESPONSE. Example format:\n\n\
-                    - User request: user request summary
+                    - Request: user request summary
                     - Response: approach and reason for making changes
-                    Remember this is a DOCUMENT not a chat response.\n\
+                    Remember this is a DOCUMENT not a chat response.\n
                     FILTER OUT CHAT CONVENTIONS (greetings, offers to help, etc).".to_string();
 
         let conv_state = self.backend_conversation_state(os, false, &mut vec![]).await?;

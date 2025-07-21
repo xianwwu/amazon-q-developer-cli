@@ -32,9 +32,6 @@ pub enum SnapshotSubcommand {
     List {
         #[arg(short, long)]
         limit: Option<usize>,
-
-        #[arg(short)]
-        verbose: bool,
     },
 
     /// Delete shadow repository
@@ -76,8 +73,11 @@ impl SnapshotSubcommand {
                     ));
                 };
                 match manager.restore(os, &mut session.conversation, &snapshot).await {
-                    Ok(id) => execute!(session.stderr, style::Print(format!("Restored snapshot {id}\n").blue()))?,
-                    Err(_) => return Err(ChatError::Custom("Could not create a snapshot".into())),
+                    Ok(id) => execute!(
+                        session.stderr,
+                        style::Print(format!("Restored snapshot: {id}\n").blue())
+                    )?,
+                    Err(e) => return Err(ChatError::Custom(format!("Could not restore snapshot: {}", e).into())),
                 }
             },
             // Self::Create { message } => {
@@ -87,14 +87,14 @@ impl SnapshotSubcommand {
             //         Err(_) => return Err(ChatError::Custom("Could not create a snapshot".into())),
             //     };
             // },
-            Self::List { limit, verbose } => {
+            Self::List { limit } => {
                 // Explicitly unpack manager to avoid mutable reference in function call
                 let Some(manager) = &mut session.snapshot_manager else {
                     return Err(ChatError::Custom(
                         "Snapshot manager does not exist; run /snapshot init to initialize".into(),
                     ));
                 };
-                match list_snapshots(manager, &mut session.stderr, limit, verbose) {
+                match list_snapshots(manager, &mut session.stderr, limit) {
                     Ok(_) => {},
                     Err(_) => return Err(ChatError::Custom("Could not list snapshots".into())),
                 };
@@ -105,7 +105,11 @@ impl SnapshotSubcommand {
                         session.stderr,
                         style::Print(format!("Deleted shadow repository\n").blue())
                     )?,
-                    Err(e) => return Err(ChatError::Custom(format!("Could not delete shadow repository: {e}").into())),
+                    Err(e) => {
+                        return Err(ChatError::Custom(
+                            format!("Could not delete shadow repository: {e}").into(),
+                        ));
+                    },
                 };
                 session.snapshot_manager = None;
             },
@@ -114,23 +118,9 @@ impl SnapshotSubcommand {
             skip_printing_tools: true,
         })
     }
-
-    fn unpack_manager(session: &mut ChatSession) -> Result<&mut SnapshotManager, ChatError> {
-        let Some(manager) = &mut session.snapshot_manager else {
-            return Err(ChatError::Custom(
-                "Snapshot manager does not exist; run /snapshot init to initialize".into(),
-            ));
-        };
-        Ok(manager)
-    }
 }
 
-pub fn list_snapshots(
-    manager: &mut SnapshotManager,
-    output: &mut impl Write,
-    limit: Option<usize>,
-    verbose: bool,
-) -> Result<()> {
+pub fn list_snapshots(manager: &mut SnapshotManager, output: &mut impl Write, limit: Option<usize>) -> Result<()> {
     let mut revwalk = manager.repo.revwalk()?;
     revwalk.push_head()?;
 
@@ -145,9 +135,9 @@ pub fn list_snapshots(
         if let Some(snapshot) = manager.snapshot_map.get(&oid) {
             execute!(
                 output,
-                style::Print(format!("snapshot: {}\n", oid).blue()),
-                style::Print(format!("Time:     {}\n", snapshot.timestamp)),
-                style::Print(format!("{}\n", snapshot.message)),
+                style::Print(format!("snapshot:  {}\n", oid).blue()),
+                style::Print(format!("Time:      {}\n", snapshot.timestamp)),
+                style::Print(format!("{}\n\n", snapshot.message)),
             )?;
             // FIX:
             // if verbose {

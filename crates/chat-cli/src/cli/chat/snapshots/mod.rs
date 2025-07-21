@@ -22,8 +22,8 @@ use git2::{
 };
 use walkdir::WalkDir;
 
-use crate::os::Os;
 use crate::cli::ConversationState;
+use crate::os::Os;
 
 // ######## HARDCODED VALUES ########
 const SHADOW_REPO_DIR: &str = "/Users/kiranbug/.aws/amazonq/shadow";
@@ -34,7 +34,7 @@ pub struct SnapshotManager {
     pub modified_table: HashMap<PathBuf, u64>,
     pub snapshot_map: HashMap<Oid, Snapshot>,
     pub latest_snapshot: Oid,
-    pub snapshot_count: u64
+    pub snapshot_count: u64,
 }
 
 pub struct Snapshot {
@@ -42,13 +42,13 @@ pub struct Snapshot {
     pub timestamp: u64,
     pub message: String,
     pub index: u64,
-    pub modification: ModificationState
+    pub modification: ModificationState,
 }
 
 pub struct ModificationState {
     pub creations: Vec<PathBuf>,
     pub deletions: Vec<PathBuf>,
-    pub modifications: Vec<PathBuf>
+    pub modifications: Vec<PathBuf>,
 }
 
 impl ModificationState {
@@ -59,7 +59,7 @@ impl ModificationState {
             modifications: Vec::new(),
         }
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.creations.is_empty() && self.deletions.is_empty() && self.modifications.is_empty()
     }
@@ -94,12 +94,19 @@ impl SnapshotManager {
             modified_table: HashMap::new(),
             snapshot_map: HashMap::new(),
             latest_snapshot: Oid::zero(),
-            snapshot_count: 0
+            snapshot_count: 0,
         })
     }
 
+    /// Checks if any files were modified since the last snapshot
+    ///
+    /// This is used as a fast check before we send any summarization request
+    /// so user's don't have to wait if nothing was modified
     pub async fn any_modified(&self, os: &Os) -> Result<bool> {
-        for entry in WalkDir::new(os.env.current_dir()?)
+        let cwd = os.env.current_dir()?;
+
+        // Forward walk: checks for creations and modifications
+        for entry in WalkDir::new(&cwd)
             .into_iter()
             .filter_entry(|e| !path_contains(e.path(), ".git"))
             .skip(1)
@@ -112,6 +119,9 @@ impl SnapshotManager {
                 },
             };
             let cwd_path = entry.path();
+            if cwd_path.is_dir() {
+                continue;
+            }
 
             let last_modified = match self.modified_table.get(cwd_path) {
                 Some(time) => time,
@@ -122,6 +132,30 @@ impl SnapshotManager {
                 return Ok(true);
             }
         }
+
+        // Reverse walk: checks for deletions
+        for entry in WalkDir::new(SHADOW_REPO_DIR)
+            .into_iter()
+            .filter_entry(|e| !path_contains(e.path(), ".git"))
+            .skip(1)
+        {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => {
+                    // FIX: SILENT FAIL
+                    continue;
+                },
+            };
+            let shadow_path = entry.path();
+            let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
+            if shadow_path.is_dir() {
+                continue;
+            }
+
+            if !os.fs.exists(cwd_path) {
+                return Ok(true);
+            }
+        }
         Ok(false)
     }
 
@@ -129,6 +163,8 @@ impl SnapshotManager {
         let mut index = self.repo.index()?;
         let cwd = os.env.current_dir()?;
         let mut modification = ModificationState::new();
+
+        // FIX: switch reverse and foward walks
 
         // "Forward walk": stages all modifications and creations
         for entry in WalkDir::new(&cwd)
@@ -217,7 +253,7 @@ impl SnapshotManager {
                 os.fs.remove_file(shadow_path).await?;
 
                 // Staging requires relative paths
-                index.add_path(relative_path)?;
+                index.remove_path(relative_path)?;
             }
         }
         index.write()?;
@@ -258,7 +294,7 @@ impl SnapshotManager {
             timestamp: signature.when().seconds() as u64,
             message: message.to_string(),
             index: self.snapshot_count,
-            modification
+            modification,
         });
         self.latest_snapshot = oid;
         self.snapshot_count += 1;
@@ -273,8 +309,10 @@ impl SnapshotManager {
         };
         let restore_index = snapshot.index;
         let cwd = os.env.current_dir()?;
-        
+
         let oid = self.reset_hard(commit_hash).await?;
+
+        // FIX: switch reverse and foward walks
 
         // "Forward walk": restores all modifications and creations
         for entry in WalkDir::new(SHADOW_REPO_DIR)
@@ -289,21 +327,24 @@ impl SnapshotManager {
                     continue;
                 },
             };
-            let path = entry.path();
+            let shadow_path = entry.path();
+            let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
 
             // If path is directory, create and stage if needed
-            if path.is_dir() {
-                if !os.fs.exists(convert_path(SHADOW_REPO_DIR, path, &cwd)?) {
-                    copy_file_to_dir(os, SHADOW_REPO_DIR, path, &cwd).await?;
+            if shadow_path.is_dir() {
+                if !os.fs.exists(cwd_path) {
+                    copy_file_to_dir(os, SHADOW_REPO_DIR, shadow_path, &cwd).await?;
                 }
                 continue;
             }
 
-            copy_file_to_dir(os, SHADOW_REPO_DIR, path, &cwd).await?;
+            // FIX: update modification table when snapshot is restored
+
+            copy_file_to_dir(os, SHADOW_REPO_DIR, shadow_path, &cwd).await?;
         }
 
         // "Reverse walk": restores all deletions
-        for entry in WalkDir::new(SHADOW_REPO_DIR)
+        for entry in WalkDir::new(&cwd)
             .into_iter()
             .filter_entry(|e| !path_contains(e.path(), ".git"))
             .skip(1)
@@ -316,7 +357,7 @@ impl SnapshotManager {
                 },
             };
             let cwd_path = entry.path();
-            let shadow_path = convert_path(SHADOW_REPO_DIR, cwd_path, &cwd)?;
+            let shadow_path = convert_path(&cwd, cwd_path, SHADOW_REPO_DIR)?;
 
             // If path is directory, delete if needed
             if cwd_path.is_dir() {
