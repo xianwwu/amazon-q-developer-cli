@@ -26,7 +26,7 @@ pub enum SnapshotSubcommand {
     Restore { snapshot: String },
 
     /// Create a checkpoint
-    // Create { message: String },
+    Create { message: String },
 
     /// View all checkpoints
     List {
@@ -56,14 +56,13 @@ impl SnapshotSubcommand {
                     ));
                 };
                 match manager.create_snapshot(os, "Initial snapshot").await {
-                    Ok(Some(oid)) => {
+                    Ok(oid) => {
                         execute!(
                             session.stderr,
                             style::Print(format!("Created initial snapshot: {oid}\n").blue())
                         )?;
                     },
-                    Ok(None) => (),
-                    Err(_) => return Err(ChatError::Custom("Could not create initial snapshot".into())),
+                    Err(e) => return Err(ChatError::Custom(format!("Could not create initial snapshot: {}", e).into())),
                 }
             },
             Self::Restore { snapshot } => {
@@ -80,15 +79,18 @@ impl SnapshotSubcommand {
                     Err(e) => return Err(ChatError::Custom(format!("Could not restore snapshot: {}", e).into())),
                 }
             },
-            // Self::Create { message } => {
-            //     let manager = Self::unpack_manager(session)?;
-            //     match manager.create_snapshot(os, &message, None).await {
-            //         Ok(id) => execute!(session.stderr, style::Print(format!("Created snapshot {id}\n").blue()))?,
-            //         Err(_) => return Err(ChatError::Custom("Could not create a snapshot".into())),
-            //     };
-            // },
+            Self::Create { message } => {
+                let Some(manager) = &mut session.snapshot_manager else {
+                    return Err(ChatError::Custom(
+                        "Snapshot manager does not exist; run /snapshot init to initialize".into(),
+                    ));
+                };
+                match manager.create_snapshot(os, &message).await {
+                    Ok(id) => execute!(session.stderr, style::Print(format!("Created snapshot {id}\n").blue()))?,
+                    Err(_) => return Err(ChatError::Custom("Could not create a snapshot".into())),
+                };
+            },
             Self::List { limit } => {
-                // Explicitly unpack manager to avoid mutable reference in function call
                 let Some(manager) = &mut session.snapshot_manager else {
                     return Err(ChatError::Custom(
                         "Snapshot manager does not exist; run /snapshot init to initialize".into(),

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert;
 use std::path::{
     Path,
     PathBuf,
@@ -8,6 +9,7 @@ use std::time::{
     UNIX_EPOCH,
 };
 
+use dircmp::Comparison;
 use eyre::{
     Result,
     bail,
@@ -20,6 +22,7 @@ use git2::{
     ResetType,
     Signature,
 };
+use regex::RegexSet;
 use walkdir::WalkDir;
 
 use crate::cli::ConversationState;
@@ -31,10 +34,13 @@ const SHADOW_REPO_DIR: &str = "/Users/kiranbug/.aws/amazonq/shadow";
 
 pub struct SnapshotManager {
     pub repo: Repository,
-    pub modified_table: HashMap<PathBuf, u64>,
     pub snapshot_map: HashMap<Oid, Snapshot>,
     pub latest_snapshot: Oid,
     pub snapshot_count: u64,
+
+    // Contains modification timestamps for absolute paths in cwd
+    pub modified_table: HashMap<PathBuf, u64>,
+
 }
 
 pub struct Snapshot {
@@ -42,7 +48,6 @@ pub struct Snapshot {
     pub timestamp: u64,
     pub message: String,
     pub index: u64,
-    pub modification: ModificationState,
 }
 
 pub struct ModificationState {
@@ -72,22 +77,22 @@ impl SnapshotManager {
 
         let cwd = os.env.current_dir()?;
 
-        // Copy everything into the shadow repo
-        for entry in WalkDir::new(&cwd)
-            .into_iter()
-            .filter_entry(|e| !path_contains(e.path(), ".git"))
-            .skip(1)
-        {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => {
-                    // FIX: what do we do here instead of silently failing?
-                    continue;
-                },
-            };
-            let path = entry.path();
-            copy_file_to_dir(os, &cwd, path, SHADOW_REPO_DIR).await?;
-        }
+        // // Copy everything into the shadow repo
+        // for entry in WalkDir::new(&cwd)
+        //     .into_iter()
+        //     .filter_entry(|e| !path_contains(e.path(), ".git"))
+        //     .skip(1)
+        // {
+        //     let entry = match entry {
+        //         Ok(entry) => entry,
+        //         Err(_) => {
+        //             // FIX: what do we do here instead of silently failing?
+        //             continue;
+        //         },
+        //     };
+        //     let path = entry.path();
+        //     copy_file_to_dir(os, &cwd, path, SHADOW_REPO_DIR).await?;
+        // }
 
         Ok(Self {
             repo,
@@ -101,172 +106,76 @@ impl SnapshotManager {
     /// Checks if any files were modified since the last snapshot
     ///
     /// This is used as a fast check before we send any summarization request
-    /// so user's don't have to wait if nothing was modified
+    /// so users don't have to wait if nothing was modified
     pub async fn any_modified(&self, os: &Os) -> Result<bool> {
-        let cwd = os.env.current_dir()?;
+        let ignores = RegexSet::new(&[r".git"]).expect("should compile");
+        let comparison = Comparison::new(ignores);
 
-        // Forward walk: checks for creations and modifications
-        for entry in WalkDir::new(&cwd)
-            .into_iter()
-            .filter_entry(|e| !path_contains(e.path(), ".git"))
-            .skip(1)
-        {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => {
-                    // FIX: SILENT FAIL
-                    continue;
-                },
-            };
-            let cwd_path = entry.path();
-            if cwd_path.is_dir() {
-                continue;
-            }
-
-            let last_modified = match self.modified_table.get(cwd_path) {
-                Some(time) => time,
-                None => return Ok(true),
-            };
-            let new_modified = get_modified_timestamp(os, cwd_path).await?;
-            if new_modified > *last_modified {
-                return Ok(true);
-            }
-        }
-
-        // Reverse walk: checks for deletions
-        for entry in WalkDir::new(SHADOW_REPO_DIR)
-            .into_iter()
-            .filter_entry(|e| !path_contains(e.path(), ".git"))
-            .skip(1)
-        {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => {
-                    // FIX: SILENT FAIL
-                    continue;
-                },
-            };
-            let shadow_path = entry.path();
-            let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
-            if shadow_path.is_dir() {
-                continue;
-            }
-
-            if !os.fs.exists(cwd_path) {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        let res = comparison.compare(SHADOW_REPO_DIR, os.env.current_dir()?.to_str().unwrap())?;
+        Ok(!(res.changed.is_empty() && res.missing_left.is_empty() && res.missing_right.is_empty()))
     }
 
-    async fn stage_all_modified(&mut self, os: &Os) -> Result<ModificationState> {
+    async fn stage_all_modified(&mut self, os: &Os) -> Result<()> {
         let mut index = self.repo.index()?;
         let cwd = os.env.current_dir()?;
-        let mut modification = ModificationState::new();
 
-        // FIX: switch reverse and foward walks
+        let ignores = RegexSet::new(&[r".git"])?;
+        let comparison = Comparison::new(ignores);
+        let res = comparison.compare(SHADOW_REPO_DIR, os.env.current_dir()?.to_str().unwrap())?;
 
-        // "Forward walk": stages all modifications and creations
-        for entry in WalkDir::new(&cwd)
-            .into_iter()
-            .filter_entry(|e| !path_contains(e.path(), ".git"))
-            .skip(1)
-        {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => {
-                    // FIX: SILENT FAIL
-                    continue;
-                },
-            };
-            let cwd_path = entry.path();
-            let shadow_path = convert_path(&cwd, cwd_path, SHADOW_REPO_DIR)?;
-            let relative_path = cwd_path.strip_prefix(&cwd)?;
+        println!("{res:#?}");
 
-            // If path is directory, create and stage if needed
-            if cwd_path.is_dir() {
-                if !os.fs.exists(&shadow_path) {
-                    copy_file_to_dir(os, &cwd, cwd_path, SHADOW_REPO_DIR).await?;
-
-                    // Staging requires relative paths
-                    index.add_path(relative_path)?;
-                }
-                continue;
-            }
-
-            let new_modified = get_modified_timestamp(os, cwd_path).await?;
-
-            // Handles newly created files
-            let last_modified = match self.modified_table.get(cwd_path) {
-                Some(time) => time,
-                None => &0,
-            };
-
-            // Update table and shadow repo if modified
-            if new_modified > *last_modified {
-                if os.fs.exists(shadow_path) {
-                    modification.modifications.push(relative_path.to_path_buf());
-                } else {
-                    modification.creations.push(relative_path.to_path_buf());
-                }
-                self.modified_table.insert(cwd_path.to_path_buf(), new_modified);
+        // Handle modified files
+        for shadow_path in res.changed.iter() {
+            println!("Staging modified: {}", shadow_path.display());
+            if shadow_path.is_file() {
+                let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
+                self.modified_table.insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
                 copy_file_to_dir(os, &cwd, cwd_path, SHADOW_REPO_DIR).await?;
-
-                // Staging requires relative paths)
-                index.add_path(relative_path)?;
+                
+                // Staging requires relative paths
+                index.add_path(&shadow_path.strip_prefix(SHADOW_REPO_DIR)?)?;
             }
         }
 
-        // "Reverse walk": stages all deletions
-        for entry in WalkDir::new(SHADOW_REPO_DIR)
-            .into_iter()
-            .filter_entry(|e| !path_contains(e.path(), ".git"))
-            .skip(1)
-        {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => {
-                    // FIX: SILENT FAIL
-                    continue;
-                },
-            };
-            let shadow_path = entry.path();
-            let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
-            let relative_path = shadow_path.strip_prefix(SHADOW_REPO_DIR)?;
+        // Handle created files and directories
+        for cwd_path in res.missing_left.iter() {
+            println!("Created file: {}", &cwd_path.display());
+            copy_file_to_dir(os, &cwd, cwd_path, SHADOW_REPO_DIR).await?;
+            if cwd_path.is_file() {
+                self.modified_table.insert(cwd_path.to_path_buf(), get_modified_timestamp(os, cwd_path).await?);
 
+                // Staging requires relative paths
+                index.add_path(&cwd_path.strip_prefix(&cwd)?)?;
+            }
+        }
+
+        // Handle deleted files
+        for shadow_path in res.missing_right.iter() {
+            println!("Staging deleted: {}", shadow_path.display());
             // If path is directory, delete and stage if needed
             if shadow_path.is_dir() {
-                if !os.fs.exists(&cwd_path) {
-                    os.fs.remove_dir_all(shadow_path).await?;
+                os.fs.remove_dir_all(shadow_path).await?;
 
-                    // Staging requires relative paths
-                    index.add_path(relative_path)?;
-                }
+                // Staging requires relative paths
+                index.remove_path(shadow_path.strip_prefix(SHADOW_REPO_DIR)?)?;
                 continue;
             }
 
             // Update table and shadow repo if deleted
-            // FIX: removing the entry is probably not the best choice
-            if !os.fs.exists(&cwd_path) {
-                modification.deletions.push(relative_path.to_path_buf());
-                self.modified_table.remove(&shadow_path.to_path_buf());
-                os.fs.remove_file(shadow_path).await?;
+            // FIX: removing the entry is probably not the best choice?
+            self.modified_table.remove(&shadow_path.to_path_buf());
+            os.fs.remove_file(shadow_path).await?;
 
-                // Staging requires relative paths
-                index.remove_path(relative_path)?;
-            }
+            // Staging requires relative paths
+            index.remove_path(shadow_path.strip_prefix(SHADOW_REPO_DIR)?)?;
         }
         index.write()?;
-        Ok(modification)
+        Ok(())
     }
 
-    pub async fn create_snapshot(&mut self, os: &Os, message: &str) -> Result<Option<Oid>> {
-        let modification = match self.stage_all_modified(os).await {
-            Ok(m) if !m.is_empty() => m,
-            Ok(_) => return Ok(None),
-            Err(_) => bail!("Could not stage changes"),
-        };
-
+    pub async fn create_snapshot(&mut self, os: &Os, message: &str) -> Result<Oid> {
+        self.stage_all_modified(os).await?;
         let mut index = self.repo.index()?;
         let tree_id = index.write_tree()?;
         let tree = self.repo.find_tree(tree_id)?;
@@ -294,12 +203,11 @@ impl SnapshotManager {
             timestamp: signature.when().seconds() as u64,
             message: message.to_string(),
             index: self.snapshot_count,
-            modification,
         });
         self.latest_snapshot = oid;
         self.snapshot_count += 1;
 
-        Ok(Some(oid))
+        Ok(oid)
     }
 
     pub async fn restore(&mut self, os: &Os, conversation: &mut ConversationState, commit_hash: &str) -> Result<Oid> {
@@ -312,68 +220,39 @@ impl SnapshotManager {
 
         let oid = self.reset_hard(commit_hash).await?;
 
-        // FIX: switch reverse and foward walks
+        let ignores = RegexSet::new(&[r".git"])?;
+        let comparison = Comparison::new(ignores);
+        let res = comparison.compare(SHADOW_REPO_DIR, cwd.to_str().unwrap())?;
 
-        // "Forward walk": restores all modifications and creations
-        for entry in WalkDir::new(SHADOW_REPO_DIR)
-            .into_iter()
-            .filter_entry(|e| !path_contains(e.path(), ".git"))
-            .skip(1)
-        {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => {
-                    // FIX: what do we do here instead of silently failing?
-                    continue;
-                },
-            };
-            let shadow_path = entry.path();
+        println!("DIFF: {:#?}", res);
+
+        // Restore modified files
+        for shadow_path in res.changed.iter() {
+            if shadow_path.is_file() {
+                let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
+                copy_file_to_dir(os, SHADOW_REPO_DIR, shadow_path, &cwd).await?;
+                self.modified_table.insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
+            }
+        }
+
+        // Create missing files and directories
+        for shadow_path in res.missing_right.iter() {
             let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
-
-            // If path is directory, create and stage if needed
-            if shadow_path.is_dir() {
-                if !os.fs.exists(cwd_path) {
-                    copy_file_to_dir(os, SHADOW_REPO_DIR, shadow_path, &cwd).await?;
-                }
-                continue;
-            }
-
-            // FIX: update modification table when snapshot is restored
-
             copy_file_to_dir(os, SHADOW_REPO_DIR, shadow_path, &cwd).await?;
+            self.modified_table.insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
+
         }
 
-        // "Reverse walk": restores all deletions
-        for entry in WalkDir::new(&cwd)
-            .into_iter()
-            .filter_entry(|e| !path_contains(e.path(), ".git"))
-            .skip(1)
-        {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => {
-                    // FIX: SILENT FAIL
-                    continue;
-                },
-            };
-            let cwd_path = entry.path();
-            let shadow_path = convert_path(&cwd, cwd_path, SHADOW_REPO_DIR)?;
-
-            // If path is directory, delete if needed
-            if cwd_path.is_dir() {
-                if !os.fs.exists(&shadow_path) {
-                    os.fs.remove_dir_all(cwd_path).await?;
-                }
-                continue;
-            }
-
-            // Update cwd if file doesn't exist in shadow
-            // FIX: removing the entry is probably not the best choice
-            if !os.fs.exists(&shadow_path) {
+        // Delete extra files
+        for cwd_path in res.missing_left.iter() {
+            if cwd_path.is_file() {
                 os.fs.remove_file(cwd_path).await?;
+            } else {
+                os.fs.remove_dir_all(cwd_path).await?;
             }
         }
 
+        // FIX: terrible workaround for popping context
         for _ in restore_index..self.snapshot_count {
             conversation.pop_from_history();
         }
@@ -405,7 +284,7 @@ pub fn get_timestamp() -> String {
     format!("{timestamp}")
 }
 
-pub async fn get_modified_timestamp(os: &Os, path: impl AsRef<Path>) -> Result<u64> {
+pub async fn get_modified_timestamp(os: &Os, path: &impl AsRef<Path>) -> Result<u64> {
     let file = os.fs.open(path).await?;
     Ok(file
         .metadata()

@@ -2097,10 +2097,18 @@ impl ChatSession {
                     Ok(false) => {
                         return Ok(ChatState::PromptUser {
                             skip_printing_tools: false,
-                        })
+                        });
                     },
-                    // Try again in staging if error occurs
-                    Err(_) => (),
+                    
+                    Err(e) => {
+                        debug!("Failed to check if any files were modified");
+                        execute!(
+                            self.stderr,
+                            style::Print(style::Print(
+                                format!("Could not create automatic snapshot: {}\n\n", e).blue()
+                            ))
+                        )?;
+                    }
                 };
 
                 // Create spinner for long wait
@@ -2129,14 +2137,12 @@ impl ChatSession {
                     Ok(summary) => {
                         if let Some(manager) = &mut self.snapshot_manager {
                             match manager.create_snapshot(os, &summary).await {
-                                Ok(Some(oid)) => execute!(
+                                Ok(oid) => execute!(
                                     self.stderr,
                                     style::Print(style::Print(format!("Created snapshot: {oid}\n\n").blue()))
                                 )?,
-                                Ok(None) => (),
                                 Err(e) => {
                                     debug!("Failed to create automatic snapshot");
-
                                     execute!(
                                         self.stderr,
                                         style::Print(style::Print(

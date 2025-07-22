@@ -1201,6 +1201,7 @@ dependencies = [
  "crossterm",
  "ctrlc",
  "dialoguer",
+ "dircmp",
  "dirs 5.0.1",
  "eyre",
  "fd-lock",
@@ -1891,6 +1892,18 @@ dependencies = [
  "block-buffer",
  "crypto-common",
  "subtle",
+]
+
+[[package]]
+name = "dircmp"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3ca7fa3ba397980657070e679f412acddb7a372f1793ff68ef0bbe708680f0f"
+dependencies = [
+ "regex",
+ "sha2",
+ "thiserror 1.0.69",
+ "walkdir",
 ]
 
 [[package]]
