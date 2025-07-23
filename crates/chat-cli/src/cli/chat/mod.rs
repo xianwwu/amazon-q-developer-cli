@@ -149,7 +149,7 @@ use crate::telemetry::{
 use crate::util::MCP_SERVER_TOOL_DELIMITER;
 
 const LIMIT_REACHED_TEXT: &str = color_print::cstr! { "You've used all your free requests for this month. You have two options:
-1. Upgrade to a paid subscription for increased limits. See our Pricing page for what's included> <blue!>https://docs.aws.amazon.com/console/amazonq/subscription</blue!>
+1. Upgrade to a paid subscription for increased limits. See our Pricing page for what's included> <blue!>https://aws.amazon.com/q/developer/pricing/</blue!>
 2. Wait until next month when your limit automatically resets." };
 
 pub const EXTRA_HELP: &str = color_print::cstr! {"
@@ -913,7 +913,7 @@ impl ChatSession {
                             self.stderr,
                             style::Print("\n"),
                             style::Print(
-                                "Enable overages in the Q Developer management console to continue working beyond the monthly request limit.\n"
+                                "Ask your account administrator to enable overages in the Q Developer management console so that you can continue working beyond the monthly request limit.\n"
                             ),
                             style::Print("Learn more: "),
                             style::SetForegroundColor(Color::Blue),
