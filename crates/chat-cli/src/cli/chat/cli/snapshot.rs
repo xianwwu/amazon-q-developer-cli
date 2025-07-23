@@ -7,7 +7,6 @@ use crossterm::{
     style,
 };
 use eyre::Result;
-use git2::Oid;
 
 use crate::cli::chat::snapshots::SnapshotManager;
 use crate::cli::chat::{
@@ -23,7 +22,7 @@ pub enum SnapshotSubcommand {
     Init,
 
     /// Revert to a specified checkpoint or the most recent if none specified
-    Restore { snapshot: String },
+    Restore { snapshot: usize },
 
     /// Create a checkpoint
     Create { message: String },
@@ -43,14 +42,14 @@ impl SnapshotSubcommand {
         match self {
             Self::Init => {
                 // Handle case where snapshots are already being tracked
-                // if session.snapshot_manager.is_some() {
+                // if session.conversation.snapshot_manager.is_some() {
                 //     execute!(session.stderr, style::Print("Are you sure you want to reinitialize the shadow repo?
                 // All history will be lost.\n".blue()))?; }
-                session.snapshot_manager = match SnapshotManager::init(os).await {
+                session.conversation.snapshot_manager = match SnapshotManager::init() {
                     Ok(manager) => Some(manager),
                     Err(_) => return Err(ChatError::Custom("Could not initialize shadow repo".into())),
                 };
-                let Some(manager) = &mut session.snapshot_manager else {
+                let Some(manager) = &mut session.conversation.snapshot_manager else {
                     return Err(ChatError::Custom(
                         "Snapshot manager was not initialized properly".into(),
                     ));
@@ -66,12 +65,20 @@ impl SnapshotSubcommand {
                 }
             },
             Self::Restore { snapshot } => {
-                let Some(manager) = &mut session.snapshot_manager else {
-                    return Err(ChatError::Custom(
+                // Extract the snapshot manager from the conversation temporarily
+                let mut manager = match session.conversation.snapshot_manager.take() {
+                    Some(manager) => manager,
+                    None => return Err(ChatError::Custom(
                         "Snapshot manager does not exist; run /snapshot init to initialize".into(),
-                    ));
+                    )),
                 };
-                match manager.restore(os, &mut session.conversation, &snapshot).await {
+            
+                let result = manager.restore(os, &mut session.conversation, snapshot).await;
+                
+                // Put the snapshot manager back into the conversation
+                session.conversation.snapshot_manager = Some(manager);
+                
+                match result {
                     Ok(id) => execute!(
                         session.stderr,
                         style::Print(format!("Restored snapshot: {id}\n").blue())
@@ -80,7 +87,7 @@ impl SnapshotSubcommand {
                 }
             },
             Self::Create { message } => {
-                let Some(manager) = &mut session.snapshot_manager else {
+                let Some(manager) = &mut session.conversation.snapshot_manager else {
                     return Err(ChatError::Custom(
                         "Snapshot manager does not exist; run /snapshot init to initialize".into(),
                     ));
@@ -91,7 +98,7 @@ impl SnapshotSubcommand {
                 };
             },
             Self::List { limit } => {
-                let Some(manager) = &mut session.snapshot_manager else {
+                let Some(manager) = &mut session.conversation.snapshot_manager else {
                     return Err(ChatError::Custom(
                         "Snapshot manager does not exist; run /snapshot init to initialize".into(),
                     ));
@@ -102,7 +109,7 @@ impl SnapshotSubcommand {
                 };
             },
             Self::Clean => {
-                match SnapshotManager::clean(os).await {
+                match SnapshotManager::clean_all(os).await {
                     Ok(_) => execute!(
                         session.stderr,
                         style::Print(format!("Deleted shadow repository\n").blue())
@@ -113,7 +120,7 @@ impl SnapshotSubcommand {
                         ));
                     },
                 };
-                session.snapshot_manager = None;
+                session.conversation.snapshot_manager = None;
             },
         };
         Ok(ChatState::PromptUser {
@@ -123,33 +130,25 @@ impl SnapshotSubcommand {
 }
 
 pub fn list_snapshots(manager: &mut SnapshotManager, output: &mut impl Write, limit: Option<usize>) -> Result<()> {
-    let mut revwalk = manager.repo.revwalk()?;
-    revwalk.push_head()?;
+    // let mut revwalk = manager.repo.revwalk()?;
+    // revwalk.push_head()?;
 
-    let revwalk: Vec<Result<Oid, git2::Error>> = if let Some(limit) = limit {
-        revwalk.take(limit).collect()
-    } else {
-        revwalk.collect()
-    };
+    // let revwalk: Vec<Result<Oid, git2::Error>> = if let Some(limit) = limit {
+    //     revwalk.take(limit).collect()
+    // } else {
+    //     revwalk.collect()
+    // };
 
-    for oid in revwalk {
-        let oid = oid?;
-        if let Some(snapshot) = manager.snapshot_map.get(&oid) {
-            execute!(
-                output,
-                style::Print(format!("snapshot:  {}\n", oid).blue()),
-                style::Print(format!("Time:      {}\n", snapshot.timestamp)),
-                style::Print(format!("{}\n\n", snapshot.message)),
-            )?;
-            // FIX:
-            // if verbose {
-            //     if let Some(r) = &snapshot.reason {
-            //         execute!(output, style::Print(format!("Reason:   {}", r)))?;
-            //     };
-            //     execute!(output, style::Print("\n"))?;
-
-            // }
-        }
-    }
+    // for oid in revwalk {
+    //     let oid = oid?;
+    //     if let Some(snapshot) = manager.snapshot_map.get(&oid) {
+    //         execute!(
+    //             output,
+    //             style::Print(format!("snapshot:  {}\n", oid).blue()),
+    //             style::Print(format!("Time:      {}\n", snapshot.timestamp)),
+    //             style::Print(format!("{}\n\n", snapshot.message)),
+    //         )?;
+    //     }
+    // }
     Ok(())
 }

@@ -54,6 +54,7 @@ use crate::api_client::model::{
     UserInputMessage,
 };
 use crate::cli::agent::Agents;
+use crate::cli::chat::snapshots::SnapshotManager;
 use crate::cli::chat::ChatError;
 use crate::cli::chat::cli::hooks::{
     Hook,
@@ -96,6 +97,9 @@ pub struct ConversationState {
     /// Model explicitly selected by the user in this conversation state via `/model`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+
+    #[serde(skip)]
+    pub snapshot_manager: Option<SnapshotManager>,
 }
 
 impl ConversationState {
@@ -137,6 +141,7 @@ impl ConversationState {
             latest_summary: None,
             agents,
             model: current_model_id,
+            snapshot_manager: None,
         }
     }
 
@@ -218,6 +223,13 @@ impl ConversationState {
 
         self.append_assistant_transcript(&message);
         self.history.push_back((next_user_message, message));
+
+        if let Some(ref mut manager) = self.snapshot_manager {
+            match manager.get_latest_snapshot() {
+                Some(snapshot) => snapshot.messages_since += 1,
+                None => debug!("No snapshots in snapshot manager for tracking messages!")
+            };
+        }
 
         if let Ok(cwd) = std::env::current_dir() {
             os.database.set_conversation_by_path(cwd, self).ok();
@@ -646,8 +658,13 @@ impl ConversationState {
         self.transcript.push_back(message);
     }
 
-    pub fn pop_from_history(&mut self) {
-        self.history.pop_back();
+    pub fn pop_from_history(&mut self) -> Option<()> {
+        self.history.pop_back()?;
+        Some(())
+    }
+
+    pub fn get_history_len(&self) -> usize {
+        self.history.len()
     }
 }
 

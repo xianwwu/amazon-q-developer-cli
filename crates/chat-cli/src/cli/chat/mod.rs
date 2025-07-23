@@ -126,7 +126,7 @@ use crate::cli::chat::cli::prompts::{
     GetPromptError,
     PromptsSubcommand,
 };
-use crate::cli::chat::snapshots::SnapshotManager;
+
 use crate::database::settings::Setting;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
@@ -487,9 +487,6 @@ pub struct ChatSession {
     pending_prompts: VecDeque<Prompt>,
     interactive: bool,
     inner: Option<ChatState>,
-
-    /// For managing snapshots
-    snapshot_manager: Option<SnapshotManager>,
 }
 
 impl ChatSession {
@@ -590,7 +587,6 @@ impl ChatSession {
             pending_prompts: VecDeque::new(),
             interactive,
             inner: Some(ChatState::default()),
-            snapshot_manager: None,
         })
     }
 
@@ -2091,8 +2087,8 @@ impl ChatSession {
             self.pending_tool_index = None;
 
             // Create snapshot if any files were modified
-            if self.snapshot_manager.is_some() {
-                match self.snapshot_manager.as_ref().unwrap().any_modified(os).await {
+            if self.conversation.snapshot_manager.is_some() {
+                match self.conversation.snapshot_manager.as_ref().unwrap().any_modified(os).await {
                     Ok(true) => (),
                     Ok(false) => {
                         return Ok(ChatState::PromptUser {
@@ -2135,7 +2131,7 @@ impl ChatSession {
                 }
                 match summary_result {
                     Ok(summary) => {
-                        if let Some(manager) = &mut self.snapshot_manager {
+                        if let Some(manager) = &mut self.conversation.snapshot_manager {
                             match manager.create_snapshot(os, &summary).await {
                                 Ok(oid) => execute!(
                                     self.stderr,
