@@ -5,6 +5,7 @@ use std::path::{
     PathBuf,
 };
 use std::sync::Arc;
+use std::mem::replace;
 
 use dircmp::Comparison;
 use eyre::{
@@ -24,6 +25,8 @@ use regex::RegexSet;
 use crate::cli::ConversationState;
 use crate::os::Os;
 
+use walkdir::WalkDir;
+
 // ######## HARDCODED VALUES ########
 const SHADOW_REPO_DIR: &str = "/Users/kiranbug/.aws/amazonq/shadow";
 // ######## ---------------- ########
@@ -34,13 +37,15 @@ pub struct SnapshotManager {
     pub snapshot_count: usize,
     pub snapshot_table: Vec<Snapshot>,
    
-    // Separated from snapshot table to ensure that oids 
-    // are never used at a user-facing level
+    // Separated from snapshot table to ensure that
+    // only the Snapshot abstraction is exposed
     oid_table: Vec<Oid>,
 
     // Contains modification timestamps for absolute paths in cwd
     pub modified_map: HashMap<PathBuf, u64>,
 
+    // For tracking tool uses within a turn
+    pub tool_use_buffer: Vec<ToolUseSnapshot>
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +56,15 @@ pub struct Snapshot {
 
     // For managing history undoing
     pub messages_since: usize,
+
+    // For tool-level granularity
+    pub tool_snapshots: Vec<ToolUseSnapshot>
+}
+
+#[derive(Clone, Debug)]
+pub struct ToolUseSnapshot {
+    pub oid: Oid,
+    message: String,
 }
 
 impl SnapshotManager {
@@ -64,6 +78,7 @@ impl SnapshotManager {
             snapshot_table: Vec::new(),
             oid_table: Vec::new(),
             modified_map: HashMap::new(),
+            tool_use_buffer: Vec::new(),
         })
     }
 
@@ -71,12 +86,63 @@ impl SnapshotManager {
     ///
     /// This is used as a fast check before we send any summarization request
     /// so users don't have to wait if nothing was modified
+    /// 
+    /// TODO: use a map or list to check this in a single pass
     pub async fn any_modified(&self, os: &Os) -> Result<bool> {
-        let ignores = RegexSet::new(&[r".git"])?;
-        let comparison = Comparison::new(ignores);
+        let cwd = os.env.current_dir()?;
 
-        let res = comparison.compare(SHADOW_REPO_DIR, os.env.current_dir()?.to_str().unwrap())?;
-        Ok(!(res.changed.is_empty() && res.missing_left.is_empty() && res.missing_right.is_empty()))
+        // Forward walk: checks for creations and modifications
+        for entry in WalkDir::new(&cwd)
+            .into_iter()
+            .filter_entry(|e| !e.path().components().any(|c| c.as_os_str() == ".git"))
+            .skip(1)
+        {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => {
+                    // FIX: SILENT FAIL
+                    continue;
+                },
+            };
+            let cwd_path = entry.path();
+            if cwd_path.is_dir() {
+                continue;
+            }
+
+            let last_modified = match self.modified_map.get(cwd_path) {
+                Some(time) => time,
+                None => return Ok(true),
+            };
+            let new_modified = get_modified_timestamp(os, &cwd_path.to_path_buf()).await?;
+            if new_modified > *last_modified {
+                return Ok(true);
+            }
+        }
+
+        // Reverse walk: checks for deletions
+        for entry in WalkDir::new(SHADOW_REPO_DIR)
+            .into_iter()
+            .filter_entry(|e| !e.path().components().any(|c| c.as_os_str() == ".git"))
+            .skip(1)
+        {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => {
+                    // FIX: SILENT FAIL
+                    continue;
+                },
+            };
+            let shadow_path = entry.path();
+            let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
+            if shadow_path.is_dir() {
+                continue;
+            }
+
+            if !os.fs.exists(cwd_path) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     async fn stage_all_modified(&mut self, os: &Os) -> Result<()> {
@@ -133,8 +199,8 @@ impl SnapshotManager {
         Ok(())
     }
 
-    pub async fn create_snapshot(&mut self, os: &Os, message: &str) -> Result<Oid> {
-        
+    pub async fn create_snapshot(&mut self, os: &Os, message: &str, turn: bool) -> Result<Oid> {
+
         if !self.are_tables_synced() {
             bail!("Tables are not synced! Clean and re-initialize to use snapshots again.");
         }
@@ -160,16 +226,32 @@ impl SnapshotManager {
             &parents.iter().map(|c| c).collect::<Vec<_>>(),
         )?;
 
-        // FIX: potentially unsafe conversion from i64 to u64?
-        // Shouldn't be unsafe because it's time, but why did they use i64
-        self.snapshot_table.push(Snapshot {
-            oid,
-            timestamp: signature.when().seconds() as u64,
-            message: message.to_string(),
-            messages_since: 0,
-        });
-        self.oid_table.push(oid);
-        self.snapshot_count += 1;
+        if turn {
+            // Assign tool uses to the turn snapshot they belong to
+            let tool_snapshots = if !self.tool_use_buffer.is_empty() {
+                replace(&mut self.tool_use_buffer, Vec::new())
+            } else {
+                Vec::new()
+            };
+
+            // FIX: potentially unsafe conversion from i64 to u64?
+            // Shouldn't be unsafe because it's time, but why did they use i64
+            self.snapshot_table.push(Snapshot {
+                oid,
+                timestamp: signature.when().seconds() as u64,
+                message: message.to_string(),
+                messages_since: 0,
+                tool_snapshots: tool_snapshots,
+            });
+            self.oid_table.push(oid);
+            self.snapshot_count += 1;
+        }
+
+        if turn {
+            println!("{:#?}", self);
+        } else {
+            println!("{:#?}", self.tool_use_buffer);
+        }
 
         Ok(oid)
     }
@@ -238,12 +320,21 @@ impl SnapshotManager {
         Ok(())
     }
 
-    pub fn get_latest_snapshot(&mut self) -> Option<&mut Snapshot> {
+    pub fn get_latest_turn_snapshot(&mut self) -> Option<&mut Snapshot> {
         self.snapshot_table.iter_mut().last()
     }
 
     fn are_tables_synced(&self) -> bool {
         self.snapshot_table.len() == self.oid_table.len() && self.snapshot_table.len() == self.snapshot_count
+    }
+
+    pub async fn track_tool_use(&mut self, os: &Os, name: &str, purpose: Option<&String>) -> Result<()> {
+        // borrow checker hates me
+        let no_description = &String::from("No description provided");
+        let snapshot_purpose = purpose.unwrap_or(no_description);
+        let oid = self.create_snapshot(os, &format!("{}: {}", name, snapshot_purpose), false).await?;
+        self.tool_use_buffer.push(ToolUseSnapshot { oid: oid, message: snapshot_purpose.to_string() });
+        Ok(())
     }
 }
 

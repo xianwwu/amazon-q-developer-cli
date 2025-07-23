@@ -13,7 +13,7 @@ mod prompt_parser;
 mod server_messenger;
 #[cfg(unix)]
 mod skim_integration;
-pub mod snapshots;
+pub mod snapshot;
 mod token_counter;
 pub mod tool_manager;
 pub mod tools;
@@ -59,6 +59,7 @@ use eyre::{
     bail,
     eyre,
 };
+use futures::TryFutureExt;
 use input_source::InputSource;
 use message::{
     AssistantMessage,
@@ -127,6 +128,7 @@ use crate::cli::chat::cli::prompts::{
     PromptsSubcommand,
 };
 
+use crate::cli::chat::tools::fs_write::FsWrite;
 use crate::database::settings::Setting;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
@@ -1741,6 +1743,30 @@ impl ChatSession {
             let tool_time = format!("{}.{}", tool_time.as_secs(), tool_time.subsec_millis());
             match invoke_result {
                 Ok(result) => {
+                    let mut tracked_tool_use: Option<bool> = Some(false);
+                    // Track tool uses for snapshots
+                    match tool.tool {
+                        Tool::FsWrite(_) | Tool::ExecuteCommand(_) => {
+                            println!("QUEUED TOOOOOOOOOOOL ID: {}", tool.name);
+                            let purpose = match &tool.tool {
+                                Tool::FsWrite(w) => w.get_summary(),
+                                Tool::ExecuteCommand(c) => c.summary.as_ref(),
+                                _ => unreachable!(),
+                            };
+                            if let Some(manager) = &mut self.conversation.snapshot_manager {
+                                println!("Creating tool-level snapshot!");
+                                println!("{:#?}", manager.any_modified(os).await);
+                                if manager.any_modified(os).await.unwrap_or(false) {
+                                    match manager.track_tool_use(os, &tool.tool.display_name(), purpose).await {
+                                        Ok(_) => tracked_tool_use = Some(true),
+                                        Err(_) => tracked_tool_use = None,
+                                    };
+                                }
+                            }
+                        },
+                        _ => (),
+                    }
+                    
                     match result.output {
                         OutputKind::Text(ref text) => {
                             debug!("Output is Text: {}", text);
@@ -1768,6 +1794,18 @@ impl ChatSession {
                         style::SetForegroundColor(Color::Reset),
                         style::Print("\n\n"),
                     )?;
+
+                    match tracked_tool_use {
+                        Some(true) => execute!(
+                            self.stderr,
+                            style::Print("Tracked tool use!".blue()),
+                        )?,
+                        Some(false) => (),
+                        None => execute!(
+                            self.stderr,
+                            style::Print("Could not track tool use".blue()),
+                        )?,
+                    };
 
                     tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_success = Some(true));
                     if let Tool::Custom(_) = &tool.tool {
@@ -2088,14 +2126,15 @@ impl ChatSession {
 
             // Create snapshot if any files were modified
             if self.conversation.snapshot_manager.is_some() {
-                match self.conversation.snapshot_manager.as_ref().unwrap().any_modified(os).await {
+                let manager = self.conversation.snapshot_manager.as_ref().unwrap();
+                match manager.any_modified(os).await {
                     Ok(true) => (),
-                    Ok(false) => {
+                    Ok(false) if !manager.tool_use_buffer.is_empty() => (),
+                    Ok(_) => {
                         return Ok(ChatState::PromptUser {
                             skip_printing_tools: false,
                         });
                     },
-                    
                     Err(e) => {
                         debug!("Failed to check if any files were modified");
                         execute!(
@@ -2108,7 +2147,7 @@ impl ChatSession {
                 };
 
                 // Create spinner for long wait
-                // Can't use with_spinner because of mutable references
+                // Can't use with_spinner because of mutable references??
                 execute!(self.stderr, cursor::Hide, style::SetForegroundColor(Color::Blue))?;
                 let spinner = if self.interactive {
                     Some(Spinner::new(Spinners::Dots, "Generating snapshot...".to_string()))
@@ -2132,10 +2171,13 @@ impl ChatSession {
                 match summary_result {
                     Ok(summary) => {
                         if let Some(manager) = &mut self.conversation.snapshot_manager {
-                            match manager.create_snapshot(os, &summary).await {
+
+                            // Do not check modififed within the function for performance (no need
+                            // to request summary if nothing is modified)
+                            match manager.create_snapshot(os, &summary, true).await {
                                 Ok(oid) => execute!(
                                     self.stderr,
-                                    style::Print(style::Print(format!("Created snapshot: {oid}\n\n").blue()))
+                                    style::Print(style::Print(format!("Created snapshot: {oid}\n\n").blue().bold()))
                                 )?,
                                 Err(e) => {
                                     debug!("Failed to create automatic snapshot");

@@ -8,7 +8,7 @@ use crossterm::{
 };
 use eyre::Result;
 
-use crate::cli::chat::snapshots::SnapshotManager;
+use crate::cli::chat::snapshot::SnapshotManager;
 use crate::cli::chat::{
     ChatError,
     ChatSession,
@@ -25,7 +25,7 @@ pub enum SnapshotSubcommand {
     Restore { snapshot: usize },
 
     /// Create a checkpoint
-    Create { message: String },
+    // Create { message: String },
 
     /// View all checkpoints
     List {
@@ -54,11 +54,11 @@ impl SnapshotSubcommand {
                         "Snapshot manager was not initialized properly".into(),
                     ));
                 };
-                match manager.create_snapshot(os, "Initial snapshot").await {
+                match manager.create_snapshot(os, "Initial snapshot", true).await {
                     Ok(oid) => {
                         execute!(
                             session.stderr,
-                            style::Print(format!("Created initial snapshot: {oid}\n").blue())
+                            style::Print(format!("Created initial snapshot: {oid}\n").blue().bold())
                         )?;
                     },
                     Err(e) => return Err(ChatError::Custom(format!("Could not create initial snapshot: {}", e).into())),
@@ -86,17 +86,17 @@ impl SnapshotSubcommand {
                     Err(e) => return Err(ChatError::Custom(format!("Could not restore snapshot: {}", e).into())),
                 }
             },
-            Self::Create { message } => {
-                let Some(manager) = &mut session.conversation.snapshot_manager else {
-                    return Err(ChatError::Custom(
-                        "Snapshot manager does not exist; run /snapshot init to initialize".into(),
-                    ));
-                };
-                match manager.create_snapshot(os, &message).await {
-                    Ok(id) => execute!(session.stderr, style::Print(format!("Created snapshot {id}\n").blue()))?,
-                    Err(_) => return Err(ChatError::Custom("Could not create a snapshot".into())),
-                };
-            },
+            // Self::Create { message } => {
+            //     let Some(manager) = &mut session.conversation.snapshot_manager else {
+            //         return Err(ChatError::Custom(
+            //             "Snapshot manager does not exist; run /snapshot init to initialize".into(),
+            //         ));
+            //     };
+            //     match manager.create_snapshot(os, &message, true).await {
+            //         Ok(id) => execute!(session.stderr, style::Print(format!("Created snapshot {id}\n").blue()))?,
+            //         Err(_) => return Err(ChatError::Custom("Could not create a snapshot".into())),
+            //     };
+            // },
             Self::List { limit } => {
                 let Some(manager) = &mut session.conversation.snapshot_manager else {
                     return Err(ChatError::Custom(
@@ -152,3 +152,36 @@ pub fn list_snapshots(manager: &mut SnapshotManager, output: &mut impl Write, li
     // }
     Ok(())
 }
+
+/*
+Available commands:
+  /snapshot list                 - List all turn-level checkpoints
+  /snapshot expand <id>          - Show tool-level checkpoints within a turn
+  /snapshot restore <id>         - Restore to a specific checkpoint
+  /snapshot diff <id>            - Show changes between current state and checkpoint
+
+Current checkpoints:
+[1] 2025-07-22 20:45 - Created initial project structure (+3 files)
+[2] 2025-07-22 20:48 - Added authentication module (+2 files, modified 1)
+[3] 2025-07-22 20:52 - Fixed API endpoint bugs (modified 2 files) ← CURRENT
+
+> /snapshot expand 2
+  Added authentication module
+  ├─ [2.1] fs_write: Created auth.py (+1 file)
+  ├─ [2.2] fs_write: Created auth_test.py (+1 file)
+  └─ [2.3] fs_write: Updated app.py to import auth module (modified 1 file)
+
+> /snapshot diff 1
+  Comparing current state with checkpoint [1]:
+  + auth.py (added)
+  + auth_test.py (added)
+  ~ app.py (modified)
+    - import os, sys
+    + import os, sys, auth
+    ...
+
+> /snapshot restore 1
+
+
+
+*/

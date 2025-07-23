@@ -54,7 +54,7 @@ use crate::api_client::model::{
     UserInputMessage,
 };
 use crate::cli::agent::Agents;
-use crate::cli::chat::snapshots::SnapshotManager;
+use crate::cli::chat::snapshot::SnapshotManager;
 use crate::cli::chat::ChatError;
 use crate::cli::chat::cli::hooks::{
     Hook,
@@ -225,7 +225,7 @@ impl ConversationState {
         self.history.push_back((next_user_message, message));
 
         if let Some(ref mut manager) = self.snapshot_manager {
-            match manager.get_latest_snapshot() {
+            match manager.get_latest_turn_snapshot() {
                 Some(snapshot) => snapshot.messages_since += 1,
                 None => debug!("No snapshots in snapshot manager for tracking messages!")
             };
@@ -516,16 +516,10 @@ impl ConversationState {
 
     pub async fn create_turn_summary_request(&mut self, os: &Os) -> Result<FigConversationState, ChatError> {
         let summary_content =
-            "[SYSTEM NOTE: This is an automated summarization request, not from the user]\n\n\
-                    FORMAT REQUIREMENTS: Create a structured, concise summary of the last user message and your response. 
-                    DO NOT respond conversationally. DO NOT address the user directly.\n\n\
-                    Your task is to create a structured summary document containing:\n\
-                    1) A brief summary of the user's request\n
-                    2) A brief summary of your reasons and approach to fulfilling the user's request\n
-                    FORMAT THE SUMMARY IN THIRD PERSON, NOT AS A DIRECT RESPONSE. Example format:\n\n\
-                    - Request: user request summary
-                    - Response: approach and reason for making changes
-                    Remember this is a DOCUMENT not a chat response.\n
+            "[SYSTEM NOTE: This is an automated summarization request, not from the user]\n\n
+                    Create a concise summary of the user's last request.\n
+                    DO NOT include anything in your response except for the summary.\n 
+                    DO NOT respond conversationally. DO NOT address the user directly.\n
                     FILTER OUT CHAT CONVENTIONS (greetings, offers to help, etc).".to_string();
 
         let conv_state = self.backend_conversation_state(os, false, &mut vec![]).await?;
