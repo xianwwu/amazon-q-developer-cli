@@ -1,12 +1,17 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::mem::replace;
 use std::path::{
     Path,
     PathBuf,
 };
 use std::sync::Arc;
-use std::mem::replace;
 
+use chrono::{
+    DateTime,
+    Local,
+};
+use crossterm::style::Stylize;
 use dircmp::Comparison;
 use eyre::{
     Result,
@@ -22,10 +27,10 @@ use git2::{
     Signature,
 };
 use regex::RegexSet;
+use walkdir::WalkDir;
+
 use crate::cli::ConversationState;
 use crate::os::Os;
-
-use walkdir::WalkDir;
 
 // ######## HARDCODED VALUES ########
 const SHADOW_REPO_DIR: &str = "/Users/kiranbug/.aws/amazonq/shadow";
@@ -36,35 +41,34 @@ pub struct SnapshotManager {
     repo: Arc<Repository>,
     pub snapshot_count: usize,
     pub snapshot_table: Vec<Snapshot>,
-   
-    // Separated from snapshot table to ensure that
-    // only the Snapshot abstraction is exposed
+
+    // Oids should not be exposed to the user
     oid_table: Vec<Oid>,
 
     // Contains modification timestamps for absolute paths in cwd
     pub modified_map: HashMap<PathBuf, u64>,
 
     // For tracking tool uses within a turn
-    pub tool_use_buffer: Vec<ToolUseSnapshot>
+    pub tool_use_buffer: Vec<ToolUseSnapshot>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Snapshot {
-    pub oid: Oid,
-    pub timestamp: u64,
+    pub timestamp: DateTime<Local>,
     pub message: String,
 
     // For managing history undoing
-    pub messages_since: usize,
+    pub history_index: usize,
 
     // For tool-level granularity
-    pub tool_snapshots: Vec<ToolUseSnapshot>
+    pub tool_snapshots: Vec<ToolUseSnapshot>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ToolUseSnapshot {
     pub oid: Oid,
-    message: String,
+    pub message: String,
+    pub history_index: usize,
 }
 
 impl SnapshotManager {
@@ -86,7 +90,7 @@ impl SnapshotManager {
     ///
     /// This is used as a fast check before we send any summarization request
     /// so users don't have to wait if nothing was modified
-    /// 
+    ///
     /// TODO: use a map or list to check this in a single pass
     pub async fn any_modified(&self, os: &Os) -> Result<bool> {
         let cwd = os.env.current_dir()?;
@@ -157,9 +161,10 @@ impl SnapshotManager {
         for shadow_path in res.changed.iter() {
             if shadow_path.is_file() {
                 let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
-                self.modified_map.insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
+                self.modified_map
+                    .insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
                 copy_file_to_dir(os, &cwd, cwd_path, SHADOW_REPO_DIR).await?;
-                
+
                 // Staging requires relative paths
                 index.add_path(&shadow_path.strip_prefix(SHADOW_REPO_DIR)?)?;
             }
@@ -169,7 +174,8 @@ impl SnapshotManager {
         for cwd_path in res.missing_left.iter() {
             copy_file_to_dir(os, &cwd, cwd_path, SHADOW_REPO_DIR).await?;
             if cwd_path.is_file() {
-                self.modified_map.insert(cwd_path.to_path_buf(), get_modified_timestamp(os, cwd_path).await?);
+                self.modified_map
+                    .insert(cwd_path.to_path_buf(), get_modified_timestamp(os, cwd_path).await?);
 
                 // Staging requires relative paths
                 index.add_path(&cwd_path.strip_prefix(&cwd)?)?;
@@ -199,12 +205,11 @@ impl SnapshotManager {
         Ok(())
     }
 
-    pub async fn create_snapshot(&mut self, os: &Os, message: &str, turn: bool) -> Result<Oid> {
-
+    pub async fn create_snapshot(&mut self, os: &Os, message: &str, turn: bool, history_index: usize) -> Result<Oid> {
         if !self.are_tables_synced() {
             bail!("Tables are not synced! Clean and re-initialize to use snapshots again.");
         }
-        
+
         self.stage_all_modified(os).await?;
         let mut index = self.repo.index()?;
         let tree_id = index.write_tree()?;
@@ -234,43 +239,48 @@ impl SnapshotManager {
                 Vec::new()
             };
 
-            // FIX: potentially unsafe conversion from i64 to u64?
-            // Shouldn't be unsafe because it's time, but why did they use i64
             self.snapshot_table.push(Snapshot {
-                oid,
-                timestamp: signature.when().seconds() as u64,
+                timestamp: Local::now(),
                 message: message.to_string(),
-                messages_since: 0,
-                tool_snapshots: tool_snapshots,
+                history_index: history_index,
+                tool_snapshots,
             });
             self.oid_table.push(oid);
             self.snapshot_count += 1;
         }
 
-        if turn {
-            println!("{:#?}", self);
-        } else {
-            println!("{:#?}", self.tool_use_buffer);
-        }
-
         Ok(oid)
     }
 
-    pub async fn restore(&mut self, os: &Os, conversation: &mut ConversationState, number: usize) -> Result<Oid> {
-        let oid = match self.oid_table.get(number) {
-            Some(s) => s,
-            None => bail!("Commit not found in map"),
+    pub async fn restore(&mut self, os: &Os, conversation: &mut ConversationState, outer_index: usize, inner_index: Option<usize>) -> Result<()> {
+        let oid = if let Some(inner) = inner_index {
+            match self.snapshot_table.get(outer_index) {
+                Some(snapshot) => match snapshot.tool_snapshots.get(inner) {
+                    Some(s) => s.oid,
+                    None => bail!("Invalid checkpoint index"),
+                },
+                None => bail!("Invalid checkpoint index"),
+            }
+        } else {
+            match self.oid_table.get(outer_index) {
+                Some(id) => *id,
+                None => bail!("Invalid checkpoint index"),
+            }
         };
 
         // Undo conversation history
-        for snapshot in &self.snapshot_table[number..self.snapshot_count] {
-            println!("Popping! {} left", conversation.get_history_len());
-            for _ in 0..snapshot.messages_since {
-                conversation.pop_from_history().ok_or(eyre!("Tried to pop from empty history"))?;
-            }
+        let history_index = if let Some(inner) = inner_index {
+            self.snapshot_table[outer_index].tool_snapshots[inner].history_index
+        } else {
+            self.snapshot_table[outer_index].history_index
+        };
+        for _ in history_index..conversation.get_history_len() {
+            conversation
+                .pop_from_history()
+                .ok_or(eyre!("Tried to pop from empty history"))?;
         }
-
-        let oid = self.reset_hard(&oid.to_string()).await?;
+        
+        self.reset_hard(&oid.to_string()).await?;
 
         let cwd = os.env.current_dir()?;
         let ignores = RegexSet::new(&[r".git"])?;
@@ -282,7 +292,8 @@ impl SnapshotManager {
             if shadow_path.is_file() {
                 let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
                 copy_file_to_dir(os, SHADOW_REPO_DIR, shadow_path, &cwd).await?;
-                self.modified_map.insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
+                self.modified_map
+                    .insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
             }
         }
 
@@ -290,8 +301,8 @@ impl SnapshotManager {
         for shadow_path in res.missing_right.iter() {
             let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
             copy_file_to_dir(os, SHADOW_REPO_DIR, shadow_path, &cwd).await?;
-            self.modified_map.insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
-
+            self.modified_map
+                .insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
         }
 
         // Delete extra files
@@ -303,7 +314,7 @@ impl SnapshotManager {
             }
         }
 
-        Ok(oid)
+        Ok(())
     }
 
     async fn reset_hard(&mut self, commit_hash: &str) -> Result<Oid> {
@@ -320,20 +331,22 @@ impl SnapshotManager {
         Ok(())
     }
 
-    pub fn get_latest_turn_snapshot(&mut self) -> Option<&mut Snapshot> {
-        self.snapshot_table.iter_mut().last()
-    }
-
     fn are_tables_synced(&self) -> bool {
         self.snapshot_table.len() == self.oid_table.len() && self.snapshot_table.len() == self.snapshot_count
     }
 
-    pub async fn track_tool_use(&mut self, os: &Os, name: &str, purpose: Option<&String>) -> Result<()> {
+    pub async fn track_tool_use(&mut self, os: &Os, tool_name: &str, purpose: Option<&String>, history_index: usize) -> Result<()> {
         // borrow checker hates me
         let no_description = &String::from("No description provided");
         let snapshot_purpose = purpose.unwrap_or(no_description);
-        let oid = self.create_snapshot(os, &format!("{}: {}", name, snapshot_purpose), false).await?;
-        self.tool_use_buffer.push(ToolUseSnapshot { oid: oid, message: snapshot_purpose.to_string() });
+        let oid = self
+            .create_snapshot(os, &format!("{}: {}", tool_name, snapshot_purpose), false, history_index)
+            .await?;
+        self.tool_use_buffer.push(ToolUseSnapshot {
+            oid,
+            message: format!("{}: {}", tool_name.magenta(), snapshot_purpose),
+            history_index
+        });
         Ok(())
     }
 }

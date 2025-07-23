@@ -59,7 +59,7 @@ use eyre::{
     bail,
     eyre,
 };
-use futures::TryFutureExt;
+
 use input_source::InputSource;
 use message::{
     AssistantMessage,
@@ -128,7 +128,6 @@ use crate::cli::chat::cli::prompts::{
     PromptsSubcommand,
 };
 
-use crate::cli::chat::tools::fs_write::FsWrite;
 use crate::database::settings::Setting;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
@@ -1747,17 +1746,17 @@ impl ChatSession {
                     // Track tool uses for snapshots
                     match tool.tool {
                         Tool::FsWrite(_) | Tool::ExecuteCommand(_) => {
-                            println!("QUEUED TOOOOOOOOOOOL ID: {}", tool.name);
                             let purpose = match &tool.tool {
                                 Tool::FsWrite(w) => w.get_summary(),
                                 Tool::ExecuteCommand(c) => c.summary.as_ref(),
                                 _ => unreachable!(),
                             };
+
+                            // FIX: + 1 is because tool use hasn't been added to history yet (hacky)
+                            let history_index = self.conversation.get_history_len() + 1;
                             if let Some(manager) = &mut self.conversation.snapshot_manager {
-                                println!("Creating tool-level snapshot!");
-                                println!("{:#?}", manager.any_modified(os).await);
                                 if manager.any_modified(os).await.unwrap_or(false) {
-                                    match manager.track_tool_use(os, &tool.tool.display_name(), purpose).await {
+                                    match manager.track_tool_use(os, &tool.tool.display_name(), purpose, history_index).await {
                                         Ok(_) => tracked_tool_use = Some(true),
                                         Err(_) => tracked_tool_use = None,
                                     };
@@ -1766,7 +1765,7 @@ impl ChatSession {
                         },
                         _ => (),
                     }
-                    
+
                     match result.output {
                         OutputKind::Text(ref text) => {
                             debug!("Output is Text: {}", text);
@@ -1796,15 +1795,9 @@ impl ChatSession {
                     )?;
 
                     match tracked_tool_use {
-                        Some(true) => execute!(
-                            self.stderr,
-                            style::Print("Tracked tool use!".blue()),
-                        )?,
+                        Some(true) => execute!(self.stderr, style::Print("Tracked tool use!\n".blue()),)?,
                         Some(false) => (),
-                        None => execute!(
-                            self.stderr,
-                            style::Print("Could not track tool use".blue()),
-                        )?,
+                        None => execute!(self.stderr, style::Print("Could not track tool use\n".blue()),)?,
                     };
 
                     tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_success = Some(true));
@@ -2143,7 +2136,7 @@ impl ChatSession {
                                 format!("Could not create automatic snapshot: {}\n\n", e).blue()
                             ))
                         )?;
-                    }
+                    },
                 };
 
                 // Create spinner for long wait
@@ -2170,14 +2163,14 @@ impl ChatSession {
                 }
                 match summary_result {
                     Ok(summary) => {
+                        let history_index = self.conversation.get_history_len();
                         if let Some(manager) = &mut self.conversation.snapshot_manager {
-
                             // Do not check modififed within the function for performance (no need
                             // to request summary if nothing is modified)
-                            match manager.create_snapshot(os, &summary, true).await {
-                                Ok(oid) => execute!(
+                            match manager.create_snapshot(os, &summary, true, history_index).await {
+                                Ok(_) => execute!(
                                     self.stderr,
-                                    style::Print(style::Print(format!("Created snapshot: {oid}\n\n").blue().bold()))
+                                    style::Print(style::Print(format!("Created snapshot: {}\n\n", manager.snapshot_count).blue().bold()))
                                 )?,
                                 Err(e) => {
                                     debug!("Failed to create automatic snapshot");

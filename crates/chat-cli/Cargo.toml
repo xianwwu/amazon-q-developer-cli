@@ -123,6 +123,7 @@ winnow.workspace = true
 schemars.workspace = true
 git2 = "0.20.2"
 dircmp = "0.2.0"
+chrono.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

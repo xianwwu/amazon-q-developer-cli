@@ -54,12 +54,12 @@ use crate::api_client::model::{
     UserInputMessage,
 };
 use crate::cli::agent::Agents;
-use crate::cli::chat::snapshot::SnapshotManager;
 use crate::cli::chat::ChatError;
 use crate::cli::chat::cli::hooks::{
     Hook,
     HookTrigger,
 };
+use crate::cli::chat::snapshot::SnapshotManager;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
 
@@ -223,13 +223,6 @@ impl ConversationState {
 
         self.append_assistant_transcript(&message);
         self.history.push_back((next_user_message, message));
-
-        if let Some(ref mut manager) = self.snapshot_manager {
-            match manager.get_latest_turn_snapshot() {
-                Some(snapshot) => snapshot.messages_since += 1,
-                None => debug!("No snapshots in snapshot manager for tracking messages!")
-            };
-        }
 
         if let Ok(cwd) = std::env::current_dir() {
             os.database.set_conversation_by_path(cwd, self).ok();
@@ -515,12 +508,12 @@ impl ConversationState {
     }
 
     pub async fn create_turn_summary_request(&mut self, os: &Os) -> Result<FigConversationState, ChatError> {
-        let summary_content =
-            "[SYSTEM NOTE: This is an automated summarization request, not from the user]\n\n
+        let summary_content = "[SYSTEM NOTE: This is an automated summarization request, not from the user]\n\n
                     Create a concise summary of the user's last request.\n
                     DO NOT include anything in your response except for the summary.\n 
                     DO NOT respond conversationally. DO NOT address the user directly.\n
-                    FILTER OUT CHAT CONVENTIONS (greetings, offers to help, etc).".to_string();
+                    FILTER OUT CHAT CONVENTIONS (greetings, offers to help, etc)."
+            .to_string();
 
         let conv_state = self.backend_conversation_state(os, false, &mut vec![]).await?;
         let summary_message = Some(UserMessage::new_prompt(summary_content.clone()));
