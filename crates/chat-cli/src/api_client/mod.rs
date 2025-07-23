@@ -459,7 +459,7 @@ impl ApiClient {
                 .build()?);
         }
 
-        // Currently we should only use AgenticReqeust for this API
+        // Currently we should only use AgenticRequest for this API
         self.client
             .get_usage_limits()
             .set_profile_arn(self.profile.as_ref().map(|p| p.arn.clone()))
