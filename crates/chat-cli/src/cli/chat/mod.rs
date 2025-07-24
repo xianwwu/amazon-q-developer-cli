@@ -1742,7 +1742,7 @@ impl ChatSession {
             let tool_time = format!("{}.{}", tool_time.as_secs(), tool_time.subsec_millis());
             match invoke_result {
                 Ok(result) => {
-                    let mut tracked_tool_use: Option<bool> = Some(false);
+                    let mut tracked_tool_use: Option<(usize, usize)> = None;
                     // Track tool uses for snapshots
                     match tool.tool {
                         Tool::FsWrite(_) | Tool::ExecuteCommand(_) => {
@@ -1757,7 +1757,7 @@ impl ChatSession {
                             if let Some(manager) = &mut self.conversation.snapshot_manager {
                                 if manager.any_modified(os).await.unwrap_or(false) {
                                     match manager.track_tool_use(os, &tool.tool.display_name(), purpose, history_index).await {
-                                        Ok(_) => tracked_tool_use = Some(true),
+                                        Ok(_) => tracked_tool_use = Some((manager.snapshot_count + 1, manager.tool_use_buffer.len())),
                                         Err(_) => tracked_tool_use = None,
                                     };
                                 }
@@ -1789,16 +1789,15 @@ impl ChatSession {
                         style::Print("\n"),
                         style::SetForegroundColor(Color::Green),
                         style::SetAttribute(Attribute::Bold),
-                        style::Print(format!(" ● Completed in {}s", tool_time)),
+                        style::Print(format!(" ● Completed in {}s ", tool_time)),
                         style::SetForegroundColor(Color::Reset),
-                        style::Print("\n\n"),
                     )?;
 
-                    match tracked_tool_use {
-                        Some(true) => execute!(self.stderr, style::Print("Tracked tool use!\n".blue()),)?,
-                        Some(false) => (),
-                        None => execute!(self.stderr, style::Print("Could not track tool use\n".blue()),)?,
+                    if let Some((outer, inner)) = tracked_tool_use {
+                        execute!(self.stderr, style::Print(format!("[{outer}.{inner}]\n").blue()))?;
                     };
+
+                    execute!(self.stdout, style::Print("\n\n"))?;
 
                     tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_success = Some(true));
                     if let Tool::Custom(_) = &tool.tool {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::mem::replace;
+use std::mem::take;
 use std::path::{
     Path,
     PathBuf,
@@ -153,7 +153,7 @@ impl SnapshotManager {
         let mut index = self.repo.index()?;
         let cwd = os.env.current_dir()?;
 
-        let ignores = RegexSet::new(&[r".git"])?;
+        let ignores = RegexSet::new([r".git"])?;
         let comparison = Comparison::new(ignores);
         let res = comparison.compare(SHADOW_REPO_DIR, os.env.current_dir()?.to_str().unwrap())?;
 
@@ -162,11 +162,11 @@ impl SnapshotManager {
             if shadow_path.is_file() {
                 let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
                 self.modified_map
-                    .insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
+                    .insert(cwd_path.clone(), get_modified_timestamp(os, &cwd_path).await?);
                 copy_file_to_dir(os, &cwd, cwd_path, SHADOW_REPO_DIR).await?;
 
                 // Staging requires relative paths
-                index.add_path(&shadow_path.strip_prefix(SHADOW_REPO_DIR)?)?;
+                index.add_path(shadow_path.strip_prefix(SHADOW_REPO_DIR)?)?;
             }
         }
 
@@ -175,10 +175,10 @@ impl SnapshotManager {
             copy_file_to_dir(os, &cwd, cwd_path, SHADOW_REPO_DIR).await?;
             if cwd_path.is_file() {
                 self.modified_map
-                    .insert(cwd_path.to_path_buf(), get_modified_timestamp(os, cwd_path).await?);
+                    .insert(cwd_path.clone(), get_modified_timestamp(os, cwd_path).await?);
 
                 // Staging requires relative paths
-                index.add_path(&cwd_path.strip_prefix(&cwd)?)?;
+                index.add_path(cwd_path.strip_prefix(&cwd)?)?;
             }
         }
 
@@ -195,7 +195,7 @@ impl SnapshotManager {
 
             // Update table and shadow repo if deleted
             // FIX: removing the entry is probably not the best choice?
-            self.modified_map.remove(&shadow_path.to_path_buf());
+            self.modified_map.remove(&shadow_path.clone());
             os.fs.remove_file(shadow_path).await?;
 
             // Staging requires relative paths
@@ -228,13 +228,13 @@ impl SnapshotManager {
             &signature,
             message,
             &tree,
-            &parents.iter().map(|c| c).collect::<Vec<_>>(),
+            &parents.iter().collect::<Vec<_>>(),
         )?;
 
         if turn {
             // Assign tool uses to the turn snapshot they belong to
             let tool_snapshots = if !self.tool_use_buffer.is_empty() {
-                replace(&mut self.tool_use_buffer, Vec::new())
+                take(&mut self.tool_use_buffer)
             } else {
                 Vec::new()
             };
@@ -242,7 +242,7 @@ impl SnapshotManager {
             self.snapshot_table.push(Snapshot {
                 timestamp: Local::now(),
                 message: message.to_string(),
-                history_index: history_index,
+                history_index,
                 tool_snapshots,
             });
             self.oid_table.push(oid);
@@ -283,7 +283,7 @@ impl SnapshotManager {
         self.reset_hard(&oid.to_string()).await?;
 
         let cwd = os.env.current_dir()?;
-        let ignores = RegexSet::new(&[r".git"])?;
+        let ignores = RegexSet::new([r".git"])?;
         let comparison = Comparison::new(ignores);
         let res = comparison.compare(SHADOW_REPO_DIR, cwd.to_str().unwrap())?;
 
@@ -293,7 +293,7 @@ impl SnapshotManager {
                 let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
                 copy_file_to_dir(os, SHADOW_REPO_DIR, shadow_path, &cwd).await?;
                 self.modified_map
-                    .insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
+                    .insert(cwd_path.clone(), get_modified_timestamp(os, &cwd_path).await?);
             }
         }
 
@@ -302,7 +302,7 @@ impl SnapshotManager {
             let cwd_path = convert_path(SHADOW_REPO_DIR, shadow_path, &cwd)?;
             copy_file_to_dir(os, SHADOW_REPO_DIR, shadow_path, &cwd).await?;
             self.modified_map
-                .insert(cwd_path.to_path_buf(), get_modified_timestamp(os, &cwd_path).await?);
+                .insert(cwd_path.clone(), get_modified_timestamp(os, &cwd_path).await?);
         }
 
         // Delete extra files
@@ -377,7 +377,7 @@ async fn copy_file_to_dir(
     destination: impl AsRef<Path>,
 ) -> Result<()> {
     let path = path.as_ref();
-    let target_path = convert_path(prefix, &path, destination)?;
+    let target_path = convert_path(prefix, path, destination)?;
     if path.is_dir() && !os.fs.exists(&target_path) {
         os.fs.create_dir_all(target_path).await?;
     } else if path.is_file() {

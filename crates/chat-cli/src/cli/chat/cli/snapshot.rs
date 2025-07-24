@@ -70,7 +70,7 @@ impl SnapshotSubcommand {
                     Ok(_) => {
                         execute!(
                             session.stderr,
-                            style::Print(format!("Created initial snapshot: 1\n").blue().bold())
+                            style::Print("Created initial snapshot: 1\n".blue().bold())
                         )?;
                     },
                     Err(e) => {
@@ -134,7 +134,7 @@ impl SnapshotSubcommand {
                 match SnapshotManager::clean_all(os).await {
                     Ok(_) => execute!(
                         session.stderr,
-                        style::Print(format!("Deleted shadow repository\n").blue().bold())
+                        style::Print("Deleted shadow repository\n".blue().bold())
                     )?,
                     Err(e) => {
                         return Err(ChatError::Custom(
@@ -178,8 +178,8 @@ pub fn list_snapshots(manager: &SnapshotManager, output: &mut impl Write, limit:
         execute!(
             output,
             style::Print(format!("[{}]", i + 1).blue()),
-            style::Print(format!(" {} - {}\n", snapshot.timestamp, snapshot.message))
-        )?
+            style::Print(format!(" {} - {}\n", snapshot.timestamp.format("%Y-%m-%d %H:%M:%S"), snapshot.message)),
+        )?;
     }
     Ok(())
 }
@@ -221,7 +221,7 @@ impl FromStr for Index {
             let outer_idx = outer.parse::<usize>()
                 .map_err(|_| ChatError::Custom(format!("Invalid checkpoint idx: {outer}").into()))?;
             let inner_idx = inner.parse::<usize>()
-                .map_err(|_| ChatError::Custom(format!("Invalid checkpoint idx: {outer}").into()))?;
+                .map_err(|_| ChatError::Custom(format!("Invalid checkpoint idx: {inner}").into()))?;
             
             // Convert from 1-based to 0-based indexing
             Ok(Self::Nested(outer_idx - 1, inner_idx - 1))

@@ -515,11 +515,11 @@ impl ConversationState {
                     FILTER OUT CHAT CONVENTIONS (greetings, offers to help, etc)."
             .to_string();
 
-        let conv_state = self.backend_conversation_state(os, false, &mut vec![]).await?;
-        let summary_message = Some(UserMessage::new_prompt(summary_content.clone()));
+        let mut conv_state = self.backend_conversation_state(os, false, &mut vec![]).await?;
+        let summary_message = UserMessage::new_prompt(summary_content.clone());
 
         // Create the history according to the passed compact strategy.
-        let history = conv_state.history.cloned().last();
+        let history = conv_state.history.next_back().cloned();
 
         // Only send the dummy tool spec in order to prevent the model from ever attempting a tool
         // use.
@@ -537,7 +537,6 @@ impl ConversationState {
         Ok(FigConversationState {
             conversation_id: Some(self.conversation_id.clone()),
             user_input_message: summary_message
-                .unwrap_or(UserMessage::new_prompt(summary_content)) // should not happen
                 .into_user_input_message(self.model.clone(), &tools),
             history: Some(flatten_history(history.iter())),
         })
