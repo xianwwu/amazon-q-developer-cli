@@ -304,7 +304,7 @@
               },
               "agent_cli_name": {
               "type": "string",
-              "description": "REQUIRED: First check available agents by running `ls -la ~/.aws/amazonq/agents`. Then select the most suitable specialized agent for this specific task by omitting the .json from the filename. Only specify this field if a relevant specialized agent exists. If no agent particularly matches the task requirements, omit this field to use the default agent. Always verify agent availability before selection."
+              "description": "REQUIRED: First check available agents by running `q agent list`. Then select the most suitable specialized agent for this specific task by omitting the .json from the filename. Only specify this field if a relevant specialized agent exists. If no agent particularly matches the task requirements, omit this field to use the default agent. Always verify agent availability before selection."
               },
               "prompt_summary": {
                 "type": "string",
