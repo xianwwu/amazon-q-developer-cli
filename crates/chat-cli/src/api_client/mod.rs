@@ -12,7 +12,9 @@ use std::time::Duration;
 
 use amzn_codewhisperer_client::Client as CodewhispererClient;
 use amzn_codewhisperer_client::operation::create_subscription_token::CreateSubscriptionTokenOutput;
+use amzn_codewhisperer_client::types::Origin::Cli;
 use amzn_codewhisperer_client::types::{
+    Model,
     OptOutPreference,
     SubscriptionStatus,
     TelemetryEvent,
@@ -230,6 +232,46 @@ impl ApiClient {
         }
 
         Ok(profiles)
+    }
+
+    pub async fn list_available_models(&self) -> Result<(Vec<Model>, Option<Model>), ApiClientError> {
+        if cfg!(test) {
+            return Ok((
+                vec![
+                    Model::builder()
+                        .model_id("model-1")
+                        .description("Test Model 1")
+                        .build()
+                        .unwrap(),
+                ],
+                Some(
+                    Model::builder()
+                        .model_id("model-1")
+                        .description("Test Model 1")
+                        .build()
+                        .unwrap(),
+                ),
+            ));
+        }
+
+        // todo yifan: add default_model once API is ready
+        let mut models = Vec::new();
+        let default_model = None;
+        let request = self
+            .client
+            .list_available_models()
+            .set_origin(Some(Cli))
+            .set_profile_arn(self.profile.as_ref().map(|p| p.arn.clone()));
+        let mut paginator = request.into_paginator().send();
+
+        while let Some(models_output) = paginator.next().await {
+            models.extend(models_output?.models().iter().cloned());
+            // if default_model.is_none() && output.default_model().is_some() {
+            //     default_model = output.default_model().cloned();
+            // }
+        }
+
+        Ok((models, default_model))
     }
 
     pub async fn create_subscription_token(&self) -> Result<CreateSubscriptionTokenOutput, ApiClientError> {

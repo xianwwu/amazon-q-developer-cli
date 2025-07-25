@@ -20,44 +20,63 @@ use crate::cli::chat::{
 };
 use crate::os::Os;
 
-pub struct ModelOption {
-    pub name: &'static str,
-    pub model_id: &'static str,
-}
+// pub struct ModelOption {
+//     pub name: &'static str,
+//     pub model_id: &'static str,
+// }
 
-pub const MODEL_OPTIONS: [ModelOption; 2] = [
-    ModelOption {
-        name: "claude-4-sonnet",
-        model_id: "CLAUDE_SONNET_4_20250514_V1_0",
-    },
-    ModelOption {
-        name: "claude-3.7-sonnet",
-        model_id: "CLAUDE_3_7_SONNET_20250219_V1_0",
-    },
-];
+// pub const MODEL_OPTIONS: [ModelOption; 2] = [
+//     ModelOption {
+//         name: "claude-4-sonnet",
+//         model_id: "CLAUDE_SONNET_4_20250514_V1_0",
+//     },
+//     ModelOption {
+//         name: "claude-3.7-sonnet",
+//         model_id: "CLAUDE_3_7_SONNET_20250219_V1_0",
+//     },
+// ];
 
 #[deny(missing_docs)]
 #[derive(Debug, PartialEq, Args)]
 pub struct ModelArgs;
 
 impl ModelArgs {
-    pub async fn execute(self, session: &mut ChatSession) -> Result<ChatState, ChatError> {
-        Ok(select_model(session)?.unwrap_or(ChatState::PromptUser {
+    pub async fn execute(self, os: &mut Os, session: &mut ChatSession) -> Result<ChatState, ChatError> {
+        Ok(select_model(os, session).await?.unwrap_or(ChatState::PromptUser {
             skip_printing_tools: false,
         }))
     }
 }
 
-pub fn select_model(session: &mut ChatSession) -> Result<Option<ChatState>, ChatError> {
+pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Option<ChatState>, ChatError> {
     queue!(session.stderr, style::Print("\n"))?;
+
+    // Fetch available models from service
+    let (models, _default_model) = os
+        .client
+        .list_available_models()
+        .await
+        .map_err(|e| ChatError::Custom(format!("Failed to fetch available models: {}", e).into()))?;
+
+    if models.is_empty() {
+        queue!(
+            session.stderr,
+            style::SetForegroundColor(Color::Red),
+            style::Print("No models available\n"),
+            style::ResetColor
+        )?;
+        return Ok(None);
+    }
+
     let active_model_id = session.conversation.model.as_deref();
-    let labels: Vec<String> = MODEL_OPTIONS
+
+    let labels: Vec<String> = models
         .iter()
         .map(|opt| {
-            if (opt.model_id.is_empty() && active_model_id.is_none()) || Some(opt.model_id) == active_model_id {
-                format!("{} (active)", opt.name)
+            if Some(opt.model_id.as_str()) == active_model_id {
+                format!("{} (active)", opt.model_id)
             } else {
-                opt.name.to_owned()
+                opt.model_id.to_owned()
             }
         })
         .collect();
@@ -83,14 +102,14 @@ pub fn select_model(session: &mut ChatSession) -> Result<Option<ChatState>, Chat
     queue!(session.stderr, style::ResetColor)?;
 
     if let Some(index) = selection {
-        let selected = &MODEL_OPTIONS[index];
+        let selected = &models[index];
         let model_id_str = selected.model_id.to_string();
         session.conversation.model = Some(model_id_str);
 
         queue!(
             session.stderr,
             style::Print("\n"),
-            style::Print(format!(" Using {}\n\n", selected.name)),
+            style::Print(format!(" Using {}\n\n", selected.model_id)),
             style::ResetColor,
             style::SetForegroundColor(Color::Reset),
             style::SetBackgroundColor(Color::Reset),
@@ -106,21 +125,24 @@ pub fn select_model(session: &mut ChatSession) -> Result<Option<ChatState>, Chat
 
 /// Returns Claude 3.7 for: Amazon IDC users, FRA region users
 /// Returns Claude 4.0 for: Builder ID users, other regions
-pub async fn default_model_id(os: &Os) -> &'static str {
+pub async fn default_model_id(os: &Os) -> String {
+    if let Ok((_, Some(default_model))) = os.client.list_available_models().await {
+        return default_model.model_id().to_string();
+    }
     // Check FRA region first
     if let Ok(Some(profile)) = os.database.get_auth_profile() {
         if profile.arn.split(':').nth(3) == Some("eu-central-1") {
-            return "CLAUDE_3_7_SONNET_20250219_V1_0";
+            return "CLAUDE_3_7_SONNET_20250219_V1_0".to_string();
         }
     }
 
     // Check if Amazon IDC user
     if let Ok(Some(token)) = BuilderIdToken::load(&os.database).await {
         if matches!(token.token_type(), TokenType::IamIdentityCenter) && token.is_amzn_user() {
-            return "CLAUDE_3_7_SONNET_20250219_V1_0";
+            return "CLAUDE_3_7_SONNET_20250219_V1_0".to_string();
         }
     }
 
     // Default to 4.0
-    "CLAUDE_SONNET_4_20250514_V1_0"
+    "CLAUDE_SONNET_4_20250514_V1_0".to_string()
 }

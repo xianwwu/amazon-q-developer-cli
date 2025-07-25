@@ -126,10 +126,7 @@ use crate::auth::AuthError;
 use crate::auth::builder_id::is_idc_user;
 use crate::cli::agent::Agents;
 use crate::cli::chat::cli::SlashCommand;
-use crate::cli::chat::cli::model::{
-    MODEL_OPTIONS,
-    default_model_id,
-};
+use crate::cli::chat::cli::model::default_model_id;
 use crate::cli::chat::cli::prompts::{
     GetPromptError,
     PromptsSubcommand,
@@ -267,15 +264,16 @@ impl ChatArgs {
         };
 
         // If modelId is specified, verify it exists before starting the chat
-        let model_id: Option<String> = if let Some(model_name) = self.model {
-            let model_name_lower = model_name.to_lowercase();
-            match MODEL_OPTIONS.iter().find(|opt| opt.name == model_name_lower) {
+        let model_id: Option<String> = if let Some(requested_model_id) = self.model {
+            let requested_model_id_lower = requested_model_id.to_lowercase();
+            let (models, _) = os.client.list_available_models().await?;
+            match models.iter().find(|opt| opt.model_id == requested_model_id_lower) {
                 Some(opt) => Some((opt.model_id).to_string()),
                 None => {
-                    let available_names: Vec<&str> = MODEL_OPTIONS.iter().map(|opt| opt.name).collect();
+                    let available_names: Vec<&str> = models.iter().map(|opt| opt.model_id()).collect();
                     bail!(
                         "Model '{}' does not exist. Available models: {}",
-                        model_name,
+                        requested_model_id,
                         available_names.join(", ")
                     );
                 },
@@ -516,6 +514,8 @@ impl ChatSession {
         tool_config: HashMap<String, ToolSpec>,
         interactive: bool,
     ) -> Result<Self> {
+        let (models, _) = os.client.list_available_models().await?;
+
         let valid_model_id = match model_id {
             Some(id) => id,
             None => {
@@ -523,10 +523,10 @@ impl ChatSession {
                     .database
                     .settings
                     .get_string(Setting::ChatDefaultModel)
-                    .and_then(|model_name| {
-                        MODEL_OPTIONS
+                    .and_then(|model_id| {
+                        models
                             .iter()
-                            .find(|opt| opt.name == model_name)
+                            .find(|opt| opt.model_id == model_id)
                             .map(|opt| opt.model_id.to_owned())
                     });
 
@@ -1133,15 +1133,13 @@ impl ChatSession {
         self.stderr.flush()?;
 
         if let Some(ref id) = self.conversation.model {
-            if let Some(model_option) = MODEL_OPTIONS.iter().find(|option| option.model_id == *id) {
-                execute!(
-                    self.stderr,
-                    style::SetForegroundColor(Color::Cyan),
-                    style::Print(format!("🤖 You are chatting with {}\n", model_option.name)),
-                    style::SetForegroundColor(Color::Reset),
-                    style::Print("\n")
-                )?;
-            }
+            execute!(
+                self.stderr,
+                style::SetForegroundColor(Color::Cyan),
+                style::Print(format!("🤖 You are chatting with {}\n", id)),
+                style::SetForegroundColor(Color::Reset),
+                style::Print("\n")
+            )?;
         }
 
         if let Some(user_input) = self.initial_input.take() {
@@ -2321,7 +2319,7 @@ impl ChatSession {
     }
 
     async fn retry_model_overload(&mut self, os: &mut Os) -> Result<ChatState, ChatError> {
-        match select_model(self) {
+        match select_model(os, self).await {
             Ok(Some(_)) => (),
             Ok(None) => {
                 // User did not select a model, so reset the current request state.
