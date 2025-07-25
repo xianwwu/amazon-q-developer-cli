@@ -245,8 +245,6 @@ impl ::aws_types::request_id::RequestId for crate::types::error::ResultArchiveSt
     }
 }
 
-pub use crate::types::error::_service_unavailable_exception::ServiceUnavailableError;
-
 mod _access_denied_error;
 
 mod _conflict_exception;
@@ -258,8 +256,6 @@ mod _internal_server_error;
 mod _resource_not_found_exception;
 
 mod _service_quota_exceeded_error;
-
-mod _service_unavailable_exception;
 
 mod _throttling_error;
 

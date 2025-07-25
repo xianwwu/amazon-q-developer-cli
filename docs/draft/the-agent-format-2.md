@@ -233,6 +233,7 @@ Resources can be simple strings to enable lightweight prompting, but otherwise a
 ```json
 {
   "resources": [
+    "You are a principal engineer who writes rust backend code using the write_code and git tools.",
     "file://my-excellent-prompt.md",
     "file://${workspace}",
     "file://my-mcp-resource.json@builder-mcp"
@@ -270,6 +271,7 @@ Here's a complete example of an agent manifest:
     }
   },
   "resources": [
+    "You are a principal Rust engineer who writes safe, efficient backend code.",
     "file://rust-style-guide.md",
     "file://${workspace}/README.md",
     "file://project-context.md@workspace-mcp"

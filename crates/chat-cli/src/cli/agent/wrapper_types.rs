@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::ops::Deref;
 
 use schemars::{
@@ -11,6 +12,8 @@ use serde::{
     Deserialize,
     Serialize,
 };
+
+use crate::cli::chat::cli::hooks::Hook;
 
 /// Subject of the tool name change. For tools in mcp servers, you would need to prefix them with
 /// their server names
@@ -51,6 +54,37 @@ pub fn alias_schema(generator: &mut SchemaGenerator) -> Schema {
     })
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, JsonSchema)]
+#[serde(untagged)]
+pub enum CreateHooks {
+    /// Array of command to execute before the start of the conversation
+    List(Vec<String>),
+    /// Object mapping hook names to command strings for command to run at the start of the
+    /// conversation
+    Map(HashMap<String, Hook>),
+}
+
+impl Default for CreateHooks {
+    fn default() -> Self {
+        Self::List(Vec::new())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, JsonSchema)]
+#[serde(untagged)]
+pub enum PromptHooks {
+    /// Array of command to execute before exchange
+    List(Vec<String>),
+    /// Object mapping hook names to command strings for command to be ran before each exchange
+    Map(HashMap<String, Hook>),
+}
+
+impl Default for PromptHooks {
+    fn default() -> Self {
+        Self::List(Vec::new())
+    }
+}
+
 /// The name of the tool to be configured
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash, PartialEq, JsonSchema)]
 pub struct ToolSettingTarget(String);
@@ -79,7 +113,7 @@ pub fn tool_settings_schema(generator: &mut SchemaGenerator) -> Schema {
     json_schema!({
         "type": "object",
         "additionalProperties": {
-            "type": "object",
+            "type": "string",
             "description": "Settings for tools. Refer to our documentations to see how to configure them"
         },
         "propertyNames": {
@@ -87,37 +121,4 @@ pub fn tool_settings_schema(generator: &mut SchemaGenerator) -> Schema {
             "description": key_description
         }
     })
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash, PartialEq, JsonSchema)]
-pub struct ResourcePath(
-    // You can extend this list via "|". e.g. r"^(file://|database://)"
-    #[schemars(regex(pattern = r"^(file://)"))]
-    String,
-);
-
-impl Deref for ResourcePath {
-    type Target = String;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Borrow<str> for ResourcePath {
-    fn borrow(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl From<&str> for ResourcePath {
-    fn from(value: &str) -> Self {
-        Self(value.to_string())
-    }
-}
-
-impl From<String> for ResourcePath {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
 }

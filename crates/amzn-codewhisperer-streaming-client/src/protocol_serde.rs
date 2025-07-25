@@ -68,8 +68,6 @@ pub(crate) mod shape_send_message_output;
 
 pub(crate) mod shape_service_quota_exceeded_error;
 
-pub(crate) mod shape_service_unavailable_exception;
-
 pub(crate) mod shape_throttling_error;
 
 pub(crate) mod shape_validation_error;
@@ -129,11 +127,7 @@ pub(crate) mod shape_assistant_response_message;
 
 pub(crate) mod shape_user_input_message;
 
-pub(crate) mod shape_cache_point;
-
 pub(crate) mod shape_citation_target;
-
-pub(crate) mod shape_client_cache_config;
 
 pub(crate) mod shape_followup_prompt;
 

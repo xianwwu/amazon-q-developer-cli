@@ -10,6 +10,11 @@ use crossterm::{
     style,
 };
 
+use crate::cli::chat::cli::hooks::{
+    HookTrigger,
+    map_chat_error,
+    print_hook_section,
+};
 use crate::cli::chat::consts::CONTEXT_FILES_MAX_SIZE;
 use crate::cli::chat::token_counter::TokenCounter;
 use crate::cli::chat::util::drop_matched_context_files;
@@ -88,7 +93,7 @@ impl ContextSubcommand {
                     style::SetAttribute(Attribute::Reset),
                 )?;
 
-                if context_manager.paths.is_empty() {
+                if context_manager.profile_config.paths.is_empty() {
                     execute!(
                         session.stderr,
                         style::SetForegroundColor(Color::DarkGrey),
@@ -96,7 +101,7 @@ impl ContextSubcommand {
                         style::SetForegroundColor(Color::Reset)
                     )?;
                 } else {
-                    for path in &context_manager.paths {
+                    for path in &context_manager.profile_config.paths {
                         execute!(session.stderr, style::Print(format!("    {} ", path)))?;
                         if let Ok(context_files) = context_manager.get_context_files_by_path(os, path).await {
                             execute!(
@@ -112,6 +117,28 @@ impl ContextSubcommand {
                         }
                         execute!(session.stderr, style::Print("\n"))?;
                     }
+                    execute!(session.stderr, style::Print("\n"))?;
+                }
+
+                if expand {
+                    execute!(
+                        session.stderr,
+                        style::SetAttribute(Attribute::Bold),
+                        style::SetForegroundColor(Color::DarkYellow),
+                        style::Print("    🔧 Hooks:\n")
+                    )?;
+                    print_hook_section(
+                        &mut session.stderr,
+                        &context_manager.profile_config.hooks,
+                        HookTrigger::ConversationStart,
+                    )
+                    .map_err(map_chat_error)?;
+                    print_hook_section(
+                        &mut session.stderr,
+                        &context_manager.profile_config.hooks,
+                        HookTrigger::PerPrompt,
+                    )
+                    .map_err(map_chat_error)?;
                     execute!(session.stderr, style::Print("\n"))?;
                 }
 

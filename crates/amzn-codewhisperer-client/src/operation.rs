@@ -37,12 +37,6 @@ pub mod get_code_analysis;
 /// Types for the `GetCodeFixJob` operation.
 pub mod get_code_fix_job;
 
-/// Types for the `GetProfile` operation.
-pub mod get_profile;
-
-/// Types for the `GetRetrievals` operation.
-pub mod get_retrievals;
-
 /// Types for the `GetTaskAssistCodeGeneration` operation.
 pub mod get_task_assist_code_generation;
 
@@ -60,9 +54,6 @@ pub mod get_usage_limits;
 
 /// Types for the `ListAvailableCustomizations` operation.
 pub mod list_available_customizations;
-
-/// Types for the `ListAvailableModels` operation.
-pub mod list_available_models;
 
 /// Types for the `ListAvailableProfiles` operation.
 pub mod list_available_profiles;
