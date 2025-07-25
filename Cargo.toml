@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/amzn-codewhisperer-client", "crates/amzn-codewhisperer-streaming-client", "crates/amzn-consolas-client", "crates/amzn-qdeveloper-streaming-client", "crates/amzn-toolkit-telemetry-client", "crates/aws-toolkit-telemetry-definitions", "crates/chat-cli", "crates/semantic-search-client"]
+default-members = ["crates/chat-cli"]
 
 [workspace.package]
 authors = ["Amazon Q CLI Team (q-cli@amazon.com)", "Chay Nabors (nabochay@amazon.com)", "Brandon Kiser (bskiser@amazon.com)", "Felix Ding (dingfeli@amazon.com)"]
@@ -127,6 +128,7 @@ windows = { version = "0.61.1", features = ["Foundation", "Win32_System_ProcessS
 winnow = "=0.6.2"
 winreg = "0.55.0"
 schemars = "1.0.4"
+jsonschema = "0.30.0"
 
 [workspace.lints.rust]
 future_incompatible = "warn"
