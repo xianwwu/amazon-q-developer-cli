@@ -137,7 +137,6 @@ impl SubAgent {
 
         let mut task_handles = Vec::new();
         let mut child_pids: Vec<u32> = Vec::new();
-        let mut grand_child_pids: Vec<u32> = Vec::new();
         std::fs::write("debug.log", "")?;
 
         // mpsc to track number of agents completed -> progress bar display
@@ -151,12 +150,6 @@ impl SubAgent {
             let handle = spawn_agent_task(curr_prompt, agent_cli_clone, tx_clone).await?;
             child_pids.push(handle.0);
             task_handles.push(handle.1);
-        }
-
-        // 1sec wait for q to spawn chat child process and wait on that pid
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        for child_pid in child_pids {
-            grand_child_pids.push(get_grandchild_pid(child_pid).await?);
         }
 
         // Track completed progress with regular status updates
@@ -199,7 +192,7 @@ impl SubAgent {
                     let mut new_lines_printed = 0;
 
                     for (i, agent) in agents.iter().enumerate() {
-                        let child_pid = grand_child_pids.get(i).unwrap_or(&0);
+                        let child_pid = child_pids.get(i).unwrap_or(&0);
                         let status = match get_agent_status(*child_pid).await {
                             Ok(status) => status,
                             Err(e) => {
@@ -350,29 +343,6 @@ async fn spawn_agent_task(
     });
 
     Ok((child_pid, handle))
-}
-
-/// Returns a single process whose parent is parent_pid. Necessary since Q spawns chat as
-/// child_process.
-async fn get_grandchild_pid(parent_pid: u32) -> std::result::Result<u32, std::io::Error> {
-    let output = tokio::process::Command::new("pgrep")
-        .arg("-P")
-        .arg(parent_pid.to_string())
-        .output()
-        .await?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if let Some(first_line) = stdout.lines().next() {
-            return first_line.trim().parse::<u32>().map_err(|err| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Failed to parse PID: {}", err))
-            });
-        }
-    }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        "Could not find grandchild process",
-    ))
 }
 
 /// Formats and joins all subagent summaries with error printing for user
