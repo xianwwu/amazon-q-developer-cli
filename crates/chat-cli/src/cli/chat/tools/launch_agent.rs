@@ -50,8 +50,6 @@ pub struct SubAgent {
     pub prompt_summary: String,
     /// Optional model to use for the agent (defaults to the system default)
     pub agent_cli_name: Option<String>,
-    /// Max timeout for subagent to prevent indefinite waiting
-    pub max_timeout_sec: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,7 +148,7 @@ impl SubAgent {
             let curr_prompt = prompt_template.replace("{}", &agent.prompt);
             let agent_cli_clone = agent.agent_cli_name.clone();
             let tx_clone = progress_tx.clone();
-            let handle = spawn_agent_task(curr_prompt, agent_cli_clone, tx_clone, agent.max_timeout_sec).await?;
+            let handle = spawn_agent_task(curr_prompt, agent_cli_clone, tx_clone).await?;
             child_pids.push(handle.0);
             task_handles.push(handle.1);
         }
@@ -317,7 +315,6 @@ async fn spawn_agent_task(
     prompt: String,
     agent_cli_name: Option<String>,
     tx: tokio::sync::mpsc::Sender<u32>,
-    max_timeout_sec: u32,
 ) -> Result<(u32, tokio::task::JoinHandle<Result<String, eyre::Error>>), eyre::Error> {
     // Run subagent with desired agent config + Q_SUBAGENT env var = 1
     let mut cmd = tokio::process::Command::new("q");
@@ -346,23 +343,10 @@ async fn spawn_agent_task(
 
     // Allows extraction of child_pid before waiting on completion for status update
     let handle = tokio::spawn(async move {
-        match tokio::time::timeout(Duration::from_secs(max_timeout_sec.into()), async {
-            let output = capture_stdout_and_log(child.stdout.take().unwrap(), debug_log).await?;
-            let _ = child.wait().await?;
-            Ok(output)
-        })
-        .await
-        {
-            Ok(result) => {
-                let _ = tx.send(1).await;
-                result
-            },
-            Err(_) => {
-                let _ = tx.send(1).await; // signal completion to allow proceeding
-                child.kill().await.ok(); // Kill the process
-                Ok(format!("Agent timed out after {} seconds", max_timeout_sec))
-            },
-        }
+        let output = capture_stdout_and_log(child.stdout.take().unwrap(), debug_log).await?;
+        let _ = child.wait().await?;
+        let _ = tx.send(1).await;
+        Ok(output)
     });
 
     Ok((child_pid, handle))
