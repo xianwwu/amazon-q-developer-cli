@@ -1,6 +1,8 @@
 pub mod custom_tool;
 pub mod execute;
 pub mod fs_read;
+pub mod fs_remove;
+pub mod fs_rename;
 pub mod fs_write;
 pub mod gh_issue;
 pub mod knowledge;
@@ -39,11 +41,15 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
+use crate::cli::chat::tools::fs_remove::FsRemove;
+use crate::cli::chat::tools::fs_rename::FsRename;
 use crate::os::Os;
 
 pub const DEFAULT_APPROVE: [&str; 1] = ["fs_read"];
-pub const NATIVE_TOOLS: [&str; 7] = [
+pub const NATIVE_TOOLS: [&str; 9] = [
     "fs_read",
+    "fs_remove",
+    "fs_rename",
     "fs_write",
     #[cfg(windows)]
     "execute_cmd",
@@ -60,6 +66,8 @@ pub const NATIVE_TOOLS: [&str; 7] = [
 #[derive(Debug, Clone)]
 pub enum Tool {
     FsRead(FsRead),
+    FsRemove(FsRemove),
+    FsRename(FsRename),
     FsWrite(FsWrite),
     ExecuteCommand(ExecuteCommand),
     UseAws(UseAws),
@@ -74,6 +82,8 @@ impl Tool {
     pub fn display_name(&self) -> String {
         match self {
             Tool::FsRead(_) => "fs_read",
+            Tool::FsRemove(_) => "fs_remove",
+            Tool::FsRename(_) => "fs_rename",
             Tool::FsWrite(_) => "fs_write",
             #[cfg(windows)]
             Tool::ExecuteCommand(_) => "execute_cmd",
@@ -92,6 +102,8 @@ impl Tool {
     pub fn requires_acceptance(&self, agent: &Agent) -> PermissionEvalResult {
         match self {
             Tool::FsRead(fs_read) => fs_read.eval_perm(agent),
+            Tool::FsRemove(fs_remove) => fs_remove.eval_perm(agent),
+            Tool::FsRename(fs_rename) => fs_rename.eval_perm(agent),
             Tool::FsWrite(fs_write) => fs_write.eval_perm(agent),
             Tool::ExecuteCommand(execute_command) => execute_command.eval_perm(agent),
             Tool::UseAws(use_aws) => use_aws.eval_perm(agent),
@@ -106,6 +118,8 @@ impl Tool {
     pub async fn invoke(&self, os: &Os, stdout: &mut impl Write) -> Result<InvokeOutput> {
         match self {
             Tool::FsRead(fs_read) => fs_read.invoke(os, stdout).await,
+            Tool::FsRemove(fs_remove) => fs_remove.invoke(os, stdout).await,
+            Tool::FsRename(fs_rename) => fs_rename.invoke(os, stdout).await,
             Tool::FsWrite(fs_write) => fs_write.invoke(os, stdout).await,
             Tool::ExecuteCommand(execute_command) => execute_command.invoke(stdout).await,
             Tool::UseAws(use_aws) => use_aws.invoke(os, stdout).await,
@@ -120,6 +134,8 @@ impl Tool {
     pub async fn queue_description(&self, os: &Os, output: &mut impl Write) -> Result<()> {
         match self {
             Tool::FsRead(fs_read) => fs_read.queue_description(os, output).await,
+            Tool::FsRemove(fs_remove) => fs_remove.queue_description(os, output).await,
+            Tool::FsRename(fs_rename) => fs_rename.queue_description(os, output),
             Tool::FsWrite(fs_write) => fs_write.queue_description(os, output),
             Tool::ExecuteCommand(execute_command) => execute_command.queue_description(output),
             Tool::UseAws(use_aws) => use_aws.queue_description(output),
@@ -134,6 +150,8 @@ impl Tool {
     pub async fn validate(&mut self, os: &Os) -> Result<()> {
         match self {
             Tool::FsRead(fs_read) => fs_read.validate(os).await,
+            Tool::FsRemove(fs_remove) => fs_remove.validate(os).await,
+            Tool::FsRename(fs_rename) => fs_rename.validate(os).await,
             Tool::FsWrite(fs_write) => fs_write.validate(os).await,
             Tool::ExecuteCommand(execute_command) => execute_command.validate(os).await,
             Tool::UseAws(use_aws) => use_aws.validate(os).await,
