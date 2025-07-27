@@ -1,3 +1,4 @@
+pub mod checkpoint;
 pub mod cli;
 mod consts;
 pub mod context;
@@ -125,6 +126,7 @@ use crate::api_client::{
 use crate::auth::AuthError;
 use crate::auth::builder_id::is_idc_user;
 use crate::cli::agent::Agents;
+use crate::cli::chat::checkpoint::CheckpointManager;
 use crate::cli::chat::cli::SlashCommand;
 use crate::cli::chat::cli::model::{
     MODEL_OPTIONS,
@@ -596,6 +598,11 @@ impl ChatSession {
                 }
             }
         });
+
+        match CheckpointManager::init(os).await {
+            Ok(()) => execute!(stderr, style::Print(format!("Checkpoints initialized!")))?,
+            Err(e) => execute!(stderr, style::Print(format!("Checkpoints could not be initialized for this session: {e}")))?,
+        };
 
         Ok(Self {
             stdout,

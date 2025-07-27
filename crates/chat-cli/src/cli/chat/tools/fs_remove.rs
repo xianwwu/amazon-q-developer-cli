@@ -17,8 +17,7 @@ use globset::{
 };
 use serde::Deserialize;
 use tracing::{
-    error,
-    warn,
+    debug, error, warn
 };
 
 use super::{
@@ -30,6 +29,7 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
+use crate::cli::chat::checkpoint::CheckpointManager;
 use crate::os::Os;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,9 +44,22 @@ pub enum FsRemove {
 impl FsRemove {
     pub async fn invoke(&self, os: &Os, output: &mut impl Write) -> Result<InvokeOutput> {
         let cwd = os.env.current_dir()?;
+        let mut manager_option = match CheckpointManager::load_manager(os).await {
+            Ok(m) => Some(m),
+            Err(_) => {
+                debug!("No checkpoint manager initialized; tool call will not be tracked");
+                None
+            }
+        };
+        
         match self {
             FsRemove::RemoveFile { path, .. } => {
                 let path = sanitize_path_tool_arg(os, path);
+                if let Some(manager) = &mut manager_option {
+                    if !manager.is_tracking(&path) {
+                        manager.on_origin(os, &path).await?;
+                    }
+                }
                 queue!(
                     output,
                     style::Print("Removing: "),
@@ -55,7 +68,12 @@ impl FsRemove {
                     style::ResetColor,
                 )?;
 
-                remove_file(os, path).await?;
+                remove_file(os, &path).await?;
+
+                if let Some(manager) = &mut manager_option {
+                    manager.on_deletion(os, &path).await?;
+                    CheckpointManager::save_manager(os, manager).await?;
+                }
                 Ok(Default::default())
             },
             FsRemove::RemoveDir { path, .. } => {

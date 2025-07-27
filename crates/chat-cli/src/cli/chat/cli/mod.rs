@@ -1,3 +1,4 @@
+pub mod checkpoint;
 pub mod clear;
 pub mod compact;
 pub mod context;
@@ -27,6 +28,7 @@ use profile::AgentSubcommand;
 use prompts::PromptsArgs;
 use tools::ToolsArgs;
 
+use crate::cli::chat::cli::checkpoint::CheckpointSubcommand;
 use crate::cli::chat::cli::subscribe::SubscribeArgs;
 use crate::cli::chat::cli::usage::UsageArgs;
 use crate::cli::chat::{
@@ -82,6 +84,8 @@ pub enum SlashCommand {
     Persist(PersistSubcommand),
     // #[command(flatten)]
     // Root(RootSubcommand),
+    #[command(subcommand)]
+    Checkpoint(CheckpointSubcommand),
 }
 
 impl SlashCommand {
@@ -120,6 +124,7 @@ impl SlashCommand {
             //         skip_printing_tools: true,
             //     })
             // },
+            Self::Checkpoint(subcommand) => subcommand.execute(os, session).await,
         }
     }
 
@@ -144,6 +149,7 @@ impl SlashCommand {
                 PersistSubcommand::Save { .. } => "save",
                 PersistSubcommand::Load { .. } => "load",
             },
+            Self::Checkpoint(_) => "checkpoint",
         }
     }
 
