@@ -30,6 +30,7 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
+use crate::cli::chat::checkpoint::{setup_checkpoint_tracking, CheckpointManager};
 use crate::os::Os;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -41,6 +42,17 @@ pub struct FsRename {
 
 impl FsRename {
     pub async fn invoke(&self, os: &Os, output: &mut impl Write) -> Result<InvokeOutput> {
+        let mut checkpoint_info = setup_checkpoint_tracking(os, &self.original_path).await?;
+        let file_data = os.fs.read(&self.original_path).await?;
+        if let Some((manager, path)) = &mut checkpoint_info {
+            if !manager.is_tracked(&path) {
+                manager
+                    .new_checkpoint(os, path.clone(), Some(file_data.clone()))
+                    .await?;
+            }
+            manager.new_checkpoint(os, path.clone(), None).await?;
+        }
+        
         self.print_relative_paths_from_and_to(os, output)?;
         rename_path(
             os,
@@ -48,6 +60,25 @@ impl FsRename {
             sanitize_path_tool_arg(os, &self.new_path),
         )
         .await?;
+
+        let new_canonical_path = sanitize_path_tool_arg(os, &self.new_path);
+        let new_canonical_path = match new_canonical_path.canonicalize() {
+            Ok(path) => Some(path),
+            Err(_) => {
+                None
+            },
+        };
+
+        if let (Some((manager, _)), Some(new_canonical_path)) = (&mut checkpoint_info, new_canonical_path) {
+            // Track the new path as not existing initially and then its track new contents
+            manager
+                .new_checkpoint(os, new_canonical_path.clone(), None)
+                .await?;
+            manager
+                .new_checkpoint(os, new_canonical_path.clone(), Some(file_data))
+                .await?;
+            CheckpointManager::save_manager(os, manager).await?;
+        }
         Ok(Default::default())
     }
 

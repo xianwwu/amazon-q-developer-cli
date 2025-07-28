@@ -1,7 +1,4 @@
-use std::collections::{
-    HashMap,
-    HashSet,
-};
+use std::collections::HashMap;
 use std::path::{
     Path,
     PathBuf,
@@ -11,15 +8,17 @@ use eyre::{
     Result,
     bail,
 };
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use sha2::{
     Digest,
     Sha256,
 };
-use serde::{
-    Serialize,
-    Deserialize
-};
+use tracing::debug;
 
+use crate::cli::chat::tools::sanitize_path_tool_arg;
 use crate::os::Os;
 
 // ######## HARDCODED VALUES ########
@@ -27,33 +26,33 @@ const CHECKPOINT_DIR: &str = "/Users/kiranbug/.aws/amazonq/checkpoints/first/";
 const CHECKPOINT_FILE: &str = "/Users/kiranbug/.aws/amazonq/checkpoints/test_file.json";
 // ######## ---------------- ########
 
+// FIX: Move complicated logic (None -> Some) into checkpoint function?
+//      - The benefit is that calling new_checkpoint() will be cleaner
+//      - The downside is that the function will be messier and may miss edge cases; maybe better to handle on a case-by-case basis?
+// FIX: Remove hardcoded values
+// FIX: 
+
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct CheckpointManager {
     checkpoints: Vec<Checkpoint>,
     turn_indices: Vec<usize>,
     store_dir: PathBuf,
 
-    // This should always be a superset of the  
-    // keys of any checkpoint's latest_state
-    touched_files: HashSet<PathBuf>,
-
-    index_map: HashMap<String, usize>,
-    
+    first_occurrence_cache: HashMap<PathBuf, usize>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Checkpoint {
-    path: PathBuf,
-    hash: String,
-    latest_state: HashMap<PathBuf, usize>,
-    kind: CheckpointType,
+    pub state: HashMap<PathBuf, Option<ContentHash>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub enum CheckpointType {
-    Origin,
-    Modify,
-    Delete,
+pub struct ContentHash(String);
+
+impl std::fmt::Display for ContentHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 impl CheckpointManager {
@@ -67,7 +66,9 @@ impl CheckpointManager {
     }
 
     pub async fn load_manager(os: &Os) -> Result<Self> {
-        Ok(serde_json::from_str::<CheckpointManager>(&os.fs.read_to_string(CHECKPOINT_FILE).await?)?)
+        Ok(serde_json::from_str::<CheckpointManager>(
+            &os.fs.read_to_string(CHECKPOINT_FILE).await?,
+        )?)
     }
 
     pub async fn save_manager(os: &Os, manager: &CheckpointManager) -> Result<()> {
@@ -75,103 +76,58 @@ impl CheckpointManager {
         Ok(())
     }
 
-    pub async fn on_origin(&mut self, os: &Os, path: impl AsRef<Path>) -> Result<()> {
-        let path = path.as_ref();
-        let data = os.fs.read(&path).await?;
-        let hash = hash_contents(&data);
+    pub async fn new_checkpoint(&mut self, os: &Os, path: PathBuf, data: Option<Vec<u8>>) -> Result<()> {
+        let hash = data.as_ref().map(hash_contents);
 
-        self.create_obj_if_needed(os, &hash, data).await?;
-        self.checkpoints.push(Checkpoint {
-            path: path.to_path_buf(),
-            hash,
-            latest_state: self.get_new_latest_state(path.to_path_buf()),
-            kind: CheckpointType::Origin,
-        });
-        self.touched_files.insert(path.to_path_buf());
-
-        Ok(())
-    }
-
-    pub async fn on_modification(&mut self, os: &Os, path: impl AsRef<Path>) -> Result<()> {
-        let path = path.as_ref();
-
-        // Need original contents to restore
-        if !self.touched_files.contains(path) {
-            bail!("Original contents are not tracked!");
+        // Create obj file
+        if let Some((hash, data)) = hash.as_ref().zip(data.as_ref()) {
+            self.create_obj_if_needed(os, &hash, data).await?;
         }
-        let data = os.fs.read(&path).await?;
-        let hash = hash_contents(&data);
 
-        self.create_obj_if_needed(os, &hash, data).await?;
-        self.checkpoints.push(Checkpoint {
-            path: path.to_path_buf(),
-            hash,
-            latest_state: self.get_new_latest_state(path.to_path_buf()),
-            kind: CheckpointType::Modify,
-        });
+        // Copy and update the previous checkpoint's state
+        let mut new_map = if let Some(checkpoint) = self.checkpoints.iter().last() {
+            checkpoint.state.clone()
+        } else {
+            HashMap::new()
+        };
+        new_map.insert(path.clone(), hash);
 
-        Ok(())
-    }
+        self.checkpoints.push(Checkpoint { state: new_map });
 
-    pub async fn on_deletion(&mut self, os: &Os, path: impl AsRef<Path>) -> Result<()> {
-        let path = path.as_ref();
+        // Log first occurrence
+        self.first_occurrence_cache
+            .entry(path)
+            .or_insert(self.checkpoints.len() - 1);
 
-        // Need original contents to restore
-        if !self.touched_files.contains(path) {
-            bail!("Original contents are not tracked!");
-        }
-        self.checkpoints.push(Checkpoint {
-            path: path.to_path_buf(),
-            hash: String::new(),
-            latest_state: self.get_new_latest_state(path.to_path_buf()),
-            kind: CheckpointType::Delete,
-        });
         Ok(())
     }
 
     pub async fn restore(&mut self, os: &Os, index: usize) -> Result<()> {
         let checkpoint = match self.checkpoints.get(index) {
             Some(c) => c,
-            None => bail!("Invalid checkpoint index")
+            None => bail!(format!("No checkpoint with index: {index}")),
         };
-
-        for path in self.touched_files.clone() {
-            
-            // If the file hadn't been created by that point
-            if !checkpoint.latest_state.contains_key(&path) {
-                if os.fs.exists(&path) {
-                    os.fs.remove_file(&path).await?;
-                }
-                self.touched_files.remove(&path);
-                continue;
-            }
-
-            let index = checkpoint.latest_state.get(&path).unwrap();
-            let latest = &self.checkpoints[*index];
-            match latest.kind {
-                CheckpointType::Origin | CheckpointType::Modify => {
-                    if !os.fs.exists(&path) {
-                        os.fs.create_new(&path).await?;
-                    }
-                    os.fs.copy(self.hash_to_obj_path(&checkpoint.hash), path).await?;
+        // If a touched file isn't in this checkpoint's state, look forward in history
+        // to see the first time the file shows up.
+        // This is complicated but necessary given the current design.
+        for path in self.first_occurrence_cache.keys() {
+            let hash_option = match checkpoint.state.get(path) {
+                Some(hash) => hash,
+                None => {
+                    let first_occurrence = self.first_occurrence_cache.get(path).unwrap();
+                    self.checkpoints[*first_occurrence].state.get(path).unwrap()
                 },
-                CheckpointType::Delete => {
-                    if os.fs.exists(&path) {
-                        os.fs.remove_file(&path).await?;
-                    }
-                }
-            }
+            };
+            match hash_option {
+                Some(hash) => self.restore_file(os, path, hash).await?,
+                None if os.fs.exists(path) => os.fs.remove_file(path).await?,
+                _ => (),
+            };
         }
-
-        self.checkpoints.truncate(index + 1);
         Ok(())
     }
 
-    pub fn is_tracking(&self, path: impl AsRef<Path>) -> bool {
-        self.touched_files.contains(path.as_ref())
-    }
-
-    async fn create_obj_if_needed(&self, os: &Os, hash: &String, data: Vec<u8>) -> Result<()> {
+    async fn create_obj_if_needed(&self, os: &Os, hash: &ContentHash, data: impl AsRef<[u8]>) -> Result<()> {
         let obj_path = self.hash_to_obj_path(hash);
         if os.fs.exists(&obj_path) {
             return Ok(());
@@ -181,27 +137,50 @@ impl CheckpointManager {
         Ok(())
     }
 
-    /// Returns a new updated state. Call this BEFORE adding a checkpoint to the list
-    fn get_new_latest_state(&self, path: PathBuf) -> HashMap<PathBuf, usize> {
-        let mut map = if self.checkpoints.is_empty() {
-            HashMap::new()
-        } else {
-            self.checkpoints.iter().last().unwrap().latest_state.clone()
-        };
-        map.insert(path, self.checkpoints.len());
-        map
-    }
-
-    fn hash_to_obj_path(&self, hash: &String) -> PathBuf {
-        self.store_dir.join(hash)
+    fn hash_to_obj_path(&self, hash: &ContentHash) -> PathBuf {
+        self.store_dir.join(hash.to_string())
     }
 
     fn get_new_directory() -> PathBuf {
         PathBuf::from(CHECKPOINT_DIR)
     }
+
+    async fn restore_file(&self, os: &Os, path: impl AsRef<Path>, hash: &ContentHash) -> Result<()> {
+        let path = path.as_ref();
+        if !os.fs.exists(&path) {
+            os.fs.create_new(&path).await?;
+        }
+        os.fs.copy(self.hash_to_obj_path(hash), path).await?;
+        Ok(())
+    }
+
+    pub fn is_tracked(&self, path: impl AsRef<Path>) -> bool {
+        self.first_occurrence_cache.contains_key(&path.as_ref().to_path_buf())
+    }
 }
 
-fn hash_contents(data: &Vec<u8>) -> String {
+fn hash_contents(data: impl AsRef<[u8]>) -> ContentHash {
     let hash = Sha256::digest(data);
-    hash.iter().map(|b| format!("{:02x}", b)).collect()
+    ContentHash(hash.iter().map(|b| format!("{:02x}", b)).collect())
+}
+
+pub async fn setup_checkpoint_tracking(os: &Os, path: impl AsRef<Path>) -> Result<Option<(CheckpointManager, PathBuf)>> {
+    let manager = match CheckpointManager::load_manager(os).await {
+        Ok(m) => m,
+        Err(_) => {
+            debug!("No checkpoint manager initialized; tool call will not be tracked");
+            return Ok(None);
+        },
+    };
+
+    let checkpoint_path = sanitize_path_tool_arg(os, path);
+    let canonical_path = match checkpoint_path.canonicalize() {
+        Ok(path) => path,
+        Err(_) => {
+            debug!("Path could not be canonicalized; tool call will not be tracked");
+            return Ok(None);
+        },
+    };
+
+    Ok(Some((manager, canonical_path)))
 }

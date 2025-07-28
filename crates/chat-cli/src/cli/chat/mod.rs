@@ -601,7 +601,10 @@ impl ChatSession {
 
         match CheckpointManager::init(os).await {
             Ok(()) => execute!(stderr, style::Print(format!("Checkpoints initialized!")))?,
-            Err(e) => execute!(stderr, style::Print(format!("Checkpoints could not be initialized for this session: {e}")))?,
+            Err(e) => execute!(
+                stderr,
+                style::Print(format!("Checkpoints could not be initialized for this session: {e}"))
+            )?,
         };
 
         Ok(Self {

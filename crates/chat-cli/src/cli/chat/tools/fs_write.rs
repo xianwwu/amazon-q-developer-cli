@@ -1,5 +1,8 @@
 use std::io::Write;
-use std::path::Path;
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::sync::LazyLock;
 
 use crossterm::queue;
@@ -27,6 +30,7 @@ use syntect::util::{
     as_24_bit_terminal_escaped,
 };
 use tracing::{
+    debug,
     error,
     warn,
 };
@@ -41,6 +45,7 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
+use crate::cli::chat::checkpoint::CheckpointManager;
 use crate::os::Os;
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
@@ -82,6 +87,40 @@ pub enum FsWrite {
 
 impl FsWrite {
     pub async fn invoke(&self, os: &Os, output: &mut impl Write) -> Result<InvokeOutput> {
+        let mut manager_option = match CheckpointManager::load_manager(os).await {
+            Ok(m) => Some(m),
+            Err(_) => {
+                debug!("No checkpoint manager initialized; tool call will not be tracked");
+                None
+            },
+        };
+
+        let checkpoint_path = sanitize_path_tool_arg(os, match self {
+            FsWrite::Create { path, .. }
+            | FsWrite::StrReplace { path, .. }
+            | FsWrite::Insert { path, .. }
+            | FsWrite::Append { path, .. } => path,
+        });
+        let (checkpoint_path, checkpoint_path_valid) = match checkpoint_path.canonicalize() {
+            Ok(path) => (path, true),
+            Err(_) => {
+                debug!("Path could not be canonicalized; tool call will not be tracked");
+                (PathBuf::new(), false)
+            },
+        };
+
+        if let Some(manager) = &mut manager_option {
+            if checkpoint_path_valid && !manager.is_tracked(&checkpoint_path) {
+                if os.fs.exists(&checkpoint_path) {
+                    manager
+                        .new_checkpoint(os, checkpoint_path.clone(), Some(os.fs.read(&checkpoint_path).await?))
+                        .await?;
+                } else {
+                    manager.new_checkpoint(os, checkpoint_path.clone(), None).await?;
+                }
+            }
+        }
+
         let cwd = os.env.current_dir()?;
         match self {
             FsWrite::Create { path, .. } => {
@@ -106,7 +145,6 @@ impl FsWrite {
                 )?;
 
                 write_to_file(os, path, file_text).await?;
-                Ok(Default::default())
             },
             FsWrite::StrReplace {
                 path, old_str, new_str, ..
@@ -123,13 +161,12 @@ impl FsWrite {
                     style::Print("\n"),
                 )?;
                 match matches.len() {
-                    0 => Err(eyre!("no occurrences of \"{old_str}\" were found")),
+                    0 => return Err(eyre!("no occurrences of \"{old_str}\" were found")),
                     1 => {
                         let file = file.replacen(old_str, new_str, 1);
                         os.fs.write(path, file).await?;
-                        Ok(Default::default())
                     },
-                    x => Err(eyre!("{x} occurrences of old_str were found when only 1 is expected")),
+                    x => return Err(eyre!("{x} occurrences of old_str were found when only 1 is expected")),
                 }
             },
             FsWrite::Insert {
@@ -159,7 +196,6 @@ impl FsWrite {
                 }
                 file.insert_str(i, new_str);
                 write_to_file(os, &path, file).await?;
-                Ok(Default::default())
             },
             FsWrite::Append { path, new_str, .. } => {
                 let path = sanitize_path_tool_arg(os, path);
@@ -179,9 +215,16 @@ impl FsWrite {
                 }
                 file.push_str(new_str);
                 write_to_file(os, path, file).await?;
-                Ok(Default::default())
             },
+        };
+
+        if let Some(manager) = &mut manager_option {
+            manager
+                .new_checkpoint(os, checkpoint_path.clone(), Some(os.fs.read(&checkpoint_path).await?))
+                .await?;
+            CheckpointManager::save_manager(os, &manager).await?;
         }
+        Ok(Default::default())
     }
 
     pub fn queue_description(&self, os: &Os, output: &mut impl Write) -> Result<()> {

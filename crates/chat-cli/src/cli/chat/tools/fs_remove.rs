@@ -17,7 +17,8 @@ use globset::{
 };
 use serde::Deserialize;
 use tracing::{
-    debug, error, warn
+    error,
+    warn,
 };
 
 use super::{
@@ -29,7 +30,7 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
-use crate::cli::chat::checkpoint::CheckpointManager;
+use crate::cli::chat::checkpoint::setup_checkpoint_tracking;
 use crate::os::Os;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,22 +45,22 @@ pub enum FsRemove {
 impl FsRemove {
     pub async fn invoke(&self, os: &Os, output: &mut impl Write) -> Result<InvokeOutput> {
         let cwd = os.env.current_dir()?;
-        let mut manager_option = match CheckpointManager::load_manager(os).await {
-            Ok(m) => Some(m),
-            Err(_) => {
-                debug!("No checkpoint manager initialized; tool call will not be tracked");
-                None
+        let mut checkpoint_info = setup_checkpoint_tracking(os, match self {
+            FsRemove::RemoveFile { path, .. } | FsRemove::RemoveDir { path, .. } => path,
+        })
+        .await?;
+
+        if let Some((manager, path)) = &mut checkpoint_info {
+            if !manager.is_tracked(&path) {
+                manager
+                    .new_checkpoint(os, path.clone(), Some(os.fs.read(&path).await?))
+                    .await?;
             }
-        };
-        
+        }
+
         match self {
             FsRemove::RemoveFile { path, .. } => {
                 let path = sanitize_path_tool_arg(os, path);
-                if let Some(manager) = &mut manager_option {
-                    if !manager.is_tracking(&path) {
-                        manager.on_origin(os, &path).await?;
-                    }
-                }
                 queue!(
                     output,
                     style::Print("Removing: "),
@@ -70,9 +71,10 @@ impl FsRemove {
 
                 remove_file(os, &path).await?;
 
-                if let Some(manager) = &mut manager_option {
-                    manager.on_deletion(os, &path).await?;
-                    CheckpointManager::save_manager(os, manager).await?;
+                if let Some((manager, path)) = &mut checkpoint_info {
+                    manager
+                        .new_checkpoint(os, path.clone(), None)
+                        .await?;
                 }
                 Ok(Default::default())
             },

@@ -1,15 +1,10 @@
-use std::io::Write;
-use std::str::FromStr;
-
 use clap::Subcommand;
 use crossterm::style::Stylize;
 use crossterm::{
     execute,
     style,
 };
-use eyre::{
-    bail, Result
-};
+use eyre::Result;
 
 use crate::cli::chat::checkpoint::CheckpointManager;
 use crate::cli::chat::{
@@ -29,7 +24,6 @@ impl CheckpointSubcommand {
     pub async fn execute(self, os: &Os, session: &mut ChatSession) -> Result<ChatState, ChatError> {
         match self {
             Self::Restore { index } => {
-                // Extract the snapshot manager from the conversation temporarily
                 let mut manager_option = CheckpointManager::load_manager(os).await;
                 if let Ok(manager) = &mut manager_option {
                     let result = manager.restore(os, index).await;
@@ -41,9 +35,10 @@ impl CheckpointSubcommand {
                         Err(e) => return Err(ChatError::Custom(format!("Could not restore snapshot: {}", e).into())),
                     }
                 } else {
-                    return Err(ChatError::Custom(format!("Snapshot manager could not be loaded").into()));
+                    return Err(ChatError::Custom(
+                        format!("Snapshot manager could not be loaded").into(),
+                    ));
                 }
-                
             },
         }
         Ok(ChatState::PromptUser {
