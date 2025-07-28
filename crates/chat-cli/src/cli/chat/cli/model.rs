@@ -20,22 +20,6 @@ use crate::cli::chat::{
 };
 use crate::os::Os;
 
-// pub struct ModelOption {
-//     pub name: &'static str,
-//     pub model_id: &'static str,
-// }
-
-// pub const MODEL_OPTIONS: [ModelOption; 2] = [
-//     ModelOption {
-//         name: "claude-4-sonnet",
-//         model_id: "CLAUDE_SONNET_4_20250514_V1_0",
-//     },
-//     ModelOption {
-//         name: "claude-3.7-sonnet",
-//         model_id: "CLAUDE_3_7_SONNET_20250219_V1_0",
-//     },
-// ];
-
 #[deny(missing_docs)]
 #[derive(Debug, PartialEq, Args)]
 pub struct ModelArgs;
@@ -72,11 +56,12 @@ pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Opti
 
     let labels: Vec<String> = models
         .iter()
-        .map(|opt| {
-            if Some(opt.model_id.as_str()) == active_model_id {
-                format!("{} (active)", opt.model_id)
+        .map(|model| {
+            let display_name = get_display_name(model.model_id());
+            if Some(model.model_id()) == active_model_id {
+                format!("{} (active)", display_name)
             } else {
-                opt.model_id.to_owned()
+                display_name.to_owned()
             }
         })
         .collect();
@@ -105,11 +90,12 @@ pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Opti
         let selected = &models[index];
         let model_id_str = selected.model_id.to_string();
         session.conversation.model = Some(model_id_str);
+        let display_name = get_display_name(selected.model_id());
 
         queue!(
             session.stderr,
             style::Print("\n"),
-            style::Print(format!(" Using {}\n\n", selected.model_id)),
+            style::Print(format!(" Using {}\n\n", display_name)),
             style::ResetColor,
             style::SetForegroundColor(Color::Reset),
             style::SetBackgroundColor(Color::Reset),
@@ -145,4 +131,16 @@ pub async fn default_model_id(os: &Os) -> String {
 
     // Default to 4.0
     "CLAUDE_SONNET_4_20250514_V1_0".to_string()
+}
+
+pub fn get_display_name(model_id: &str) -> &str {
+    match model_id {
+        "CLAUDE_SONNET_4_20250514_V1_0" => "claude-4-sonnet",
+        "CLAUDE_3_7_SONNET_20250219_V1_0" => "claude-3.7-sonnet",
+        "CLAUDE_3_5_SONNET_20240620_V1_0" => "claude-3.5-sonnet-v1",
+        "CLAUDE_3_5_SONNET_20241022_V2_0" => "claude-3.5-sonnet-v2",
+        "CLAUDE_3_5_HAIKU_20241022_V1_0" => "claude-3.5-haiku",
+        "NOVA_PRO_V1_0" => "nova-pro",
+        _ => model_id,
+    }
 }

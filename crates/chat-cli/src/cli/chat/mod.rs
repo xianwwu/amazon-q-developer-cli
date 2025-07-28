@@ -17,7 +17,6 @@ mod token_counter;
 pub mod tool_manager;
 pub mod tools;
 pub mod util;
-
 use std::borrow::Cow;
 use std::collections::{
     HashMap,
@@ -126,7 +125,10 @@ use crate::auth::AuthError;
 use crate::auth::builder_id::is_idc_user;
 use crate::cli::agent::Agents;
 use crate::cli::chat::cli::SlashCommand;
-use crate::cli::chat::cli::model::default_model_id;
+use crate::cli::chat::cli::model::{
+    default_model_id,
+    get_display_name,
+};
 use crate::cli::chat::cli::prompts::{
     GetPromptError,
     PromptsSubcommand,
@@ -268,9 +270,12 @@ impl ChatArgs {
             let requested_model_id_lower = requested_model_id.to_lowercase();
             let (models, _) = os.client.list_available_models().await?;
             match models.iter().find(|opt| opt.model_id == requested_model_id_lower) {
-                Some(opt) => Some((opt.model_id).to_string()),
+                Some(opt) => Some(opt.model_id.clone()),
                 None => {
-                    let available_names: Vec<&str> = models.iter().map(|opt| opt.model_id()).collect();
+                    let available_names: Vec<String> = models
+                        .iter()
+                        .map(|opt| get_display_name(opt.model_id()).to_string())
+                        .collect();
                     bail!(
                         "Model '{}' does not exist. Available models: {}",
                         requested_model_id,
@@ -514,7 +519,7 @@ impl ChatSession {
         tool_config: HashMap<String, ToolSpec>,
         interactive: bool,
     ) -> Result<Self> {
-        let (models, _) = os.client.list_available_models().await?;
+        let (models, _default_model) = os.client.list_available_models().await?;
 
         let valid_model_id = match model_id {
             Some(id) => id,
@@ -526,7 +531,7 @@ impl ChatSession {
                     .and_then(|model_id| {
                         models
                             .iter()
-                            .find(|opt| opt.model_id == model_id)
+                            .find(|opt| get_display_name(opt.model_id()) == model_id)
                             .map(|opt| opt.model_id.to_owned())
                     });
 
@@ -1133,10 +1138,11 @@ impl ChatSession {
         self.stderr.flush()?;
 
         if let Some(ref id) = self.conversation.model {
+            let display_name = get_display_name(id);
             execute!(
                 self.stderr,
                 style::SetForegroundColor(Color::Cyan),
-                style::Print(format!("🤖 You are chatting with {}\n", id)),
+                style::Print(format!("🤖 You are chatting with {}\n", display_name)),
                 style::SetForegroundColor(Color::Reset),
                 style::Print("\n")
             )?;
