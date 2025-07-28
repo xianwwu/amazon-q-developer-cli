@@ -288,25 +288,40 @@ impl ChatArgs {
         };
 
         // If modelId is specified, verify it exists before starting the chat
-        let model_id: Option<String> = if let Some(requested_model_id) = self.model {
-            let requested_model_id_lower = requested_model_id.to_lowercase();
-            let (models, _) = os.client.list_available_models().await?;
-            match models.iter().find(|opt| opt.model_id == requested_model_id_lower) {
-                Some(opt) => Some(opt.model_id.clone()),
-                None => {
-                    let available_names: Vec<String> = models
-                        .iter()
-                        .map(|opt| get_display_name(opt.model_id()).to_string())
-                        .collect();
-                    bail!(
-                        "Model '{}' does not exist. Available models: {}",
-                        requested_model_id,
-                        available_names.join(", ")
-                    );
-                },
+        // Otherwise, CLI will use a default model when starting chat
+        let (models, default_model_opt) = os.client.list_available_models().await?;
+        let model_id: Option<String> = if let Some(requested) = self.model.as_ref() {
+            let requested_lower = requested.to_lowercase();
+            if let Some(m) = models
+                .iter()
+                .find(|m| m.model_id.eq_ignore_ascii_case(&requested_lower))
+            {
+                Some(m.model_id.clone())
+            } else {
+                let available = models
+                    .iter()
+                    .map(|m| get_display_name(m.model_id()).to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                bail!("Model '{}' does not exist. Available models: {}", requested, available);
             }
+        } else if let Some(saved) = os
+            .database
+            .settings
+            .get_string(Setting::ChatDefaultModel)
+            .and_then(|name| {
+                models
+                    .iter()
+                    .find(|m| get_display_name(m.model_id()) == name)
+                    .map(|m| m.model_id.clone())
+            })
+        {
+            Some(saved)
+        } else if let Some(default_model) = default_model_opt {
+            Some(default_model.model_id().to_owned())
         } else {
-            None
+            // should not use this fallback method when service return a required default model in response
+            Some(default_model_id(os).await)
         };
 
         let (prompt_request_sender, prompt_request_receiver) = std::sync::mpsc::channel::<Option<String>>();
@@ -556,29 +571,6 @@ impl ChatSession {
         tool_config: HashMap<String, ToolSpec>,
         interactive: bool,
     ) -> Result<Self> {
-        let (models, _default_model) = os.client.list_available_models().await?;
-
-        let valid_model_id = match model_id {
-            Some(id) => id,
-            None => {
-                let from_settings = os
-                    .database
-                    .settings
-                    .get_string(Setting::ChatDefaultModel)
-                    .and_then(|model_id| {
-                        models
-                            .iter()
-                            .find(|opt| get_display_name(opt.model_id()) == model_id)
-                            .map(|opt| opt.model_id.to_owned())
-                    });
-
-                match from_settings {
-                    Some(id) => id,
-                    None => default_model_id(os).await.to_owned(),
-                }
-            },
-        };
-
         // Reload prior conversation
         let mut existing_conversation = false;
         let previous_conversation = std::env::current_dir()
@@ -617,9 +609,7 @@ impl ChatSession {
                 cs.enforce_tool_use_history_invariants();
                 cs
             },
-            false => {
-                ConversationState::new(conversation_id, agents, tool_config, tool_manager, Some(valid_model_id)).await
-            },
+            false => ConversationState::new(conversation_id, agents, tool_config, tool_manager, model_id).await,
         };
 
         // Spawn a task for listening and broadcasting sigints.

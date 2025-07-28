@@ -112,9 +112,6 @@ pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Opti
 /// Returns Claude 3.7 for: Amazon IDC users, FRA region users
 /// Returns Claude 4.0 for: Builder ID users, other regions
 pub async fn default_model_id(os: &Os) -> String {
-    if let Ok((_, Some(default_model))) = os.client.list_available_models().await {
-        return default_model.model_id().to_string();
-    }
     // Check FRA region first
     if let Ok(Some(profile)) = os.database.get_auth_profile() {
         if profile.arn.split(':').nth(3) == Some("eu-central-1") {

@@ -254,9 +254,8 @@ impl ApiClient {
             ));
         }
 
-        // todo yifan: add default_model once API is ready
         let mut models = Vec::new();
-        let default_model = None;
+        let mut default_model = None;
         let request = self
             .client
             .list_available_models()
@@ -264,11 +263,15 @@ impl ApiClient {
             .set_profile_arn(self.profile.as_ref().map(|p| p.arn.clone()));
         let mut paginator = request.into_paginator().send();
 
-        while let Some(models_output) = paginator.next().await {
-            models.extend(models_output?.models().iter().cloned());
-            // if default_model.is_none() && output.default_model().is_some() {
-            //     default_model = output.default_model().cloned();
-            // }
+        while let Some(result) = paginator.next().await {
+            let models_output = result?;
+            models.extend(models_output.models().iter().cloned());
+
+            if default_model.is_none() {
+                if let Some(model) = models_output.default_model().cloned() {
+                    default_model = Some(model);
+                }
+            }
         }
 
         Ok((models, default_model))
