@@ -38,7 +38,7 @@ pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Opti
     // Fetch available models from service
     let (models, _default_model) = os
         .client
-        .list_available_models()
+        .list_available_models_cached()
         .await
         .map_err(|e| ChatError::Custom(format!("Failed to fetch available models: {}", e).into()))?;
 

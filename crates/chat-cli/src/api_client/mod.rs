@@ -34,6 +34,7 @@ pub use error::ApiClientError;
 use parking_lot::Mutex;
 pub use profile::list_available_profiles;
 use serde_json::Map;
+use tokio::sync::RwLock;
 use tracing::{
     debug,
     error,
@@ -75,6 +76,7 @@ pub struct ApiClient {
     sigv4_streaming_client: Option<QDeveloperStreamingClient>,
     mock_client: Option<Arc<Mutex<std::vec::IntoIter<Vec<ChatResponseStream>>>>>,
     profile: Option<AuthProfile>,
+    model_cache: Arc<RwLock<Option<(Vec<Model>, Option<Model>)>>>,
 }
 
 impl ApiClient {
@@ -114,6 +116,7 @@ impl ApiClient {
                 sigv4_streaming_client: None,
                 mock_client: None,
                 profile: None,
+                model_cache: Arc::new(RwLock::new(None)),
             };
 
             if let Ok(json) = env.get("Q_MOCK_CHAT_RESPONSE") {
@@ -181,6 +184,7 @@ impl ApiClient {
             sigv4_streaming_client,
             mock_client: None,
             profile,
+            model_cache: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -275,6 +279,30 @@ impl ApiClient {
         }
 
         Ok((models, default_model))
+    }
+
+    pub async fn list_available_models_cached(&self) -> Result<(Vec<Model>, Option<Model>), ApiClientError> {
+        {
+            let cache = self.model_cache.read().await;
+            if let Some(cached) = cache.as_ref() {
+                tracing::debug!("Returning cached model list");
+                return Ok(cached.clone());
+            }
+        }
+
+        tracing::debug!("Cache miss, fetching models from list_available_models API");
+        let result = self.list_available_models().await?;
+        {
+            let mut cache = self.model_cache.write().await;
+            *cache = Some(result.clone());
+        }
+        Ok(result)
+    }
+
+    pub async fn invalidate_model_cache(&self) {
+        let mut cache = self.model_cache.write().await;
+        *cache = None;
+        tracing::info!("Model cache invalidated");
     }
 
     pub async fn create_subscription_token(&self) -> Result<CreateSubscriptionTokenOutput, ApiClientError> {

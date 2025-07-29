@@ -289,7 +289,7 @@ impl ChatArgs {
 
         // If modelId is specified, verify it exists before starting the chat
         // Otherwise, CLI will use a default model when starting chat
-        let (models, default_model_opt) = os.client.list_available_models().await?;
+        let (models, default_model_opt) = os.client.list_available_models_cached().await?;
         let model_id: Option<String> = if let Some(requested) = self.model.as_ref() {
             let requested_lower = requested.to_lowercase();
             if let Some(m) = models
@@ -2385,6 +2385,7 @@ impl ChatSession {
     }
 
     async fn retry_model_overload(&mut self, os: &mut Os) -> Result<ChatState, ChatError> {
+        os.client.invalidate_model_cache().await;
         match select_model(os, self).await {
             Ok(Some(_)) => (),
             Ok(None) => {
