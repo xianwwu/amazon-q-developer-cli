@@ -1,5 +1,8 @@
 use std::io::Write;
-use std::path::Path;
+use std::path::{
+    Path,
+    PathBuf,
+};
 
 use crossterm::queue;
 use crossterm::style::{
@@ -30,7 +33,10 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
-use crate::cli::chat::checkpoint::{setup_checkpoint_tracking, CheckpointManager};
+use crate::cli::chat::checkpoint::{
+    CheckpointManager,
+    collect_paths_and_data,
+};
 use crate::os::Os;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -42,17 +48,6 @@ pub struct FsRename {
 
 impl FsRename {
     pub async fn invoke(&self, os: &Os, output: &mut impl Write) -> Result<InvokeOutput> {
-        let mut checkpoint_info = setup_checkpoint_tracking(os, &self.original_path).await?;
-        let file_data = os.fs.read(&self.original_path).await?;
-        if let Some((manager, path)) = &mut checkpoint_info {
-            if !manager.is_tracked(&path) {
-                manager
-                    .new_checkpoint(os, path.clone(), Some(file_data.clone()))
-                    .await?;
-            }
-            manager.new_checkpoint(os, path.clone(), None).await?;
-        }
-        
         self.print_relative_paths_from_and_to(os, output)?;
         rename_path(
             os,
@@ -60,26 +55,55 @@ impl FsRename {
             sanitize_path_tool_arg(os, &self.new_path),
         )
         .await?;
+        
+        // ########## CHECKPOINTING ##########
+        let (original_paths, new_paths, datas) = self.gather_paths_for_checkpointing(os).await?;
 
-        let new_canonical_path = sanitize_path_tool_arg(os, &self.new_path);
-        let new_canonical_path = match new_canonical_path.canonicalize() {
-            Ok(path) => Some(path),
-            Err(_) => {
-                None
-            },
-        };
+        if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
+            // Save old paths and data
+            manager
+                .checkpoint_with_data(os, original_paths.clone(), datas.clone())
+                .await?;
 
-        if let (Some((manager, _)), Some(new_canonical_path)) = (&mut checkpoint_info, new_canonical_path) {
-            // Track the new path as not existing initially and then its track new contents
+            // Track both original and new paths as deleted (necessary intermediate step)
             manager
-                .new_checkpoint(os, new_canonical_path.clone(), None)
+                .checkpoint_with_data(
+                    os,
+                    [original_paths.clone(), new_paths.clone()].concat(),
+                    vec![None; original_paths.len() + new_paths.len()],
+                )
                 .await?;
-            manager
-                .new_checkpoint(os, new_canonical_path.clone(), Some(file_data))
-                .await?;
-            CheckpointManager::save_manager(os, manager).await?;
+
+            // Track new paths and their contents
+            manager.checkpoint_with_data(os, new_paths, datas).await?;
+
+            CheckpointManager::save_manager(os, &manager).await?;
         }
+        // ########## /CHECKPOINTING ##########
+
         Ok(Default::default())
+    }
+
+    pub async fn gather_paths_for_checkpointing(&self, os: &Os) -> Result<(Vec<PathBuf>, Vec<PathBuf>, Vec<Option<Vec<u8>>>)> {
+        let cwd = os.env.current_dir()?;
+        if PathBuf::from(&self.new_path).is_file() {
+            let original_canonical = cwd.join(sanitize_path_tool_arg(os, &self.original_path));
+            let new_canonical = cwd.join(sanitize_path_tool_arg(os, &self.new_path));
+
+            Ok((vec![original_canonical], vec![new_canonical], vec![Some(
+                os.fs.read(&self.new_path).await?,
+            )]))
+        } else {
+            let original_dir = cwd.join(sanitize_path_tool_arg(os, &self.original_path));
+            let new_dir = cwd.join(sanitize_path_tool_arg(os, &self.new_path));
+
+            let (relative_paths, datas) = collect_paths_and_data(os, &new_dir).await?;
+            let original_paths: Vec<PathBuf> = relative_paths.iter().map(|p| original_dir.join(p)).collect();
+            let new_paths: Vec<PathBuf> = relative_paths.iter().map(|p| new_dir.join(p)).collect();
+            let datas: Vec<Option<Vec<u8>>> = datas.into_iter().map(Some).collect();
+
+            Ok((original_paths, new_paths, datas))
+        }
     }
 
     pub fn queue_description(&self, os: &Os, output: &mut impl Write) -> Result<()> {
@@ -94,6 +118,15 @@ impl FsRename {
         Ok(())
     }
 
+    pub fn get_summary(&self, os: &Os) -> Result<String> {
+        let cwd = os.env.current_dir()?;
+        let (from, to) = (
+            format_path(&cwd, sanitize_path_tool_arg(os, &self.original_path)),
+            format_path(&cwd, sanitize_path_tool_arg(os, &self.new_path)),
+        );
+        Ok(format!("{} to {}", from, to))
+    }
+
     pub async fn validate(&mut self, os: &Os) -> Result<()> {
         if self.original_path.is_empty() | self.new_path.is_empty() {
             bail!("Path must not be empty");
@@ -106,17 +139,12 @@ impl FsRename {
     }
 
     fn print_relative_paths_from_and_to(&self, os: &Os, output: &mut impl Write) -> Result<()> {
-        let cwd = os.env.current_dir()?;
-        let (from, to) = (
-            format_path(&cwd, sanitize_path_tool_arg(os, &self.original_path)),
-            format_path(&cwd, sanitize_path_tool_arg(os, &self.new_path)),
-        );
-
+        let summary = self.get_summary(os)?;
         queue!(
             output,
             style::Print("Renaming: "),
             style::SetForegroundColor(Color::Green),
-            style::Print(format!("{} to {}", from, to)),
+            style::Print(summary),
             style::ResetColor,
         )?;
         Ok(())

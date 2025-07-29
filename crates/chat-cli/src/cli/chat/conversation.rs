@@ -657,6 +657,15 @@ impl ConversationState {
         }
         self.transcript.push_back(message);
     }
+
+    pub fn pop_from_history(&mut self) -> Option<()> {
+        self.history.pop_back()?;
+        Some(())
+    }
+
+    pub fn get_history_len(&self) -> usize {
+        self.history.len()
+    }
 }
 
 /// Represents a conversation state that can be converted into a [FigConversationState] (the type

@@ -1,5 +1,8 @@
 use std::io::Write;
-use std::path::Path;
+use std::path::{
+    Path,
+    PathBuf,
+};
 
 use crossterm::queue;
 use crossterm::style::{
@@ -15,6 +18,7 @@ use globset::{
     Glob,
     GlobSetBuilder,
 };
+
 use serde::Deserialize;
 use tracing::{
     error,
@@ -30,7 +34,10 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
-use crate::cli::chat::checkpoint::setup_checkpoint_tracking;
+use crate::cli::chat::checkpoint::{
+    CheckpointManager,
+    collect_paths_and_data,
+};
 use crate::os::Os;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,18 +52,22 @@ pub enum FsRemove {
 impl FsRemove {
     pub async fn invoke(&self, os: &Os, output: &mut impl Write) -> Result<InvokeOutput> {
         let cwd = os.env.current_dir()?;
-        let mut checkpoint_info = setup_checkpoint_tracking(os, match self {
-            FsRemove::RemoveFile { path, .. } | FsRemove::RemoveDir { path, .. } => path,
-        })
-        .await?;
+        // ########## CHECKPOINTING ##########
+        //
+        // To handle both files and directories, we first collect all of our paths and data
+        let (paths, datas) = self.gather_paths_for_checkpointing(os).await?;
+        if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
+            // Save all data
+            manager.checkpoint_with_data(os, paths.clone(), datas.clone()).await?;
 
-        if let Some((manager, path)) = &mut checkpoint_info {
-            if !manager.is_tracked(&path) {
-                manager
-                    .new_checkpoint(os, path.clone(), Some(os.fs.read(&path).await?))
-                    .await?;
-            }
+            // Track files as deleted
+            manager
+                .checkpoint_with_data(os, paths.clone(), vec![None; paths.len()])
+                .await?;
+
+            CheckpointManager::save_manager(os, &manager).await?;
         }
+        // ########## /CHECKPOINTING ##########
 
         match self {
             FsRemove::RemoveFile { path, .. } => {
@@ -70,12 +81,6 @@ impl FsRemove {
                 )?;
 
                 remove_file(os, &path).await?;
-
-                if let Some((manager, path)) = &mut checkpoint_info {
-                    manager
-                        .new_checkpoint(os, path.clone(), None)
-                        .await?;
-                }
                 Ok(Default::default())
             },
             FsRemove::RemoveDir { path, .. } => {
@@ -89,6 +94,25 @@ impl FsRemove {
                 )?;
                 remove_dir(os, path).await?;
                 Ok(Default::default())
+            },
+        }
+    }
+
+    pub async fn gather_paths_for_checkpointing(&self, os: &Os) -> Result<(Vec<PathBuf>, Vec<Option<Vec<u8>>>)> {
+        let cwd = os.env.current_dir()?;
+        match self {
+            Self::RemoveFile { path, .. } => {
+                let canonical = cwd.join(sanitize_path_tool_arg(os, path));
+                Ok((vec![canonical.clone()], vec![Some(os.fs.read(canonical).await?)]))
+            },
+            Self::RemoveDir { path, .. } => {
+                let dir = cwd.join(sanitize_path_tool_arg(os, path));
+
+                let (relative_paths, datas) = collect_paths_and_data(os, path).await?;
+                let paths: Vec<PathBuf> = relative_paths.iter().map(|p| dir.join(p)).collect();
+                let datas: Vec<Option<Vec<u8>>> = datas.into_iter().map(Some).collect();
+
+                Ok((paths, datas))
             },
         }
     }

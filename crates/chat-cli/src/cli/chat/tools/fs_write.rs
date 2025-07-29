@@ -109,18 +109,6 @@ impl FsWrite {
             },
         };
 
-        if let Some(manager) = &mut manager_option {
-            if checkpoint_path_valid && !manager.is_tracked(&checkpoint_path) {
-                if os.fs.exists(&checkpoint_path) {
-                    manager
-                        .new_checkpoint(os, checkpoint_path.clone(), Some(os.fs.read(&checkpoint_path).await?))
-                        .await?;
-                } else {
-                    manager.new_checkpoint(os, checkpoint_path.clone(), None).await?;
-                }
-            }
-        }
-
         let cwd = os.env.current_dir()?;
         match self {
             FsWrite::Create { path, .. } => {
@@ -218,12 +206,12 @@ impl FsWrite {
             },
         };
 
-        if let Some(manager) = &mut manager_option {
-            manager
-                .new_checkpoint(os, checkpoint_path.clone(), Some(os.fs.read(&checkpoint_path).await?))
-                .await?;
-            CheckpointManager::save_manager(os, &manager).await?;
-        }
+        // if let Some(manager) = &mut manager_option {
+        //     manager
+        //         .checkpoint_with_data(os, checkpoint_path.clone(),
+        // Some(os.fs.read(&checkpoint_path).await?))         .await?;
+        //     CheckpointManager::save_manager(os, &manager).await?;
+        // }
         Ok(Default::default())
     }
 
@@ -380,7 +368,7 @@ impl FsWrite {
     }
 
     /// Returns the summary from any variant of the FsWrite enum
-    fn get_summary(&self) -> Option<&String> {
+    pub fn get_summary(&self) -> Option<&String> {
         match self {
             FsWrite::Create { summary, .. } => summary.as_ref(),
             FsWrite::StrReplace { summary, .. } => summary.as_ref(),

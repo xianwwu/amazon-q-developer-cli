@@ -1808,6 +1808,10 @@ impl ChatSession {
         let mut tool_results = vec![];
         let mut image_blocks: Vec<RichImageBlock> = Vec::new();
 
+        // For tagging checkpoints
+        let mut num_editing_tools = 0;
+        let mut checkpoint_tag: Option<String> = None;
+
         for tool in &self.tool_uses {
             let mut tool_telemetry = self.tool_use_telemetry_events.entry(tool.id.clone());
             tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_accepted = true);
@@ -1834,8 +1838,37 @@ impl ChatSession {
                 });
             }
             let tool_time = format!("{}.{}", tool_time.as_secs(), tool_time.subsec_millis());
+
             match invoke_result {
                 Ok(result) => {
+                    // ########## CHECKPOINTING ##########
+                    match tool.tool {
+                        Tool::FsWrite(_) | Tool::FsRename(_) | Tool::FsRemove(_) => {
+                            num_editing_tools += 1;
+                            let summary = match &tool.tool {
+                                Tool::FsWrite(w) => w.get_summary().cloned(),
+                                Tool::FsRename(r) => r.get_summary(os).ok(),
+                                Tool::FsRemove(r) => r.get_summary().cloned(),
+                                _ => unreachable!(),
+                            };
+
+                            // FIX: + 1 is because tool use hasn't been added to history yet (hacky)
+                            let history_index = self.conversation.get_history_len() + 1;
+                            if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
+                                checkpoint_tag = Some(format!("{}.{}", manager.checkpoints.len(), num_editing_tools));
+                                if let Err(e) = CheckpointManager::save_manager(os, manager).await {
+                                    execute!(
+                                        self.stdout,
+                                        style::Print(format!("Checkpoints could not be saved: {e}\n"))
+                                    )?;
+                                }
+                                manager.tag_latest_checkpoint(checkpoint_tag.clone().unwrap(), summary, history_index);
+                            }
+                        },
+                        _ => (),
+                    }
+                    // ########## /CHECKPOINTING ##########
+
                     match result.output {
                         OutputKind::Text(ref text) => {
                             debug!("Output is Text: {}", text);
@@ -1859,10 +1892,14 @@ impl ChatSession {
                         style::Print("\n"),
                         style::SetForegroundColor(Color::Green),
                         style::SetAttribute(Attribute::Bold),
-                        style::Print(format!(" ● Completed in {}s", tool_time)),
+                        style::Print(format!(" ● Completed in {}s ", tool_time)),
                         style::SetForegroundColor(Color::Reset),
-                        style::Print("\n\n"),
                     )?;
+                    if let Some(tag) = checkpoint_tag {
+                        execute!(self.stderr, style::Print(format!("[{tag}]\n").blue()))?;
+                        checkpoint_tag = None;
+                    }
+                    execute!(self.stdout, style::Print("\n\n"))?;
 
                     tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_success = Some(true));
                     if let Tool::Custom(_) = &tool.tool {
