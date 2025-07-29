@@ -60,8 +60,10 @@ use crate::cli::agent::hook::{
     HookTrigger,
 };
 use crate::cli::chat::ChatError;
+use crate::database::settings::Setting;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
+use crate::util::knowledge_store::KnowledgeStore;
 
 const CONTEXT_ENTRY_START_HEADER: &str = "--- CONTEXT ENTRY BEGIN ---\n";
 const CONTEXT_ENTRY_END_HEADER: &str = "--- CONTEXT ENTRY END ---\n\n";
@@ -320,6 +322,64 @@ impl ConversationState {
         ));
     }
 
+    /// Populates a file with all MCP tool descriptions + schema
+    async fn get_mcp_tool_descriptions(&mut self, rag_file_uuid: uuid::Uuid) -> Result<String, std::io::Error> {
+        let mut tool_docs = String::new();
+        for (origin, tool_list) in &self.tools {
+            if let ToolOrigin::McpServer(_server_name) = origin {
+                for tool in tool_list {
+                    let Tool::ToolSpecification(spec) = tool;
+                    tool_docs.push_str(&format!(
+                            "### Tool: {}\n\n**Description:** {}\n\n**Input Schema:**\n```json\n{}\n```\n\n**Usage Example:**\nUse this tool when you need to {}.\n\n---\n\n",
+                            spec.name,
+                            spec.description,
+                            serde_json::to_string_pretty(&spec.input_schema).unwrap_or_default(),
+                            spec.description.to_lowercase()
+                        ));
+                }
+            }
+        }
+        let temp_file = std::env::temp_dir().join(format!("{}.md", rag_file_uuid));
+        std::fs::write(&temp_file, tool_docs)?;
+        Ok(temp_file.to_string_lossy().to_string())
+    }
+
+    // Adds relevant MCP tool schema context
+    async fn build_rag_enhanced_context(&mut self, os: &Os, user_query: &str) -> Option<String> {
+        if !os.database.settings.get_bool(Setting::EnableRagMcp).unwrap_or(false) {
+            eprintln!("RAG-MCP is disabled");
+            return None;
+        }
+        let knowledge_store = KnowledgeStore::get_async_instance().await;
+        if let Ok(store) = knowledge_store.try_lock() {
+            // Search for tools most relevant to user query
+            let contexts = store.get_all().await.ok()?;
+            let mcp_context = contexts.iter().find(|c| c.name == "MCP Tools Documentation")?;
+            let results = store.search(user_query, Some(&mcp_context.id)).await.ok()?;
+            if results.is_empty() {
+                return None;
+            }
+
+            let mut rag_context = String::new();
+            rag_context.push_str("--- RAG CONTEXT: RELEVANT TOOL DOCUMENTATION ---\n");
+            rag_context.push_str("The following MCP tool documentation may be relevant to your query:\n\n");
+
+            for result in results {
+                if let Some(text_value) = result.point.payload.get("text") {
+                    if let Some(text) = text_value.as_str() {
+                        rag_context.push_str(&format!("{}\n\n", text));
+                    }
+                }
+            }
+
+            rag_context.push_str("--- END RAG CONTEXT ---\n\n");
+            eprintln!("PRECISE RAG CONTEXT {}", rag_context);
+            Some(rag_context)
+        } else {
+            None
+        }
+    }
+
     /// Returns a [FigConversationState] capable of being sent by [api_client::StreamingClient].
     ///
     /// Params:
@@ -377,6 +437,30 @@ impl ConversationState {
                     .or_insert(vec![tool]);
                 acc
             });
+        let knowledge_store = KnowledgeStore::get_async_instance().await;
+        if let Ok(mut store) = knowledge_store.try_lock() {
+            let rag_mcp_uuid = KnowledgeStore::initialize_reserved_knowledge_bases();
+            match self.get_mcp_tool_descriptions(rag_mcp_uuid).await {
+                Ok(docs_file_path) => {
+                    match store
+                        .sync_mcp_tools_knowledge_base(&docs_file_path, Some(rag_mcp_uuid))
+                        .await
+                    {
+                        Ok(_) => {
+                            // Success - clean up temp file
+                            // std::fs::remove_file(&docs_file_path).ok();
+                        },
+                        Err(e) => {
+                            warn!("Failed to sync MCP tools knowledge base: {}", e);
+                            std::fs::remove_file(&docs_file_path).ok();
+                        },
+                    }
+                },
+                Err(e) => {
+                    warn!("Failed to create MCP tools documentation: {}", e);
+                },
+            }
+        }
         self.tool_manager.has_new_stuff.store(false, Ordering::Release);
         // We call this in [Self::enforce_conversation_invariants] as well. But we need to call it
         // here as well because when it's being called in [Self::enforce_conversation_invariants]
@@ -569,6 +653,15 @@ impl ConversationState {
             context_content.push_str(summary);
             context_content.push('\n');
             context_content.push_str(CONTEXT_ENTRY_END_HEADER);
+        }
+        // Add RAG context if enabled and user has a query
+        if let Some(next_msg) = &self.next_message {
+            if let Some(user_query) = next_msg.prompt() {
+                let query = user_query.to_string();
+                if let Some(rag_context) = self.build_rag_enhanced_context(os, &query).await {
+                    context_content.push_str(&rag_context);
+                }
+            }
         }
 
         // Add context files if available

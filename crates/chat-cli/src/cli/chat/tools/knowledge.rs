@@ -321,7 +321,7 @@ impl Knowledge {
                     add.value.clone()
                 };
 
-                match store.add(&add.name, &value_to_use).await {
+                match store.add(&add.name, &value_to_use, None).await {
                     Ok(context_id) => format!(
                         "Added '{}' to knowledge base with ID: {}. Track active jobs in '/knowledge status' with provided id.",
                         add.name, context_id

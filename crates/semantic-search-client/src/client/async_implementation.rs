@@ -171,6 +171,7 @@ impl AsyncSemanticSearchClient {
         name: &str,
         description: &str,
         persistent: bool,
+        deterministic_uuid: Option<uuid::Uuid>,
     ) -> Result<(Uuid, CancellationToken)> {
         let path = path.as_ref();
         let canonical_path = path.canonicalize().map_err(|_e| {
@@ -179,8 +180,7 @@ impl AsyncSemanticSearchClient {
 
         // Check for conflicts
         self.check_path_exists(&canonical_path).await?;
-
-        let operation_id = Uuid::new_v4();
+        let operation_id = deterministic_uuid.unwrap_or_else(|| Uuid::new_v4());
         let cancel_token = CancellationToken::new();
 
         // Register operation for tracking
@@ -286,6 +286,40 @@ impl AsyncSemanticSearchClient {
         });
 
         Ok(all_results)
+    }
+
+    /// Returns result_limit similar vectors to query
+    pub async fn search_context(
+        &self,
+        context_id: &str,
+        query_text: &str,
+        result_limit: Option<usize>,
+    ) -> Result<SearchResults> {
+        // Validate inputs
+        if context_id.is_empty() {
+            return Err(SemanticSearchError::InvalidArgument(
+                "Context ID cannot be empty".to_string(),
+            ));
+        }
+
+        if query_text.is_empty() {
+            return Err(SemanticSearchError::InvalidArgument(
+                "Query text cannot be empty".to_string(),
+            ));
+        }
+
+        // Use the configured default_results if limit is None
+        let effective_limit = result_limit.unwrap_or_else(|| config::get_config().default_results);
+
+        // Generate an embedding for the query
+        let query_vector = self.embedder.embed(query_text)?;
+        // get readLock first --> get hashmap vals after corresponding to context_id
+        let contexts = self.volatile_contexts.read().await;
+        let context = contexts
+            .get(context_id)
+            .ok_or_else(|| SemanticSearchError::ContextNotFound(context_id.to_string()))?;
+        let context_guard = context.lock().await;
+        context_guard.search(&query_vector, effective_limit)
     }
 
     /// Cancel an operation by ID

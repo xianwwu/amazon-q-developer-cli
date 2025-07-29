@@ -217,7 +217,7 @@ impl KnowledgeSubcommand {
                 let mut store = async_knowledge_store.lock().await;
 
                 // Use the async add method which is fire-and-forget
-                match store.add(path, &sanitized_path).await {
+                match store.add(path, &sanitized_path, None).await {
                     Ok(message) => OperationResult::Info(message),
                     Err(e) => OperationResult::Error(format!("Failed to add to knowledge base: {}", e)),
                 }

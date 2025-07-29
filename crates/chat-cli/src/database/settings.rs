@@ -37,6 +37,7 @@ pub enum Setting {
     ChatDefaultAgent,
     ChatDisableAutoCompaction,
     ChatEnableHistoryHints,
+    EnableRagMcp,
 }
 
 impl AsRef<str> for Setting {
@@ -62,6 +63,7 @@ impl AsRef<str> for Setting {
             Self::ChatDefaultAgent => "chat.defaultAgent",
             Self::ChatDisableAutoCompaction => "chat.disableAutoCompaction",
             Self::ChatEnableHistoryHints => "chat.enableHistoryHints",
+            Self::EnableRagMcp => "chat.enableRagMcp",
         }
     }
 }
@@ -97,6 +99,7 @@ impl TryFrom<&str> for Setting {
             "chat.defaultAgent" => Ok(Self::ChatDefaultAgent),
             "chat.disableAutoCompaction" => Ok(Self::ChatDisableAutoCompaction),
             "chat.enableHistoryHints" => Ok(Self::ChatEnableHistoryHints),
+            "chat.enableRagMcp" => Ok(Self::EnableRagMcp),
             _ => Err(DatabaseError::InvalidSetting(value.to_string())),
         }
     }

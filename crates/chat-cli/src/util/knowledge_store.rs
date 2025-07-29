@@ -10,6 +10,9 @@ use semantic_search_client::types::SearchResult;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+pub const MCP_TOOLS_KNOWLEDGE_BASE_ID: &str = "mcp_tools_reserved";
+pub const MCP_TOOLS_KNOWLEDGE_BASE_NAME: &str = "MCP Tools Documentation";
+
 #[derive(Debug)]
 pub enum KnowledgeError {
     ClientError(String),
@@ -27,7 +30,7 @@ impl std::error::Error for KnowledgeError {}
 
 /// Async knowledge store - just a thin wrapper!
 pub struct KnowledgeStore {
-    client: AsyncSemanticSearchClient,
+    pub(crate) client: AsyncSemanticSearchClient,
 }
 
 impl KnowledgeStore {
@@ -64,8 +67,38 @@ impl KnowledgeStore {
         Ok(Self { client })
     }
 
+    // Adds a reserved knowledge base for tools if it doesn't exist.
+    pub fn initialize_reserved_knowledge_bases() -> uuid::Uuid {
+        let namespace = uuid::Uuid::NAMESPACE_OID;
+        let deterministic_uuid = Uuid::new_v5(&namespace, MCP_TOOLS_KNOWLEDGE_BASE_ID.as_bytes());
+        deterministic_uuid
+    }
+
+    // updates existing knowledge base w/ new tool info or creates new knowledge base
+    pub async fn sync_mcp_tools_knowledge_base(
+        &mut self,
+        docs_file_path: &str,
+        deterministic_uuid: Option<uuid::Uuid>,
+    ) -> Result<String, String> {
+        let contexts = self.get_all().await.map_err(|e| e.to_string())?;
+        let exists = contexts.iter().any(|c| c.name == MCP_TOOLS_KNOWLEDGE_BASE_NAME);
+
+        if exists {
+            self.update_context_by_name(MCP_TOOLS_KNOWLEDGE_BASE_NAME, docs_file_path)
+                .await
+        } else {
+            self.add(MCP_TOOLS_KNOWLEDGE_BASE_NAME, docs_file_path, deterministic_uuid)
+                .await
+        }
+    }
+
     /// Add context - delegates to async client
-    pub async fn add(&mut self, name: &str, path_str: &str) -> Result<String, String> {
+    pub async fn add(
+        &mut self,
+        name: &str,
+        path_str: &str,
+        deterministic_uuid: Option<uuid::Uuid>,
+    ) -> Result<String, String> {
         let path_buf = std::path::PathBuf::from(path_str);
         let canonical_path = path_buf
             .canonicalize()
@@ -73,7 +106,13 @@ impl KnowledgeStore {
 
         match self
             .client
-            .add_context_from_path(&canonical_path, name, &format!("Knowledge context for {}", name), true)
+            .add_context_from_path(
+                &canonical_path,
+                name,
+                &format!("Knowledge context for {}", name),
+                true,
+                deterministic_uuid,
+            )
             .await
         {
             Ok((operation_id, _)) => Ok(format!(
@@ -93,20 +132,27 @@ impl KnowledgeStore {
 
     /// Search - delegates to async client
     pub async fn search(&self, query: &str, _context_id: Option<&str>) -> Result<Vec<SearchResult>, KnowledgeError> {
-        let results = self
-            .client
-            .search_all(query, None)
-            .await
-            .map_err(|e| KnowledgeError::ClientError(e.to_string()))?;
+        if let Some(ctx_id) = _context_id {
+            self.client
+                .search_context(ctx_id, query, Some(5))
+                .await
+                .map_err(|e| KnowledgeError::ClientError(e.to_string()))
+        } else {
+            let results = self
+                .client
+                .search_all(query, None)
+                .await
+                .map_err(|e| KnowledgeError::ClientError(e.to_string()))?;
 
-        let mut flattened = Vec::new();
-        for (_, context_results) in results {
-            flattened.extend(context_results);
+            let mut flattened = Vec::new();
+            for (_, context_results) in results {
+                flattened.extend(context_results);
+            }
+
+            flattened.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
+
+            Ok(flattened)
         }
-
-        flattened.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
-
-        Ok(flattened)
     }
 
     /// Get status data - delegates to async client
@@ -208,7 +254,7 @@ impl KnowledgeStore {
                 .map_err(|e| e.to_string())?;
 
             // Then add it back with the same name
-            self.add(&context.name, path_str).await
+            self.add(&context.name, path_str, None).await
         } else {
             // Debug: List all available contexts
             let available_paths = self.client.list_context_paths().await;
@@ -241,7 +287,7 @@ impl KnowledgeStore {
             .map_err(|e| e.to_string())?;
 
         // Then add it back with the same name
-        self.add(&context_name, path_str).await
+        self.add(&context_name, path_str, None).await
     }
 
     /// Update context by name
@@ -254,7 +300,7 @@ impl KnowledgeStore {
                 .map_err(|e| e.to_string())?;
 
             // Then add it back with the same name
-            self.add(name, path_str).await
+            self.add(name, path_str, None).await
         } else {
             Err(format!("Context with name '{}' not found", name))
         }

@@ -1158,7 +1158,10 @@ impl ToolManager {
             // We want to filter for specs that are valid
             // Note that [ToolSpec::name] is a model facing name (thus you should be comparing it
             // with the keys of a tn_map)
-            for spec in specs.into_iter().filter(|spec| valid.contains_key(&spec.name)) {
+            for spec in specs
+                .into_iter()
+                .filter(|spec| valid.contains_key(&spec.name) && !matches!(spec.tool_origin, ToolOrigin::McpServer(_)))
+            {
                 tool_specs.insert(spec.name.clone(), spec);
             }
 
