@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::path::{
+    PathBuf,
+    StripPrefixError,
+};
 
 use thiserror::Error;
 
@@ -23,6 +26,8 @@ pub enum DirectoryError {
     FromVecWithNul(#[from] std::ffi::FromVecWithNulError),
     #[error(transparent)]
     IntoString(#[from] std::ffi::IntoStringError),
+    #[error(transparent)]
+    StripPrefix(#[from] StripPrefixError),
 }
 
 type Result<T, E = DirectoryError> = std::result::Result<T, E>;
@@ -148,7 +153,16 @@ pub fn chat_global_agent_path(os: &Os) -> Result<PathBuf> {
 /// The directory to the directory containing config for the `/context` feature in `q chat`.
 pub fn chat_local_agent_dir() -> Result<PathBuf> {
     let cwd = std::env::current_dir()?;
-    Ok(cwd.join(".aws").join("amazonq").join("agents"))
+    Ok(cwd.join(".amazonq").join("agents"))
+}
+
+/// Derives the absolute path to an agent config directory given a "workspace directory".
+/// A workspace directory is a directory where q chat is to be launched
+///
+/// For example, if the given path is /path/one, then the derived config path would be
+/// `/path/one/.amazonq/agents`
+pub fn agent_config_dir(workspace_dir: PathBuf) -> Result<PathBuf> {
+    Ok(workspace_dir.join(".amazonq/agents"))
 }
 
 /// The directory to the directory containing config for the `/context` feature in `q chat`.
