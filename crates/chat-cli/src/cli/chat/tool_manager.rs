@@ -84,7 +84,6 @@ use crate::cli::chat::tools::{
     ToolOrigin,
     ToolSpec,
 };
-use crate::database::Database;
 use crate::database::settings::Setting;
 use crate::mcp_client::{
     JsonRpcResponse,
@@ -150,6 +149,7 @@ pub enum LoadingRecord {
 
 #[derive(Default)]
 pub struct ToolManagerBuilder {
+    mcp_server_config: Option<McpServerConfig>,
     prompt_list_sender: Option<std::sync::mpsc::Sender<Vec<String>>>,
     prompt_list_receiver: Option<std::sync::mpsc::Receiver<Option<String>>>,
     conversation_id: Option<String>,
@@ -173,6 +173,7 @@ impl ToolManagerBuilder {
     }
 
     pub fn agent(mut self, agent: Agent) -> Self {
+        self.mcp_server_config.replace(agent.mcp_servers.clone());
         self.agent.replace(agent);
         self
     }
@@ -183,7 +184,7 @@ impl ToolManagerBuilder {
         mut output: Box<dyn Write + Send + Sync + 'static>,
         interactive: bool,
     ) -> eyre::Result<ToolManager> {
-        let McpServerConfig { mcp_servers } = self.agent.as_ref().map(|a| a.mcp_servers.clone()).unwrap_or_default();
+        let McpServerConfig { mcp_servers } = self.mcp_server_config.ok_or(eyre::eyre!("Missing mcp server config"))?;
         debug_assert!(self.conversation_id.is_some());
         let conversation_id = self.conversation_id.ok_or(eyre::eyre!("Missing conversation id"))?;
 
@@ -204,31 +205,9 @@ impl ToolManagerBuilder {
                 if server_name.contains(MCP_SERVER_TOOL_DELIMITER) {
                     let _ = queue!(
                         output,
-                        style::SetForegroundColor(style::Color::Red),
-                        style::Print("✗ Invalid server name "),
-                        style::SetForegroundColor(style::Color::Blue),
-                        style::Print(&server_name),
-                        style::ResetColor,
-                        style::Print(". Server name cannot contain "),
-                        style::SetForegroundColor(style::Color::Yellow),
-                        style::Print(MCP_SERVER_TOOL_DELIMITER),
-                        style::ResetColor,
-                        style::Print("\n")
-                    );
-                    None
-                } else if server_name == "builtin" {
-                    let _ = queue!(
-                        output,
-                        style::SetForegroundColor(style::Color::Red),
-                        style::Print("✗ Invalid server name "),
-                        style::SetForegroundColor(style::Color::Blue),
-                        style::Print(&server_name),
-                        style::ResetColor,
-                        style::Print(". Server name cannot contain reserved word "),
-                        style::SetForegroundColor(style::Color::Yellow),
-                        style::Print("builtin"),
-                        style::ResetColor,
-                        style::Print(" (it is used to denote native tools)\n")
+                        style::Print(format!(
+                            "Invalid server name {server_name}. Server name cannot contain {MCP_SERVER_TOOL_DELIMITER}\n"
+                        ))
                     );
                     None
                 } else {
@@ -373,7 +352,6 @@ impl ToolManagerBuilder {
         let load_record_clone = load_record.clone();
         let agent = Arc::new(Mutex::new(self.agent.unwrap_or_default()));
         let agent_clone = agent.clone();
-        let database = os.database.clone();
 
         tokio::spawn(async move {
             let mut record_temp_buf = Vec::<u8>::new();
@@ -439,7 +417,7 @@ impl ToolManagerBuilder {
                             };
 
                             let server_prefix = format!("@{server_name}");
-                            let alias_list = agent_lock.tool_aliases.iter().fold(
+                            let alias_list = agent_lock.alias.iter().fold(
                                 HashMap::<HostToolName, ModelToolName>::new(),
                                 |mut acc, (full_path, model_tool_name)| {
                                     if full_path.starts_with(&server_prefix) {
@@ -466,7 +444,6 @@ impl ToolManagerBuilder {
                                     .collect::<Vec<_>>();
                                 let mut sanitized_mapping = HashMap::<ModelToolName, ToolInfo>::new();
                                 let process_result = process_tool_specs(
-                                    &database,
                                     conv_id_clone.as_str(),
                                     &server_name,
                                     &mut specs,
@@ -474,8 +451,7 @@ impl ToolManagerBuilder {
                                     &alias_list,
                                     &regex,
                                     &telemetry_clone,
-                                )
-                                .await;
+                                );
                                 if let Some(sender) = &loading_status_sender_clone {
                                     // Anomalies here are not considered fatal, thus we shall give
                                     // warnings.
@@ -615,8 +591,7 @@ impl ToolManagerBuilder {
                 Err(e) => {
                     error!("Error initializing mcp client for server {}: {:?}", name, &e);
                     os.telemetry
-                        .send_mcp_server_init(&os.database, conversation_id.clone(), name, Some(e.to_string()), 0)
-                        .await
+                        .send_mcp_server_init(conversation_id.clone(), Some(e.to_string()), 0)
                         .ok();
                     let _ = messenger.send_tools_list_result(Err(e)).await;
                 },
@@ -890,16 +865,11 @@ impl ToolManager {
         let notify = self.notify.take();
         self.schema = {
             let tool_list = &self.agent.lock().await.tools;
-            let is_allow_all = tool_list.len() == 1 && tool_list.first().is_some_and(|n| n == "*");
-            let is_allow_native = tool_list.iter().any(|t| t.as_str() == "@builtin");
             let mut tool_specs =
                 serde_json::from_str::<HashMap<String, ToolSpec>>(include_str!("tools/tool_index.json"))?
                     .into_iter()
                     .filter(|(name, _)| {
-                        is_allow_all
-                            || is_allow_native
-                            || tool_list.contains(name)
-                            || tool_list.contains(&format!("@builtin/{name}"))
+                        tool_list.len() == 1 && tool_list.first().is_some_and(|n| n == "*") || tool_list.contains(name)
                     })
                     .collect::<HashMap<_, _>>();
             if !crate::cli::chat::tools::thinking::Thinking::is_enabled(os) {
@@ -1353,9 +1323,8 @@ impl ToolManager {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn process_tool_specs(
-    database: &Database,
+#[inline]
+fn process_tool_specs(
     conversation_id: &str,
     server_name: &str,
     specs: &mut Vec<ToolSpec>,
@@ -1407,15 +1376,7 @@ async fn process_tool_specs(
     specs.retain(|spec| !matches!(spec.tool_origin, ToolOrigin::Native));
     // Send server load success metric datum
     let conversation_id = conversation_id.to_string();
-    let _ = telemetry
-        .send_mcp_server_init(
-            database,
-            conversation_id,
-            server_name.to_string(),
-            None,
-            number_of_tools,
-        )
-        .await;
+    let _ = telemetry.send_mcp_server_init(conversation_id, None, number_of_tools);
     // Tool name translation. This is beyond of the scope of what is
     // considered a "server load". Reasoning being:
     // - Failures here are not related to server load

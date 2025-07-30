@@ -7,8 +7,6 @@ pub use crate::types::_application_properties::ApplicationProperties;
 pub use crate::types::_artifact_type::ArtifactType;
 pub use crate::types::_assistant_response_message::AssistantResponseMessage;
 pub use crate::types::_by_user_analytics::ByUserAnalytics;
-pub use crate::types::_cache_point::CachePoint;
-pub use crate::types::_cache_point_type::CachePointType;
 pub use crate::types::_change_log_granularity_type::ChangeLogGranularityType;
 pub use crate::types::_change_log_options::ChangeLogOptions;
 pub use crate::types::_chat_add_message_event::ChatAddMessageEvent;
@@ -17,14 +15,12 @@ pub use crate::types::_chat_message::ChatMessage;
 pub use crate::types::_chat_message_interaction_type::ChatMessageInteractionType;
 pub use crate::types::_chat_trigger_type::ChatTriggerType;
 pub use crate::types::_chat_user_modification_event::ChatUserModificationEvent;
-pub use crate::types::_client_cache_config::ClientCacheConfig;
 pub use crate::types::_code_analysis_findings_schema::CodeAnalysisFindingsSchema;
 pub use crate::types::_code_analysis_scope::CodeAnalysisScope;
 pub use crate::types::_code_analysis_status::CodeAnalysisStatus;
 pub use crate::types::_code_analysis_upload_context::CodeAnalysisUploadContext;
 pub use crate::types::_code_coverage_event::CodeCoverageEvent;
 pub use crate::types::_code_description::CodeDescription;
-pub use crate::types::_code_diff_metadata::CodeDiffMetadata;
 pub use crate::types::_code_fix_acceptance_event::CodeFixAcceptanceEvent;
 pub use crate::types::_code_fix_generation_event::CodeFixGenerationEvent;
 pub use crate::types::_code_fix_job_status::CodeFixJobStatus;
@@ -45,7 +41,6 @@ pub use crate::types::_content_checksum_type::ContentChecksumType;
 pub use crate::types::_content_type::ContentType;
 pub use crate::types::_context_truncation_scheme::ContextTruncationScheme;
 pub use crate::types::_conversation_state::ConversationState;
-pub use crate::types::_currency::Currency;
 pub use crate::types::_cursor_state::CursorState;
 pub use crate::types::_customization::Customization;
 pub use crate::types::_dashboard_analytics::DashboardAnalytics;
@@ -77,8 +72,6 @@ pub use crate::types::_feature_evaluation::FeatureEvaluation;
 pub use crate::types::_feature_value::FeatureValue;
 pub use crate::types::_file_context::FileContext;
 pub use crate::types::_followup_prompt::FollowupPrompt;
-pub use crate::types::_free_trial_info::FreeTrialInfo;
-pub use crate::types::_free_trial_status::FreeTrialStatus;
 pub use crate::types::_functionality_name::FunctionalityName;
 pub use crate::types::_git_state::GitState;
 pub use crate::types::_ide_category::IdeCategory;
@@ -91,33 +84,24 @@ pub use crate::types::_image_source::ImageSource;
 pub use crate::types::_import::Import;
 pub use crate::types::_inline_chat_event::InlineChatEvent;
 pub use crate::types::_inline_chat_user_decision::InlineChatUserDecision;
-pub use crate::types::_input_type::InputType;
 pub use crate::types::_intent::Intent;
 pub use crate::types::_intent_context::IntentContext;
-pub use crate::types::_internal_server_exception_reason::InternalServerExceptionReason;
-pub use crate::types::_mcp_configuration::McpConfiguration;
 pub use crate::types::_memory_entry::MemoryEntry;
 pub use crate::types::_memory_entry_metadata::MemoryEntryMetadata;
 pub use crate::types::_memory_status::MemoryStatus;
 pub use crate::types::_metric_data::MetricData;
-pub use crate::types::_model::Model;
-pub use crate::types::_model_provider::ModelProvider;
 pub use crate::types::_notifications_feature::NotificationsFeature;
 pub use crate::types::_operating_system::OperatingSystem;
 pub use crate::types::_opt_in_feature_toggle::OptInFeatureToggle;
 pub use crate::types::_opt_in_features::OptInFeatures;
 pub use crate::types::_opt_out_preference::OptOutPreference;
 pub use crate::types::_origin::Origin;
-pub use crate::types::_overage_configuration::OverageConfiguration;
-pub use crate::types::_overage_status::OverageStatus;
 pub use crate::types::_package_info::PackageInfo;
 pub use crate::types::_position::Position;
 pub use crate::types::_prediction::Prediction;
 pub use crate::types::_prediction_type::PredictionType;
 pub use crate::types::_previous_editor_state_metadata::PreviousEditorStateMetadata;
-pub use crate::types::_pricing_info::PricingInfo;
 pub use crate::types::_profile::Profile;
-pub use crate::types::_profile_info::ProfileInfo;
 pub use crate::types::_profile_status::ProfileStatus;
 pub use crate::types::_profile_type::ProfileType;
 pub use crate::types::_programming_language::ProgrammingLanguage;
@@ -129,21 +113,13 @@ pub use crate::types::_reference_tracker_configuration::ReferenceTrackerConfigur
 pub use crate::types::_relevant_text_document::RelevantTextDocument;
 pub use crate::types::_resource_policy::ResourcePolicy;
 pub use crate::types::_resource_policy_effect::ResourcePolicyEffect;
-pub use crate::types::_resource_type::ResourceType;
-pub use crate::types::_retrieval::Retrieval;
 pub use crate::types::_runtime_diagnostic::RuntimeDiagnostic;
 pub use crate::types::_service_quota_exceeded_exception_reason::ServiceQuotaExceededExceptionReason;
 pub use crate::types::_shell_history_entry::ShellHistoryEntry;
 pub use crate::types::_shell_state::ShellState;
 pub use crate::types::_span::Span;
 pub use crate::types::_sso_identity_details::SsoIdentityDetails;
-pub use crate::types::_subscription_info::SubscriptionInfo;
-pub use crate::types::_subscription_name::SubscriptionName;
-pub use crate::types::_subscription_plan::SubscriptionPlan;
-pub use crate::types::_subscription_plan_description::SubscriptionPlanDescription;
-pub use crate::types::_subscription_provider::SubscriptionProvider;
 pub use crate::types::_subscription_status::SubscriptionStatus;
-pub use crate::types::_subscription_type::SubscriptionType;
 pub use crate::types::_suggested_fix::SuggestedFix;
 pub use crate::types::_suggestion_state::SuggestionState;
 pub use crate::types::_supplemental_context::SupplementalContext;
@@ -165,7 +141,6 @@ pub use crate::types::_test_generation_job_status::TestGenerationJobStatus;
 pub use crate::types::_text_document::TextDocument;
 pub use crate::types::_text_document_diagnostic::TextDocumentDiagnostic;
 pub use crate::types::_throttling_exception_reason::ThrottlingExceptionReason;
-pub use crate::types::_token_limits::TokenLimits;
 pub use crate::types::_tool::Tool;
 pub use crate::types::_tool_input_schema::ToolInputSchema;
 pub use crate::types::_tool_result::ToolResult;
@@ -200,12 +175,10 @@ pub use crate::types::_transformation_upload_context::TransformationUploadContex
 pub use crate::types::_transformation_user_action_status::TransformationUserActionStatus;
 pub use crate::types::_upload_context::UploadContext;
 pub use crate::types::_upload_intent::UploadIntent;
-pub use crate::types::_usage_breakdown::UsageBreakdown;
 pub use crate::types::_usage_limit_list::UsageLimitList;
 pub use crate::types::_usage_limit_type::UsageLimitType;
 pub use crate::types::_usage_limit_update_request_status::UsageLimitUpdateRequestStatus;
 pub use crate::types::_user_context::UserContext;
-pub use crate::types::_user_info::UserInfo;
 pub use crate::types::_user_input_message::UserInputMessage;
 pub use crate::types::_user_input_message_context::UserInputMessageContext;
 pub use crate::types::_user_intent::UserIntent;
@@ -235,10 +208,6 @@ mod _assistant_response_message;
 
 mod _by_user_analytics;
 
-mod _cache_point;
-
-mod _cache_point_type;
-
 mod _change_log_granularity_type;
 
 mod _change_log_options;
@@ -255,8 +224,6 @@ mod _chat_trigger_type;
 
 mod _chat_user_modification_event;
 
-mod _client_cache_config;
-
 mod _code_analysis_findings_schema;
 
 mod _code_analysis_scope;
@@ -268,8 +235,6 @@ mod _code_analysis_upload_context;
 mod _code_coverage_event;
 
 mod _code_description;
-
-mod _code_diff_metadata;
 
 mod _code_fix_acceptance_event;
 
@@ -310,8 +275,6 @@ mod _content_type;
 mod _context_truncation_scheme;
 
 mod _conversation_state;
-
-mod _currency;
 
 mod _cursor_state;
 
@@ -375,10 +338,6 @@ mod _file_context;
 
 mod _followup_prompt;
 
-mod _free_trial_info;
-
-mod _free_trial_status;
-
 mod _functionality_name;
 
 mod _git_state;
@@ -403,15 +362,9 @@ mod _inline_chat_event;
 
 mod _inline_chat_user_decision;
 
-mod _input_type;
-
 mod _intent;
 
 mod _intent_context;
-
-mod _internal_server_exception_reason;
-
-mod _mcp_configuration;
 
 mod _memory_entry;
 
@@ -420,10 +373,6 @@ mod _memory_entry_metadata;
 mod _memory_status;
 
 mod _metric_data;
-
-mod _model;
-
-mod _model_provider;
 
 mod _notifications_feature;
 
@@ -437,10 +386,6 @@ mod _opt_out_preference;
 
 mod _origin;
 
-mod _overage_configuration;
-
-mod _overage_status;
-
 mod _package_info;
 
 mod _position;
@@ -451,11 +396,7 @@ mod _prediction_type;
 
 mod _previous_editor_state_metadata;
 
-mod _pricing_info;
-
 mod _profile;
-
-mod _profile_info;
 
 mod _profile_status;
 
@@ -479,10 +420,6 @@ mod _resource_policy;
 
 mod _resource_policy_effect;
 
-mod _resource_type;
-
-mod _retrieval;
-
 mod _runtime_diagnostic;
 
 mod _service_quota_exceeded_exception_reason;
@@ -495,19 +432,7 @@ mod _span;
 
 mod _sso_identity_details;
 
-mod _subscription_info;
-
-mod _subscription_name;
-
-mod _subscription_plan;
-
-mod _subscription_plan_description;
-
-mod _subscription_provider;
-
 mod _subscription_status;
-
-mod _subscription_type;
 
 mod _suggested_fix;
 
@@ -550,8 +475,6 @@ mod _text_document;
 mod _text_document_diagnostic;
 
 mod _throttling_exception_reason;
-
-mod _token_limits;
 
 mod _tool;
 
@@ -621,8 +544,6 @@ mod _upload_context;
 
 mod _upload_intent;
 
-mod _usage_breakdown;
-
 mod _usage_limit_list;
 
 mod _usage_limit_type;
@@ -630,8 +551,6 @@ mod _usage_limit_type;
 mod _usage_limit_update_request_status;
 
 mod _user_context;
-
-mod _user_info;
 
 mod _user_input_message;
 

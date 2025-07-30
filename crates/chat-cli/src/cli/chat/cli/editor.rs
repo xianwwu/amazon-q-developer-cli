@@ -16,18 +16,12 @@ use crate::cli::chat::{
 #[deny(missing_docs)]
 #[derive(Debug, PartialEq, Args)]
 pub struct EditorArgs {
-    pub initial_text: Vec<String>,
+    pub initial_text: Option<String>,
 }
 
 impl EditorArgs {
     pub async fn execute(self, session: &mut ChatSession) -> Result<ChatState, ChatError> {
-        let initial_text = if self.initial_text.is_empty() {
-            None
-        } else {
-            Some(self.initial_text.join(" "))
-        };
-
-        let content = match open_editor(initial_text) {
+        let content = match open_editor(self.initial_text) {
             Ok(content) => content,
             Err(err) => {
                 execute!(

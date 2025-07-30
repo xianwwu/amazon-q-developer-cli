@@ -15,7 +15,6 @@ use std::io::{
 };
 use std::process::ExitCode;
 
-use agent::AgentArgs;
 use anstream::println;
 pub use chat::ConversationState;
 use clap::{
@@ -85,8 +84,6 @@ impl OutputFormat {
 #[deny(missing_docs)]
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum RootSubcommand {
-    /// Manage agents
-    Agent(AgentArgs),
     /// AI assistant in your terminal
     Chat(ChatArgs),
     /// Log in to Amazon Q
@@ -145,7 +142,6 @@ impl RootSubcommand {
         }
 
         match self {
-            Self::Agent(args) => args.execute(os).await,
             Self::Diagnostic(args) => args.execute(os).await,
             Self::Login(args) => args.execute(os).await,
             Self::Logout => user::logout(os).await,
@@ -169,7 +165,6 @@ impl Default for RootSubcommand {
 impl Display for RootSubcommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
-            Self::Agent(_) => "agent",
             Self::Chat(_) => "chat",
             Self::Login(_) => "login",
             Self::Logout => "logout",
@@ -362,6 +357,7 @@ mod test {
                 trust_all_tools: false,
                 trust_tools: None,
                 no_interactive: false,
+                migrate: false,
             })),
             verbose: 2,
             help_all: false,
@@ -401,6 +397,7 @@ mod test {
                 trust_all_tools: false,
                 trust_tools: None,
                 no_interactive: false,
+                migrate: false,
             })
         );
     }
@@ -417,6 +414,7 @@ mod test {
                 trust_all_tools: false,
                 trust_tools: None,
                 no_interactive: false,
+                migrate: false,
             })
         );
     }
@@ -433,6 +431,7 @@ mod test {
                 trust_all_tools: true,
                 trust_tools: None,
                 no_interactive: false,
+                migrate: false,
             })
         );
     }
@@ -449,6 +448,7 @@ mod test {
                 trust_all_tools: false,
                 trust_tools: None,
                 no_interactive: true,
+                migrate: false,
             })
         );
         assert_parse!(
@@ -461,6 +461,7 @@ mod test {
                 trust_all_tools: false,
                 trust_tools: None,
                 no_interactive: true,
+                migrate: false,
             })
         );
     }
@@ -477,6 +478,7 @@ mod test {
                 trust_all_tools: true,
                 trust_tools: None,
                 no_interactive: false,
+                migrate: false,
             })
         );
     }
@@ -493,6 +495,7 @@ mod test {
                 trust_all_tools: false,
                 trust_tools: Some(vec!["".to_string()]),
                 no_interactive: false,
+                migrate: false,
             })
         );
     }
@@ -509,6 +512,7 @@ mod test {
                 trust_all_tools: false,
                 trust_tools: Some(vec!["fs_read".to_string(), "fs_write".to_string()]),
                 no_interactive: false,
+                migrate: false,
             })
         );
     }

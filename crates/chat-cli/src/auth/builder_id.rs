@@ -49,7 +49,6 @@ use time::OffsetDateTime;
 use tracing::{
     debug,
     error,
-    info,
     trace,
     warn,
 };
@@ -303,7 +302,6 @@ impl BuilderIdToken {
 
     /// Load the token from the keychain, refresh the token if it is expired and return it
     pub async fn load(database: &Database) -> Result<Option<Self>, AuthError> {
-        trace!("loading builder id token from the secret store");
         match database.get_secret(Self::SECRET_KEY).await {
             Ok(Some(secret)) => {
                 let token: Option<Self> = serde_json::from_str(&secret.0)?;
@@ -316,7 +314,6 @@ impl BuilderIdToken {
                             trace!("token is expired, refreshing");
                             token.refresh_token(&client, database, &region).await
                         } else {
-                            trace!(?token, "found a valid token");
                             Ok(Some(token))
                         }
                     },
@@ -345,7 +342,6 @@ impl BuilderIdToken {
         region: &Region,
     ) -> Result<Option<Self>, AuthError> {
         let Some(refresh_token) = &self.refresh_token else {
-            warn!("no refresh token was found");
             // if the token is expired and has no refresh token, delete it
             if let Err(err) = self.delete(database).await {
                 error!(?err, "Failed to delete builder id token");
@@ -354,7 +350,6 @@ impl BuilderIdToken {
             return Ok(None);
         };
 
-        trace!("loading device registration from secret store");
         let registration = match DeviceRegistration::load_from_secret_store(database, region).await? {
             Some(registration) if registration.oauth_flow == self.oauth_flow => registration,
             // If the OIDC client registration is for a different oauth flow or doesn't exist, then
@@ -530,22 +525,8 @@ pub async fn poll_create_token(
 
 pub async fn is_logged_in(database: &mut Database) -> bool {
     // Check for BuilderId if not using Sigv4
-    if std::env::var("AMAZON_Q_SIGV4").is_ok_and(|v| !v.is_empty()) {
-        debug!("logged in using sigv4 credentials");
-        return true;
-    }
-
-    match BuilderIdToken::load(database).await {
-        Ok(Some(_)) => true,
-        Ok(None) => {
-            info!("not logged in - no valid token found");
-            false
-        },
-        Err(err) => {
-            warn!(?err, "failed to try to load a builder id token");
-            false
-        },
-    }
+    std::env::var("AMAZON_Q_SIGV4").is_ok_and(|v| !v.is_empty())
+        || matches!(BuilderIdToken::load(database).await, Ok(Some(_)))
 }
 
 pub async fn logout(database: &mut Database) -> Result<(), AuthError> {
