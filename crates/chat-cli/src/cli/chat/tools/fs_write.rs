@@ -30,7 +30,6 @@ use syntect::util::{
     as_24_bit_terminal_escaped,
 };
 use tracing::{
-    debug,
     error,
     warn,
 };
@@ -87,26 +86,11 @@ pub enum FsWrite {
 
 impl FsWrite {
     pub async fn invoke(&self, os: &Os, output: &mut impl Write) -> Result<InvokeOutput> {
-        let mut manager_option = match CheckpointManager::load_manager(os).await {
-            Ok(m) => Some(m),
-            Err(_) => {
-                debug!("No checkpoint manager initialized; tool call will not be tracked");
-                None
-            },
-        };
-
-        let checkpoint_path = sanitize_path_tool_arg(os, match self {
-            FsWrite::Create { path, .. }
-            | FsWrite::StrReplace { path, .. }
-            | FsWrite::Insert { path, .. }
-            | FsWrite::Append { path, .. } => path,
-        });
-        let (checkpoint_path, checkpoint_path_valid) = match checkpoint_path.canonicalize() {
-            Ok(path) => (path, true),
-            Err(_) => {
-                debug!("Path could not be canonicalized; tool call will not be tracked");
-                (PathBuf::new(), false)
-            },
+        let path = self.gather_paths_for_checkpointing(os)?;
+        let original_contents = if os.fs.exists(&path) {
+            Some(os.fs.read(&path).await?)
+        } else {
+            None
         };
 
         let cwd = os.env.current_dir()?;
@@ -206,13 +190,30 @@ impl FsWrite {
             },
         };
 
-        // if let Some(manager) = &mut manager_option {
-        //     manager
-        //         .checkpoint_with_data(os, checkpoint_path.clone(),
-        // Some(os.fs.read(&checkpoint_path).await?))         .await?;
-        //     CheckpointManager::save_manager(os, &manager).await?;
-        // }
+        if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
+            // Save original contents
+            manager
+                .checkpoint_with_data(os, &[path.clone()], &[original_contents])
+                .await?;
+
+            // Save new contents
+            manager
+                .checkpoint_with_data(os, &[path.clone()], &[Some(os.fs.read(&path).await?)])
+                .await?;
+
+            CheckpointManager::save_manager(os, manager).await?;
+        }
         Ok(Default::default())
+    }
+
+    fn gather_paths_for_checkpointing(&self, os: &Os) -> Result<PathBuf> {
+        let checkpoint_path = sanitize_path_tool_arg(os, match self {
+            FsWrite::Create { path, .. }
+            | FsWrite::StrReplace { path, .. }
+            | FsWrite::Insert { path, .. }
+            | FsWrite::Append { path, .. } => path,
+        });
+        Ok(os.env.current_dir()?.join(sanitize_path_tool_arg(os, checkpoint_path)))
     }
 
     pub fn queue_description(&self, os: &Os, output: &mut impl Write) -> Result<()> {

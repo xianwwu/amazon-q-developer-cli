@@ -537,6 +537,44 @@ impl ConversationState {
         self.latest_summary = Some((summary, request_metadata));
     }
 
+    pub async fn create_turn_summary_request(&mut self, os: &Os) -> Result<FigConversationState, ChatError> {
+        let summary_content = "[SYSTEM NOTE: This is an automated summarization request, not from the user]\n\n
+                    Create a concise summary of the user's last request.\n
+                    Examples:\n
+                    - Create a basic hello world program in Python\n
+                    - Add a function for summing a list of integers\n
+                    - Rename file1 to file2\n
+                    DO NOT include anything in your response except for the summary.\n 
+                    DO NOT respond conversationally. DO NOT address the user directly.\n
+                    FILTER OUT CHAT CONVENTIONS (greetings, offers to help, etc)."
+            .to_string();
+
+        let mut conv_state = self.backend_conversation_state(os, false, &mut vec![]).await?;
+        let summary_message = UserMessage::new_prompt(summary_content.clone());
+
+        // Create the history according to the passed compact strategy.
+        let history = conv_state.history.next_back().cloned();
+
+        // Only send the dummy tool spec in order to prevent the model from ever attempting a tool
+        // use.
+        let mut tools = self.tools.clone();
+        tools.retain(|k, v| match k {
+            ToolOrigin::Native => {
+                v.retain(|tool| match tool {
+                    Tool::ToolSpecification(tool_spec) => tool_spec.name == DUMMY_TOOL_NAME,
+                });
+                true
+            },
+            ToolOrigin::McpServer(_) => false,
+        });
+
+        Ok(FigConversationState {
+            conversation_id: Some(self.conversation_id.clone()),
+            user_input_message: summary_message.into_user_input_message(self.model.clone(), &tools),
+            history: Some(flatten_history(history.iter())),
+        })
+    }
+
     pub fn current_profile(&self) -> Option<&str> {
         if let Some(cm) = self.context_manager.as_ref() {
             Some(cm.current_profile.as_str())

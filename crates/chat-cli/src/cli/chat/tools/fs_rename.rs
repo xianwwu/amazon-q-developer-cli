@@ -55,7 +55,7 @@ impl FsRename {
             sanitize_path_tool_arg(os, &self.new_path),
         )
         .await?;
-        
+
         // ########## CHECKPOINTING ##########
         let (original_paths, new_paths, datas) = self.gather_paths_for_checkpointing(os).await?;
 
@@ -84,7 +84,10 @@ impl FsRename {
         Ok(Default::default())
     }
 
-    pub async fn gather_paths_for_checkpointing(&self, os: &Os) -> Result<(Vec<PathBuf>, Vec<PathBuf>, Vec<Option<Vec<u8>>>)> {
+    pub async fn gather_paths_for_checkpointing(
+        &self,
+        os: &Os,
+    ) -> Result<(Vec<PathBuf>, Vec<PathBuf>, Vec<Option<Vec<u8>>>)> {
         let cwd = os.env.current_dir()?;
         if PathBuf::from(&self.new_path).is_file() {
             let original_canonical = cwd.join(sanitize_path_tool_arg(os, &self.original_path));

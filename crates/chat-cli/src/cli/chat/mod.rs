@@ -136,6 +136,7 @@ use crate::cli::chat::cli::prompts::{
     GetPromptError,
     PromptsSubcommand,
 };
+use crate::cli::chat::parser::ResponseEvent;
 use crate::database::settings::Setting;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
@@ -1852,21 +1853,28 @@ impl ChatSession {
                                 _ => unreachable!(),
                             };
 
+                            // This is a very dirty fix for the lack of context/access within tool calls. Since tools
+                            // don't know anything related to the conversation
+                            // history/state, we have to retroactively tag checkpoints
+                            // (including the initial one).
+                            //
                             // FIX: + 1 is because tool use hasn't been added to history yet (hacky)
                             let history_index = self.conversation.get_history_len() + 1;
                             if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
-                                checkpoint_tag = Some(format!("{}.{}", manager.checkpoints.len(), num_editing_tools));
+                                manager.tag_initial_checkpoint_if_able(history_index - 1);
+                                checkpoint_tag =
+                                    Some(format!("{}.{}", manager.num_turn_checkpoints, num_editing_tools));
+                                manager.tag_latest_checkpoint(checkpoint_tag.clone().unwrap(), summary, history_index);
                                 if let Err(e) = CheckpointManager::save_manager(os, manager).await {
                                     execute!(
                                         self.stdout,
                                         style::Print(format!("Checkpoints could not be saved: {e}\n"))
                                     )?;
                                 }
-                                manager.tag_latest_checkpoint(checkpoint_tag.clone().unwrap(), summary, history_index);
                             }
                         },
                         _ => (),
-                    }
+                    };
                     // ########## /CHECKPOINTING ##########
 
                     match result.output {
@@ -1982,6 +1990,58 @@ impl ChatSession {
                 .as_sendable_conversation_state(os, &mut self.stderr, false)
                 .await?,
         ));
+    }
+
+    async fn summarize_turn(&mut self, os: &mut Os) -> Result<String> {
+        if self.conversation.history().is_empty() {
+            bail!("No turn to commit!");
+        }
+
+        let request_state = self.conversation.create_turn_summary_request(os).await;
+        match request_state {
+            Ok(state) => {
+                self.conversation.reset_next_user_message();
+                self.conversation
+                    .set_next_user_message(state.user_input_message.content)
+                    .await;
+            },
+            Err(_) => bail!("Turn summary could not be created"),
+        };
+
+        let conv_state = self
+            .conversation
+            .as_sendable_conversation_state(os, &mut self.stderr, false)
+            .await?;
+
+        let request_metadata: Arc<Mutex<Option<RequestMetadata>>> = Arc::new(Mutex::new(None));
+        let request_metadata_clone = Arc::clone(&request_metadata);
+
+        let mut response = match self.send_message(os, conv_state, request_metadata_clone).await {
+            Ok(res) => res,
+            Err(_) => bail!("Turn summary could not be created"),
+        };
+        let mut commit_msg = String::new();
+
+        // Since this is an internal tool call, manually handle the tool requests from Q
+        loop {
+            match response.recv().await {
+                Some(res) => {
+                    let res = res?;
+                    match res {
+                        ResponseEvent::AssistantText(text) => commit_msg.push_str(&text),
+                        ResponseEvent::EndStream { .. } => break,
+                        ResponseEvent::ToolUse(_) => bail!("Tool use requested during summary"),
+                        ResponseEvent::ToolUseStart { .. } => bail!("Tool use requested during summary"),
+                    }
+                },
+                None => break,
+            };
+        }
+
+        // FIX: hacky? not really sure how this works honestly LOL
+        self.conversation.reset_next_user_message();
+
+        Ok(commit_msg)
     }
 
     /// Sends a [crate::api_client::ApiClient::send_message] request to the backend and consumes
@@ -2239,6 +2299,62 @@ impl ChatSession {
         } else {
             self.tool_uses.clear();
             self.pending_tool_index = None;
+
+            // Create snapshot if editing tools were used
+            if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
+                if !manager.can_create_turn_checkpoint() {
+                    return Ok(ChatState::PromptUser {
+                        skip_printing_tools: false,
+                    });
+                }
+
+                // Create spinner for long wait
+                // Can't use with_spinner because of mutable references??
+                execute!(self.stderr, cursor::Hide, style::SetForegroundColor(Color::Blue))?;
+                let spinner = if self.interactive {
+                    Some(Spinner::new(Spinners::Dots, "Generating snapshot...".to_string()))
+                } else {
+                    None
+                };
+
+                let summary_result = self.summarize_turn(os).await;
+
+                // Remove spinner; summarizing takes the longest
+                if let Some(mut s) = spinner {
+                    s.stop();
+                    queue!(
+                        self.stderr,
+                        terminal::Clear(terminal::ClearType::CurrentLine),
+                        cursor::MoveToColumn(0),
+                        cursor::Show,
+                        style::SetForegroundColor(Color::Reset)
+                    )?;
+                }
+                match summary_result {
+                    Ok(summary) => match manager.can_create_turn_checkpoint() {
+                        true => {
+                            let tag = manager.turn_checkpoint(summary);
+                            if let Err(e) = CheckpointManager::save_manager(os, manager).await {
+                                execute!(
+                                    self.stderr,
+                                    style::Print(style::Print(
+                                        format!("Could not save checkpoint: {e}\n\n").blue().bold()
+                                    ))
+                                )?;
+                            } else {
+                                execute!(
+                                    self.stderr,
+                                    style::Print(style::Print(format!("Created snapshot: {tag}\n\n").blue().bold()))
+                                )?;
+                            }
+                        },
+                        false => (),
+                    },
+                    Err(e) => {
+                        debug!("Failed to generate turn summary for snapshot: {}", e);
+                    },
+                }
+            }
 
             // TODO(telem) send recordUserTurnCompletion
             // self.send_chat_telemetry(os, request_id, TelemetryResult::Succeeded, None, None, None)

@@ -18,7 +18,6 @@ use globset::{
     Glob,
     GlobSetBuilder,
 };
-
 use serde::Deserialize;
 use tracing::{
     error,
