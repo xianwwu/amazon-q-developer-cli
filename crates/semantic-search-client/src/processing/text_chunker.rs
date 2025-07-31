@@ -12,6 +12,10 @@ use crate::config;
 ///
 /// A vector of string chunks
 pub fn chunk_text(text: &str, chunk_size: Option<usize>, overlap: Option<usize>) -> Vec<String> {
+    // Use delimiter based chunking versus size based for MCP Tool descriptions
+    if text.contains("TOOL_START") && text.contains("TOOL_END") {
+        return chunk_by_delimiter(text, "TOOL_START", "TOOL_END");
+    }
     // Get configuration values or use provided values
     let config = config::get_config();
     let chunk_size = chunk_size.unwrap_or(config.chunk_size);
@@ -37,6 +41,35 @@ pub fn chunk_text(text: &str, chunk_size: Option<usize>, overlap: Option<usize>)
         }
     }
 
+    chunks
+}
+
+/// Chunk text by delimiter boundaries (for structured content like MCP tools)
+///
+/// # Arguments
+///
+/// * `text` - The text to chunk
+/// * `start_delimiter` - The start boundary (e.g., "TOOL_START")
+/// * `end_delimiter` - The end boundary (e.g., "TOOL_END")
+///
+/// # Returns
+///
+/// A vector of string chunks, each containing content between delimiters
+pub fn chunk_by_delimiter(text: &str, start_delimiter: &str, end_delimiter: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+
+    // Split by start delimiter and skip the first empty part
+    let parts: Vec<&str> = text.split(start_delimiter).skip(1).collect();
+
+    for part in parts {
+        // Extract content up to end delimiter
+        if let Some(content) = part.split(end_delimiter).next() {
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                chunks.push(trimmed.to_string());
+            }
+        }
+    }
     chunks
 }
 
@@ -115,5 +148,25 @@ mod tests {
 
         // Should use the config values (50, 10) set in setup()
         assert!(!chunks.is_empty());
+    }
+
+    #[test]
+    fn test_chunk_by_delimiter() {
+        let text = r#"
+        TOOL_START
+        name:echo
+        description:Echo message
+        TOOL_END
+        
+        TOOL_START  
+        name:add_numbers
+        description:Add two numbers
+        TOOL_END
+        "#;
+
+        let chunks = chunk_by_delimiter(text, "TOOL_START", "TOOL_END");
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks[0].contains("name:echo"));
+        assert!(chunks[1].contains("name:add_numbers"));
     }
 }
