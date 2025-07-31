@@ -126,7 +126,7 @@ use crate::api_client::{
 use crate::auth::AuthError;
 use crate::auth::builder_id::is_idc_user;
 use crate::cli::agent::Agents;
-use crate::cli::chat::checkpoint::CheckpointManager;
+use crate::cli::chat::checkpoint::{CheckpointManager, CheckpointPaths};
 use crate::cli::chat::cli::SlashCommand;
 use crate::cli::chat::cli::model::{
     MODEL_OPTIONS,
@@ -1809,16 +1809,94 @@ impl ChatSession {
         let mut tool_results = vec![];
         let mut image_blocks: Vec<RichImageBlock> = Vec::new();
 
-        // For tagging checkpoints
-        let mut num_editing_tools = 0;
-        let mut checkpoint_tag: Option<String> = None;
+        // For checkpointing
+        let mut tool_counter = 0;
+        let mut num_editing_tools = 1;
+
+        let manager = &mut match CheckpointManager::load_manager(os).await {
+            Ok(m) => Some(m),
+            Err(_) => None,
+        };
 
         for tool in &self.tool_uses {
             let mut tool_telemetry = self.tool_use_telemetry_events.entry(tool.id.clone());
             tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_accepted = true);
 
+            // Checkpointing setup
+            let history_index = self.conversation.get_history_len() + 1 + tool_counter;
+            tool_counter += 1;
+            let tag = if manager.is_some() {
+                format!("{}.{}", manager.as_ref().unwrap().num_turn_checkpoints, num_editing_tools)
+            } else {
+                "".to_string()
+            };
+
+            let (paths, summary) = match &tool.tool {
+                Tool::FsWrite(w) => {
+                    num_editing_tools += 1;
+                    (w.gather_paths_for_checkpointing(os).ok(), w.get_summary().cloned())
+                },
+                Tool::FsRemove(r) => {
+                    num_editing_tools += 1;
+                    (r.gather_paths_for_checkpointing(os).await.ok(), r.get_summary().cloned())
+                },
+                Tool::FsRename(r) => {
+                    num_editing_tools += 1;
+                    (r.gather_paths_for_checkpointing(os).await.ok(), r.get_summary(os))
+                },
+                _ => (None, None),
+            };
+            
+            let mut setup_succeeded = false;
+            let mut checkpoint_succeeded = false;
+            if let Some((manager, paths)) = manager.as_mut().zip(paths.clone()) {
+                match &tool.tool {
+                    Tool::FsWrite(_) => {
+                        if let CheckpointPaths::Write { path } = paths {
+                            setup_succeeded = manager.setup_fs_write(os, path).await.is_ok();   
+                        }
+                    }
+                    Tool::FsRemove(_) => {
+                        if let CheckpointPaths::Remove { paths } = paths {
+                            checkpoint_succeeded = manager.checkpoint_fs_remove(os, paths, tag.clone(), summary.clone(), history_index).await.is_ok();
+                        }
+                    }
+                    _ => (),
+                }
+            }
+
             let tool_start = std::time::Instant::now();
             let invoke_result = tool.tool.invoke(os, &mut self.stdout).await;
+
+            // Finishing checkpointing
+            if let Some((manager, paths)) = manager.as_mut().zip(paths) {
+                match &tool.tool {
+                    Tool::FsWrite(_) if setup_succeeded => {
+                        if let CheckpointPaths::Write { path } = paths {
+                            checkpoint_succeeded = manager.checkpoint_fs_write(os, path, tag.clone(), summary, history_index).await.is_ok();
+                        }
+                    },
+                    Tool::FsRename(_) => {
+                        if let CheckpointPaths::Rename { old_paths, new_paths } = paths {
+                            checkpoint_succeeded = manager.checkpoint_fs_rename(os, old_paths, new_paths, tag.clone(), summary, history_index).await.is_ok();
+                        }
+                    }
+                    _ => (),
+                }
+
+                // Retroactively tag initial checkpoint, since that's most likely an intermediate
+                // checkpoint instead of one that's automatically tagged
+                manager.tag_initial_checkpoint_if_able(history_index);
+            }
+
+            if invoke_result.is_err() {
+                // Handle the case where the tool call fails; need to pop checkpoints as necessary
+            }
+
+            if !checkpoint_succeeded {
+                // Handle the case where checkpointing fails
+                // Pop checkpoints and notify user?
+            }
 
             if self.spinner.is_some() {
                 queue!(
@@ -1842,41 +1920,6 @@ impl ChatSession {
 
             match invoke_result {
                 Ok(result) => {
-                    // ########## CHECKPOINTING ##########
-                    match tool.tool {
-                        Tool::FsWrite(_) | Tool::FsRename(_) | Tool::FsRemove(_) => {
-                            num_editing_tools += 1;
-                            let summary = match &tool.tool {
-                                Tool::FsWrite(w) => w.get_summary().cloned(),
-                                Tool::FsRename(r) => r.get_summary(os).ok(),
-                                Tool::FsRemove(r) => r.get_summary().cloned(),
-                                _ => unreachable!(),
-                            };
-
-                            // This is a very dirty fix for the lack of context/access within tool calls. Since tools
-                            // don't know anything related to the conversation
-                            // history/state, we have to retroactively tag checkpoints
-                            // (including the initial one).
-                            //
-                            // FIX: + 1 is because tool use hasn't been added to history yet (hacky)
-                            let history_index = self.conversation.get_history_len() + 1;
-                            if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
-                                manager.tag_initial_checkpoint_if_able(history_index - 1);
-                                checkpoint_tag =
-                                    Some(format!("{}.{}", manager.num_turn_checkpoints, num_editing_tools));
-                                manager.tag_latest_checkpoint(checkpoint_tag.clone().unwrap(), summary, history_index);
-                                if let Err(e) = CheckpointManager::save_manager(os, manager).await {
-                                    execute!(
-                                        self.stdout,
-                                        style::Print(format!("Checkpoints could not be saved: {e}\n"))
-                                    )?;
-                                }
-                            }
-                        },
-                        _ => (),
-                    };
-                    // ########## /CHECKPOINTING ##########
-
                     match result.output {
                         OutputKind::Text(ref text) => {
                             debug!("Output is Text: {}", text);
@@ -1901,13 +1944,10 @@ impl ChatSession {
                         style::SetForegroundColor(Color::Green),
                         style::SetAttribute(Attribute::Bold),
                         style::Print(format!(" ● Completed in {}s ", tool_time)),
+                        style::Print(format!("[{tag}]").blue().bold()),
                         style::SetForegroundColor(Color::Reset),
+                        style::Print("\n\n")
                     )?;
-                    if let Some(tag) = checkpoint_tag {
-                        execute!(self.stderr, style::Print(format!("[{tag}]\n").blue()))?;
-                        checkpoint_tag = None;
-                    }
-                    execute!(self.stdout, style::Print("\n\n"))?;
 
                     tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_success = Some(true));
                     if let Tool::Custom(_) = &tool.tool {
@@ -1953,6 +1993,12 @@ impl ChatSession {
                         );
                     }
                 },
+            }
+        }
+
+        if let Some(manager) = manager {
+            if let Err(e) = CheckpointManager::save_manager(os, manager).await {
+                execute!(self.stderr, style::Print(format!("Tool-level checkpoints could not be saved: {e}")))?;
             }
         }
 
@@ -2300,7 +2346,7 @@ impl ChatSession {
             self.tool_uses.clear();
             self.pending_tool_index = None;
 
-            // Create snapshot if editing tools were used
+            // Create checkpoint if editing tools were used
             if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
                 if !manager.can_create_turn_checkpoint() {
                     return Ok(ChatState::PromptUser {
@@ -2312,7 +2358,7 @@ impl ChatSession {
                 // Can't use with_spinner because of mutable references??
                 execute!(self.stderr, cursor::Hide, style::SetForegroundColor(Color::Blue))?;
                 let spinner = if self.interactive {
-                    Some(Spinner::new(Spinners::Dots, "Generating snapshot...".to_string()))
+                    Some(Spinner::new(Spinners::Dots, "Generating checkpoint...".to_string()))
                 } else {
                     None
                 };
@@ -2331,27 +2377,24 @@ impl ChatSession {
                     )?;
                 }
                 match summary_result {
-                    Ok(summary) => match manager.can_create_turn_checkpoint() {
-                        true => {
-                            let tag = manager.turn_checkpoint(summary);
-                            if let Err(e) = CheckpointManager::save_manager(os, manager).await {
-                                execute!(
-                                    self.stderr,
-                                    style::Print(style::Print(
-                                        format!("Could not save checkpoint: {e}\n\n").blue().bold()
-                                    ))
-                                )?;
-                            } else {
-                                execute!(
-                                    self.stderr,
-                                    style::Print(style::Print(format!("Created snapshot: {tag}\n\n").blue().bold()))
-                                )?;
-                            }
-                        },
-                        false => (),
+                    Ok(summary) => {
+                        let tag = manager.turn_checkpoint(summary);
+                        if let Err(e) = CheckpointManager::save_manager(os, manager).await {
+                            execute!(
+                                self.stderr,
+                                style::Print(style::Print(
+                                    format!("Could not save checkpoint: {e}\n\n").blue().bold()
+                                ))
+                            )?;
+                        } else {
+                            execute!(
+                                self.stderr,
+                                style::Print(style::Print(format!("Created checkpoint: {tag}\n\n").blue().bold()))
+                            )?;
+                        }
                     },
                     Err(e) => {
-                        debug!("Failed to generate turn summary for snapshot: {}", e);
+                        debug!("Failed to generate turn summary for checkpoint: {}", e);
                     },
                 }
             }

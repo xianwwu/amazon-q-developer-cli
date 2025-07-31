@@ -7,7 +7,6 @@ use std::path::{
 use crossterm::queue;
 use crossterm::style::{
     self,
-    Color,
     Stylize,
 };
 use eyre::{
@@ -34,8 +33,7 @@ use crate::cli::agent::{
     PermissionEvalResult,
 };
 use crate::cli::chat::checkpoint::{
-    CheckpointManager,
-    collect_paths_and_data,
+    collect_paths, CheckpointPaths
 };
 use crate::os::Os;
 
@@ -56,56 +54,29 @@ impl FsRename {
         )
         .await?;
 
-        // ########## CHECKPOINTING ##########
-        let (original_paths, new_paths, datas) = self.gather_paths_for_checkpointing(os).await?;
-
-        if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
-            // Save old paths and data
-            manager
-                .checkpoint_with_data(os, original_paths.clone(), datas.clone())
-                .await?;
-
-            // Track both original and new paths as deleted (necessary intermediate step)
-            manager
-                .checkpoint_with_data(
-                    os,
-                    [original_paths.clone(), new_paths.clone()].concat(),
-                    vec![None; original_paths.len() + new_paths.len()],
-                )
-                .await?;
-
-            // Track new paths and their contents
-            manager.checkpoint_with_data(os, new_paths, datas).await?;
-
-            CheckpointManager::save_manager(os, &manager).await?;
-        }
-        // ########## /CHECKPOINTING ##########
-
         Ok(Default::default())
     }
 
+    // Must be called BEFORE rename occurs because collect_paths() is called on original_dir
+    // If the ordering needs to change, replace collect_paths(&original_dir) with collect_paths(&new_dir)
     pub async fn gather_paths_for_checkpointing(
         &self,
         os: &Os,
-    ) -> Result<(Vec<PathBuf>, Vec<PathBuf>, Vec<Option<Vec<u8>>>)> {
+    ) -> Result<CheckpointPaths> {
         let cwd = os.env.current_dir()?;
         if PathBuf::from(&self.new_path).is_file() {
             let original_canonical = cwd.join(sanitize_path_tool_arg(os, &self.original_path));
             let new_canonical = cwd.join(sanitize_path_tool_arg(os, &self.new_path));
 
-            Ok((vec![original_canonical], vec![new_canonical], vec![Some(
-                os.fs.read(&self.new_path).await?,
-            )]))
+            Ok(CheckpointPaths::Rename { old_paths: vec![original_canonical], new_paths: vec![new_canonical] } )
         } else {
             let original_dir = cwd.join(sanitize_path_tool_arg(os, &self.original_path));
             let new_dir = cwd.join(sanitize_path_tool_arg(os, &self.new_path));
-
-            let (relative_paths, datas) = collect_paths_and_data(os, &new_dir).await?;
-            let original_paths: Vec<PathBuf> = relative_paths.iter().map(|p| original_dir.join(p)).collect();
+            let relative_paths = collect_paths(&original_dir).await?;
+            let old_paths: Vec<PathBuf> = relative_paths.iter().map(|p| original_dir.join(p)).collect();
             let new_paths: Vec<PathBuf> = relative_paths.iter().map(|p| new_dir.join(p)).collect();
-            let datas: Vec<Option<Vec<u8>>> = datas.into_iter().map(Some).collect();
 
-            Ok((original_paths, new_paths, datas))
+            Ok(CheckpointPaths::Rename { old_paths, new_paths })
         }
     }
 
@@ -121,13 +92,16 @@ impl FsRename {
         Ok(())
     }
 
-    pub fn get_summary(&self, os: &Os) -> Result<String> {
-        let cwd = os.env.current_dir()?;
+    pub fn get_summary(&self, os: &Os) -> Option<String> {
+        let cwd = match os.env.current_dir() {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
         let (from, to) = (
             format_path(&cwd, sanitize_path_tool_arg(os, &self.original_path)),
             format_path(&cwd, sanitize_path_tool_arg(os, &self.new_path)),
         );
-        Ok(format!("{} to {}", from, to))
+        Some(format!("{} to {}", from, to))
     }
 
     pub async fn validate(&mut self, os: &Os) -> Result<()> {
@@ -142,13 +116,11 @@ impl FsRename {
     }
 
     fn print_relative_paths_from_and_to(&self, os: &Os, output: &mut impl Write) -> Result<()> {
-        let summary = self.get_summary(os)?;
+        let summary = self.get_summary(os).unwrap_or("No description provided".to_string());
         queue!(
             output,
             style::Print("Renaming: "),
-            style::SetForegroundColor(Color::Green),
-            style::Print(summary),
-            style::ResetColor,
+            style::Print(summary.green()),
         )?;
         Ok(())
     }

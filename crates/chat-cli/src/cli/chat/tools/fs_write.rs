@@ -1,7 +1,6 @@
 use std::io::Write;
 use std::path::{
     Path,
-    PathBuf,
 };
 use std::sync::LazyLock;
 
@@ -44,7 +43,7 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
-use crate::cli::chat::checkpoint::CheckpointManager;
+use crate::cli::chat::checkpoint::CheckpointPaths;
 use crate::os::Os;
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
@@ -86,13 +85,6 @@ pub enum FsWrite {
 
 impl FsWrite {
     pub async fn invoke(&self, os: &Os, output: &mut impl Write) -> Result<InvokeOutput> {
-        let path = self.gather_paths_for_checkpointing(os)?;
-        let original_contents = if os.fs.exists(&path) {
-            Some(os.fs.read(&path).await?)
-        } else {
-            None
-        };
-
         let cwd = os.env.current_dir()?;
         match self {
             FsWrite::Create { path, .. } => {
@@ -189,31 +181,17 @@ impl FsWrite {
                 write_to_file(os, path, file).await?;
             },
         };
-
-        if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
-            // Save original contents
-            manager
-                .checkpoint_with_data(os, &[path.clone()], &[original_contents])
-                .await?;
-
-            // Save new contents
-            manager
-                .checkpoint_with_data(os, &[path.clone()], &[Some(os.fs.read(&path).await?)])
-                .await?;
-
-            CheckpointManager::save_manager(os, manager).await?;
-        }
         Ok(Default::default())
     }
 
-    fn gather_paths_for_checkpointing(&self, os: &Os) -> Result<PathBuf> {
+    pub fn gather_paths_for_checkpointing(&self, os: &Os) -> Result<CheckpointPaths> {
         let checkpoint_path = sanitize_path_tool_arg(os, match self {
             FsWrite::Create { path, .. }
             | FsWrite::StrReplace { path, .. }
             | FsWrite::Insert { path, .. }
             | FsWrite::Append { path, .. } => path,
         });
-        Ok(os.env.current_dir()?.join(sanitize_path_tool_arg(os, checkpoint_path)))
+        Ok(CheckpointPaths::Write { path: os.env.current_dir()?.join(sanitize_path_tool_arg(os, checkpoint_path)) })
     }
 
     pub fn queue_description(&self, os: &Os, output: &mut impl Write) -> Result<()> {

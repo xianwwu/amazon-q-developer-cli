@@ -30,7 +30,7 @@ pub enum CheckpointSubcommand {
         limit: Option<usize>,
     },
 
-    /// Display more information about a turn-level snapshot
+    /// Display more information about a turn-level checkpoint
     Expand { tag: String },
 }
 
@@ -46,13 +46,13 @@ impl CheckpointSubcommand {
                     match result {
                         Ok(_) => execute!(
                             session.stderr,
-                            style::Print(format!("Restored snapshot: {tag}\n").blue())
+                            style::Print(format!("Restored checkpoint: {tag}\n").blue())
                         )?,
-                        Err(e) => return Err(ChatError::Custom(format!("Could not restore snapshot: {}", e).into())),
+                        Err(e) => return Err(ChatError::Custom(format!("Could not restore checkpoint: {}", e).into())),
                     }
                 } else {
                     return Err(ChatError::Custom(
-                        format!("Snapshot manager could not be loaded").into(),
+                        format!("Checkpoint manager could not be loaded").into(),
                     ));
                 }
             },
@@ -131,7 +131,7 @@ async fn expand_checkpoint(os: &Os, output: &mut impl Write, tag: String) -> Res
             )),
         )?;
 
-        // If the user tries to expand a tool-level snapshot, return early
+        // If the user tries to expand a tool-level checkpoint, return early
         if !checkpoint.tag.as_ref().unwrap().is_turn() {
             return Ok(());
         } else {
@@ -147,8 +147,9 @@ async fn expand_checkpoint(os: &Os, output: &mut impl Write, tag: String) -> Res
                 }
 
                 // Since we're iterating backwards, append to display_vec backwards
-                display_vec.push(format!(" - {}", checkpoint.summary).reset());
-                display_vec.push(format!("[{}]\n", tag).blue());
+                display_vec.push(format!("{}\n", checkpoint.summary).reset());
+                display_vec.push(format!("{}: ", checkpoint.tool_name).magenta());
+                display_vec.push(format!("[{}] ", tag).blue());
                 display_vec.push(" └─ ".to_string().blue());
             }
 

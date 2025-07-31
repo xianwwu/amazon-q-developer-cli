@@ -57,6 +57,7 @@ pub struct CheckpointManager {
 pub struct Checkpoint {
     pub state: HashMap<PathBuf, Option<ContentHash>>,
     pub summary: String,
+    pub tool_name: String,
     pub history_index: usize,
     pub tag: Option<Tag>,
     pub timestamp: DateTime<Local>,
@@ -76,6 +77,20 @@ impl Display for ContentHash {
 pub enum Tag {
     TurnLevel(usize),
     ToolLevel(usize, usize),
+}
+
+#[derive(Clone)]
+pub enum CheckpointPaths {
+    Write {
+        path: PathBuf,
+    },
+    Rename {
+        old_paths: Vec<PathBuf>,
+        new_paths: Vec<PathBuf>,
+    },
+    Remove {
+        paths: Vec<PathBuf>
+    }
 }
 
 impl From<Tag> for String {
@@ -198,6 +213,7 @@ impl CheckpointManager {
         self.checkpoints.push(Checkpoint {
             state: new_map,
             summary: String::new(),
+            tool_name: String::new(),
             history_index: 0,
             tag: None,
             timestamp: Local::now(),
@@ -286,7 +302,7 @@ impl CheckpointManager {
         Ok(())
     }
 
-    pub fn tag_latest_checkpoint(&mut self, tag: String, summary: Option<String>, history_index: usize) {
+    fn tag_latest_checkpoint(&mut self, tag: String, summary: Option<String>, history_index: usize, tool_name: String) {
         let description = if let Some(s) = summary {
             s
         } else {
@@ -294,7 +310,6 @@ impl CheckpointManager {
         };
         let num_checkpoints = self.checkpoints.len();
 
-        // This is only called internally, so unwrapping Tag Result is fine
         self.tag_to_index
             .insert(Tag::from_str(&tag).unwrap(), num_checkpoints - 1);
 
@@ -302,6 +317,7 @@ impl CheckpointManager {
         checkpoint.summary = description;
         checkpoint.history_index = history_index;
         checkpoint.tag = Some(Tag::from_str(&tag).unwrap());
+        checkpoint.tool_name = tool_name;
     }
 
     pub fn can_create_turn_checkpoint(&self) -> bool {
@@ -334,12 +350,81 @@ impl CheckpointManager {
     pub fn tag_initial_checkpoint_if_able(&mut self, history_index: usize) {
         if !self.checkpoints.is_empty() && self.checkpoints[0].tag.is_none() {
             let checkpoint = &mut self.checkpoints[0];
-            checkpoint.tag = Some(Tag::from_str("0").unwrap());
+            let tag = Tag::from_str("0").unwrap();
+            checkpoint.tag = Some(tag.clone());
             checkpoint.history_index = history_index;
             checkpoint.summary = "Initial checkpoint".to_string();
 
-            self.tag_to_index.insert(checkpoint.tag.as_ref().unwrap().clone(), 0);
+            self.tag_to_index.insert(tag, 0);
         }
+    }
+
+    pub async fn setup_fs_write(&mut self, os: &Os, path: PathBuf) -> Result<()> {
+        let original_contents = if os.fs.exists(&path) {
+            Some(os.fs.read(&path).await?)
+        } else {
+            None
+        };
+        // Save original contents
+        self
+            .checkpoint_with_data(os, &[path], &[original_contents])
+            .await?;
+        Ok(())
+    }
+
+    pub async fn checkpoint_fs_write(&mut self, os: &Os, path: PathBuf, tag: String, summary: Option<String>, history_index: usize) -> Result<()> {
+        // Save new contents
+        self
+            .checkpoint_with_data(os, &[path.clone()], &[Some(os.fs.read(&path).await?)])
+            .await?;
+        self.tag_latest_checkpoint(tag, summary, history_index, "fs_write".to_string());
+        Ok(())
+    }
+
+    pub async fn checkpoint_fs_remove(&mut self, os: &Os, paths: Vec<PathBuf>, tag: String, summary: Option<String>, history_index: usize)  -> Result<()> {
+        let mut datas = Vec::new();
+        for path in paths.iter() {
+            datas.push(Some(os.fs.read(path).await?));
+        }
+
+        // Save all data
+        self.checkpoint_with_data(os, paths.clone(), datas.clone()).await?;
+
+        // Track files as deleted
+        self
+            .checkpoint_with_data(os, paths.clone(), vec![None; paths.len()])
+            .await?;
+
+        self.tag_latest_checkpoint(tag, summary, history_index, "fs_remove".to_string());
+
+        Ok(())
+    }
+
+    pub async fn checkpoint_fs_rename(&mut self, os: &Os, old_paths: Vec<PathBuf>, new_paths: Vec<PathBuf>, tag: String, summary: Option<String>, history_index: usize) -> Result<()> {
+        let mut datas = Vec::new();
+        for path in new_paths.iter() {
+            datas.push(Some(os.fs.read(path).await?));
+        }
+        
+        // Save old paths and data
+        self
+            .checkpoint_with_data(os, old_paths.clone(), datas.clone())
+            .await?;
+
+        // Track both original and new paths as deleted (necessary intermediate step)
+        self
+            .checkpoint_with_data(
+                os,
+                [old_paths.clone(), new_paths.clone()].concat(),
+                vec![None; old_paths.len() + new_paths.len()],
+            )
+            .await?;
+
+        // Track new paths and their contents
+        self.checkpoint_with_data(os, new_paths, datas).await?;
+        
+        self.tag_latest_checkpoint(tag, summary, history_index, "fs_rename".to_string());
+        Ok(())
     }
 }
 
@@ -348,17 +433,14 @@ fn hash_data(data: impl AsRef<[u8]>) -> ContentHash {
     ContentHash(hash.iter().map(|b| format!("{:02x}", b)).collect())
 }
 
-pub async fn collect_paths_and_data(os: &Os, dir: impl AsRef<Path>) -> Result<(Vec<PathBuf>, Vec<Vec<u8>>)> {
+pub async fn collect_paths(dir: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
-    let mut datas = Vec::new();
     for entry in WalkDir::new(&dir) {
         let entry = entry?;
         let path = entry.path();
-        println!("{}", path.display());
         if path.is_file() {
             paths.push(path.strip_prefix(&dir)?.to_path_buf());
-            datas.push(os.fs.read(path).await?);
         }
     }
-    Ok((paths, datas))
+    Ok(paths)
 }
