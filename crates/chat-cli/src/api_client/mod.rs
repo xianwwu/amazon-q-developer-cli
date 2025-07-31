@@ -69,6 +69,9 @@ pub const X_AMZN_CODEWHISPERER_OPT_OUT_HEADER: &str = "x-amzn-codewhisperer-opto
 // TODO(bskiser): confirm timeout is updated to an appropriate value?
 const DEFAULT_TIMEOUT_DURATION: Duration = Duration::from_secs(60 * 5);
 
+type ModelListResult = (Vec<Model>, Option<Model>);
+type ModelCache = Arc<RwLock<Option<ModelListResult>>>;
+
 #[derive(Clone, Debug)]
 pub struct ApiClient {
     client: CodewhispererClient,
@@ -76,7 +79,7 @@ pub struct ApiClient {
     sigv4_streaming_client: Option<QDeveloperStreamingClient>,
     mock_client: Option<Arc<Mutex<std::vec::IntoIter<Vec<ChatResponseStream>>>>>,
     profile: Option<AuthProfile>,
-    model_cache: Arc<RwLock<Option<(Vec<Model>, Option<Model>)>>>,
+    model_cache: ModelCache,
 }
 
 impl ApiClient {

@@ -88,7 +88,7 @@ pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Opti
 
     if let Some(index) = selection {
         let selected = &models[index];
-        let model_id_str = selected.model_id.to_string();
+        let model_id_str = selected.model_id.clone();
         session.conversation.model = Some(model_id_str);
         let display_name = get_display_name(selected.model_id());
 
