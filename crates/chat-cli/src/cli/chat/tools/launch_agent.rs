@@ -1,3 +1,4 @@
+use std::env::current_exe;
 use std::io::Write;
 use std::process::Stdio;
 use std::time::Duration;
@@ -310,13 +311,12 @@ async fn spawn_agent_task(
     tx: tokio::sync::mpsc::Sender<u32>,
 ) -> Result<(u32, tokio::task::JoinHandle<Result<String, eyre::Error>>), eyre::Error> {
     // Run subagent with desired agent config + Q_SUBAGENT env var = 1
-    let mut cmd = tokio::process::Command::new("q");
+    let mut cmd = tokio::process::Command::new(current_exe().unwrap());
     cmd.arg("chat");
     if let Some(agent_arg) = agent_cli_name {
         cmd.arg(format!("--agent={}", agent_arg));
     }
     cmd.arg("--no-interactive");
-    cmd.arg("--trust-all-tools");
     cmd.arg(prompt);
     cmd.env("Q_SUBAGENT", "1");
 
