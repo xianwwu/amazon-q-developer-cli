@@ -51,7 +51,6 @@ impl UsageArgs {
             .filter_map(|s| serde_json::to_string(s).ok())
             .collect::<Vec<String>>()
             .join("");
-        eprintln!("tool specs json {}", tool_specs_json);
         let context_token_count: TokenCount = data.context_messages.into();
         let assistant_token_count: TokenCount = data.assistant_messages.into();
         let user_token_count: TokenCount = data.user_messages.into();

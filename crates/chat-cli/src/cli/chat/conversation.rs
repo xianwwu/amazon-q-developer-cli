@@ -11,7 +11,6 @@ use crossterm::{
     execute,
     style,
 };
-use regex::bytes::Matches;
 use serde::{
     Deserialize,
     Serialize,
@@ -61,8 +60,6 @@ use crate::cli::agent::hook::{
     HookTrigger,
 };
 use crate::cli::chat::ChatError;
-use crate::cli::chat::message::AssistantToolUse;
-use crate::cli::user;
 use crate::database::settings::Setting;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
@@ -374,18 +371,17 @@ impl ConversationState {
                     }
                 }
             }
-            eprintln!("RAG CONTEXT {}", rag_context);
             return Some(rag_context);
         }
         None
     }
 
     // Returns usable tool hashmap that can be sent to backend state given a string
-    fn convert_rag_to_tools(&mut self, rag_context: &str) -> Option<HashMap<ToolOrigin, Vec<Tool>>> {
+    fn convert_rag_to_tools(&mut self, rag_context: &str) -> HashMap<ToolOrigin, Vec<Tool>> {
         let mut enhanced_tools = HashMap::new();
 
         if rag_context.trim().is_empty() {
-            return Some(enhanced_tools);
+            return enhanced_tools;
         }
 
         let lines: Vec<&str> = rag_context.lines().collect();
@@ -431,7 +427,7 @@ impl ConversationState {
             &schema_json,
         );
 
-        Some(enhanced_tools)
+        enhanced_tools
     }
 
     // Helper function to create and add a tool to the HashMap
@@ -606,22 +602,20 @@ impl ConversationState {
 
                 // converts the strings into usable self.tools hashmap format
                 // TODO: add optimization --> only persist the tool description if it was actually used.
-                if let Some(rag_mcp_tools) = self.convert_rag_to_tools(&mcp_tools_string) {
-                    eprintln!("RAG MCP TOOLS ONLY {:?}", rag_mcp_tools);
+                let rag_mcp_tools = self.convert_rag_to_tools(&mcp_tools_string);
 
-                    if let Some((origin, new_tools)) = rag_mcp_tools.into_iter().next() {
-                        let existing_tools = mcp_tool_hashmap.entry(origin).or_insert_with(Vec::new);
+                if let Some((origin, new_tools)) = rag_mcp_tools.into_iter().next() {
+                    let existing_tools = mcp_tool_hashmap.entry(origin).or_insert_with(Vec::new);
 
-                        // Only add tools that don't already exist
-                        for new_tool in new_tools {
-                            let Tool::ToolSpecification(new_spec) = &new_tool;
-                            let already_exists = existing_tools.iter().any(|existing_tool| {
+                    // Only add tools that don't already exist
+                    for new_tool in new_tools {
+                        let Tool::ToolSpecification(new_spec) = &new_tool;
+                        let already_exists = existing_tools.iter().any(|existing_tool| {
                                 matches!(existing_tool, Tool::ToolSpecification(existing_spec) if existing_spec.name == new_spec.name)
                             });
 
-                            if !already_exists {
-                                existing_tools.push(new_tool);
-                            }
+                        if !already_exists {
+                            existing_tools.push(new_tool);
                         }
                     }
                 }
@@ -630,29 +624,7 @@ impl ConversationState {
             },
             None => mcp_tool_hashmap,
         };
-
         self.enhanced_tools_cache = Some(enhanced_tools);
-
-        eprintln!("=== FINAL TOOLS BEING SENT TO API ===");
-        for (origin, tools) in self.enhanced_tools_cache.as_ref().unwrap() {
-            eprintln!("Origin: {:?}", origin);
-            for tool in tools {
-                if let Tool::ToolSpecification(spec) = tool {
-                    eprintln!("  - Tool: {}", spec.name);
-                }
-            }
-        }
-
-        eprintln!("=== CONVERSATION HISTORY TOOL USAGE ===");
-        for (i, entry) in self.history.iter().enumerate() {
-            if let Some(tool_uses) = entry.assistant.tool_uses() {
-                eprintln!(
-                    "History entry {}: used tools {:?}",
-                    i,
-                    tool_uses.iter().map(|t| &t.name).collect::<Vec<_>>()
-                );
-            }
-        }
 
         Ok(BackendConversationState {
             conversation_id: self.conversation_id.as_str(),
