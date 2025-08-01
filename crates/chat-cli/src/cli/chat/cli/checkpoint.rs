@@ -46,7 +46,7 @@ impl CheckpointSubcommand {
                     match result {
                         Ok(_) => execute!(
                             session.stderr,
-                            style::Print(format!("Restored checkpoint: {tag}\n").blue())
+                            style::Print(format!("Restored checkpoint: {tag}\n").blue().bold())
                         )?,
                         Err(e) => return Err(ChatError::Custom(format!("Could not restore checkpoint: {}", e).into())),
                     }

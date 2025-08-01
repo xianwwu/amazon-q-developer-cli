@@ -126,7 +126,7 @@ use crate::api_client::{
 use crate::auth::AuthError;
 use crate::auth::builder_id::is_idc_user;
 use crate::cli::agent::Agents;
-use crate::cli::chat::checkpoint::{CheckpointManager, CheckpointPaths};
+use crate::cli::chat::checkpoint::CheckpointManager;
 use crate::cli::chat::cli::SlashCommand;
 use crate::cli::chat::cli::model::{
     MODEL_OPTIONS,
@@ -1811,7 +1811,10 @@ impl ChatSession {
 
         // For checkpointing
         let mut tool_counter = 0;
-        let mut num_editing_tools = 1;
+        let mut num_tracked_tools = 1;
+        let original_history_len = self.conversation.history().len();
+
+        let mut check = false;
 
         let manager = &mut match CheckpointManager::load_manager(os).await {
             Ok(m) => Some(m),
@@ -1819,84 +1822,73 @@ impl ChatSession {
         };
 
         for tool in &self.tool_uses {
+            println!("{check}");
+            check = true;
             let mut tool_telemetry = self.tool_use_telemetry_events.entry(tool.id.clone());
             tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_accepted = true);
 
             // Checkpointing setup
-            let history_index = self.conversation.get_history_len() + 1 + tool_counter;
+            let history_index = original_history_len + 1 + tool_counter;
             tool_counter += 1;
-            let tag = if manager.is_some() {
-                format!("{}.{}", manager.as_ref().unwrap().num_turn_checkpoints, num_editing_tools)
+            let tag = if manager.is_some() && tool.tool.as_trackable().is_some() {
+                format!(
+                    "{}.{}",
+                    manager.as_ref().unwrap().num_turn_checkpoints,
+                    num_tracked_tools
+                )
             } else {
                 "".to_string()
             };
+            println!("{tag} {num_tracked_tools}");
 
-            let (paths, summary) = match &tool.tool {
-                Tool::FsWrite(w) => {
-                    num_editing_tools += 1;
-                    (w.gather_paths_for_checkpointing(os).ok(), w.get_summary().cloned())
-                },
-                Tool::FsRemove(r) => {
-                    num_editing_tools += 1;
-                    (r.gather_paths_for_checkpointing(os).await.ok(), r.get_summary().cloned())
-                },
-                Tool::FsRename(r) => {
-                    num_editing_tools += 1;
-                    (r.gather_paths_for_checkpointing(os).await.ok(), r.get_summary(os))
-                },
-                _ => (None, None),
-            };
-            
-            let mut setup_succeeded = false;
-            let mut checkpoint_succeeded = false;
-            if let Some((manager, paths)) = manager.as_mut().zip(paths.clone()) {
-                match &tool.tool {
-                    Tool::FsWrite(_) => {
-                        if let CheckpointPaths::Write { path } = paths {
-                            setup_succeeded = manager.setup_fs_write(os, path).await.is_ok();   
-                        }
-                    }
-                    Tool::FsRemove(_) => {
-                        if let CheckpointPaths::Remove { paths } = paths {
-                            checkpoint_succeeded = manager.checkpoint_fs_remove(os, paths, tag.clone(), summary.clone(), history_index).await.is_ok();
-                        }
-                    }
-                    _ => (),
+            if let Some((manager, trackable)) = manager.as_mut().zip(tool.tool.as_trackable()) {
+                if let Err(e) = trackable.setup_checkpointing(os, manager).await {
+                    println!(
+                        "There was an error setting up the checkpoint for {}: {}",
+                        tool.tool.display_name(),
+                        e
+                    );
                 }
             }
 
+            // Invoke tool
             let tool_start = std::time::Instant::now();
             let invoke_result = tool.tool.invoke(os, &mut self.stdout).await;
 
             // Finishing checkpointing
-            if let Some((manager, paths)) = manager.as_mut().zip(paths) {
-                match &tool.tool {
-                    Tool::FsWrite(_) if setup_succeeded => {
-                        if let CheckpointPaths::Write { path } = paths {
-                            checkpoint_succeeded = manager.checkpoint_fs_write(os, path, tag.clone(), summary, history_index).await.is_ok();
-                        }
-                    },
-                    Tool::FsRename(_) => {
-                        if let CheckpointPaths::Rename { old_paths, new_paths } = paths {
-                            checkpoint_succeeded = manager.checkpoint_fs_rename(os, old_paths, new_paths, tag.clone(), summary, history_index).await.is_ok();
-                        }
-                    }
-                    _ => (),
+            if let Some((manager, trackable)) = manager.as_mut().zip(tool.tool.as_trackable()) {
+                if let Err(e) = trackable.finish_checkpointing(os, manager).await {
+                    println!(
+                        "There was an error finishing the checkpoint for {}: {}",
+                        tool.tool.display_name(),
+                        e
+                    );
                 }
+                num_tracked_tools += 1;
 
-                // Retroactively tag initial checkpoint, since that's most likely an intermediate
-                // checkpoint instead of one that's automatically tagged
-                manager.tag_initial_checkpoint_if_able(history_index);
+                manager.tag_latest_checkpoint(
+                    tag.clone(),
+                    trackable.get_summary(os),
+                    history_index,
+                    tool.tool.display_name(),
+                );
+
+                // Retroactively tag initial checkpoint since it's an intermediate
+                // checkpoint instead of one that's tagged by the function call above
+                //
+                // Ideally we wouldn't have to do this every loop, but there's (currently)
+                // no way to tag the initial checkpoint otherwise
+                manager.tag_initial_checkpoint_if_able(original_history_len);
             }
 
             if invoke_result.is_err() {
                 // Handle the case where the tool call fails; need to pop checkpoints as necessary
             }
 
-            if !checkpoint_succeeded {
-                // Handle the case where checkpointing fails
-                // Pop checkpoints and notify user?
-            }
+            // if !checkpoint_succeeded {
+            //     // Handle the case where checkpointing fails
+            //     // Pop checkpoints and notify user?
+            // }
 
             if self.spinner.is_some() {
                 queue!(
@@ -1944,10 +1936,12 @@ impl ChatSession {
                         style::SetForegroundColor(Color::Green),
                         style::SetAttribute(Attribute::Bold),
                         style::Print(format!(" ● Completed in {}s ", tool_time)),
-                        style::Print(format!("[{tag}]").blue().bold()),
                         style::SetForegroundColor(Color::Reset),
-                        style::Print("\n\n")
                     )?;
+                    if !tag.is_empty() {
+                        execute!(self.stdout, style::Print(format!("[{tag}]").blue().bold()))?;
+                    }
+                    execute!(self.stdout, style::Print("\n\n"))?;
 
                     tool_telemetry = tool_telemetry.and_modify(|ev| ev.is_success = Some(true));
                     if let Tool::Custom(_) = &tool.tool {
@@ -1998,7 +1992,10 @@ impl ChatSession {
 
         if let Some(manager) = manager {
             if let Err(e) = CheckpointManager::save_manager(os, manager).await {
-                execute!(self.stderr, style::Print(format!("Tool-level checkpoints could not be saved: {e}")))?;
+                execute!(
+                    self.stderr,
+                    style::Print(format!("Tool-level checkpoints could not be saved: {e}"))
+                )?;
             }
         }
 

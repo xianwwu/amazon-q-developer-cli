@@ -4,6 +4,7 @@ use std::path::{
     PathBuf,
 };
 
+use async_trait::async_trait;
 use crossterm::queue;
 use crossterm::style::{
     self,
@@ -33,7 +34,12 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
-use crate::cli::chat::checkpoint::{collect_paths, CheckpointPaths};
+use crate::cli::chat::checkpoint::{
+    CheckpointManager,
+    Trackable,
+    collect_datas,
+    collect_relative_file_paths,
+};
 use crate::os::Os;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -74,24 +80,6 @@ impl FsRemove {
                 )?;
                 remove_dir(os, path).await?;
                 Ok(Default::default())
-            },
-        }
-    }
-
-    pub async fn gather_paths_for_checkpointing(&self, os: &Os) -> Result<CheckpointPaths> {
-        let cwd = os.env.current_dir()?;
-        match self {
-            Self::RemoveFile { path, .. } => {
-                let canonical = cwd.join(sanitize_path_tool_arg(os, path));
-                Ok(CheckpointPaths::Remove { paths: vec![canonical.clone()] })
-            },
-            Self::RemoveDir { path, .. } => {
-                let dir = cwd.join(sanitize_path_tool_arg(os, path));
-
-                let relative_paths = collect_paths(path).await?;
-                let paths: Vec<PathBuf> = relative_paths.iter().map(|p| dir.join(p)).collect();
-
-                Ok(CheckpointPaths::Remove { paths })
             },
         }
     }
@@ -295,6 +283,46 @@ impl FsRemove {
             None if is_in_allowlist => PermissionEvalResult::Allow,
             _ => PermissionEvalResult::Ask,
         }
+    }
+}
+
+#[async_trait]
+impl Trackable for FsRemove {
+    async fn setup_checkpointing(&self, os: &Os, manager: &mut CheckpointManager) -> Result<()> {
+        let cwd = os.env.current_dir()?;
+        let paths = match self {
+            Self::RemoveFile { path, .. } => {
+                let canonical = cwd.join(sanitize_path_tool_arg(os, path));
+                vec![canonical.clone()]
+            },
+            Self::RemoveDir { path, .. } => {
+                let dir = cwd.join(sanitize_path_tool_arg(os, path));
+                let relative_paths = collect_relative_file_paths(path).await?;
+                let paths: Vec<PathBuf> = relative_paths.iter().map(|p| dir.join(p)).collect();
+
+                paths
+            },
+        };
+
+        let datas: Vec<Option<Vec<u8>>> = collect_datas(os, &paths).await?.into_iter().map(Some).collect();
+
+        // Save all data
+        manager.checkpoint_with_data(os, paths.clone(), datas).await?;
+
+        // Track files as deleted
+        manager
+            .checkpoint_with_data(os, paths.clone(), vec![None; paths.len()])
+            .await?;
+
+        Ok(())
+    }
+
+    async fn finish_checkpointing(&self, _os: &Os, _manager: &mut CheckpointManager) -> Result<()> {
+        Ok(())
+    }
+
+    fn get_summary(&self, _os: &Os) -> Option<String> {
+        self.get_summary().cloned()
     }
 }
 

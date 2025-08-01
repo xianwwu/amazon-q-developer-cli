@@ -1,5 +1,8 @@
 use std::cmp::Eq;
-use std::collections::HashMap;
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 use std::fmt::Display;
 use std::path::{
     Path,
@@ -7,6 +10,7 @@ use std::path::{
 };
 use std::str::FromStr;
 
+use async_trait::async_trait;
 use chrono::{
     DateTime,
     Local,
@@ -32,8 +36,8 @@ use crate::cli::ConversationState;
 use crate::os::Os;
 
 // ######## HARDCODED VALUES ########
-const CHECKPOINT_DIR: &str = "/Users/kiranbug/.aws/amazonq/checkpoints/first/";
-const CHECKPOINT_FILE: &str = "/Users/kiranbug/.aws/amazonq/checkpoints/test_file.json";
+pub const CHECKPOINT_DIR: &str = "/Users/kiranbug/.aws/amazonq/checkpoints/first/";
+pub const CHECKPOINT_FILE: &str = "/Users/kiranbug/.aws/amazonq/checkpoints/test_file.json";
 // ######## ---------------- ########
 
 // FIX: Move complicated logic (None -> Some) into checkpoint function?
@@ -42,6 +46,13 @@ const CHECKPOINT_FILE: &str = "/Users/kiranbug/.aws/amazonq/checkpoints/test_fil
 //        handle on a case-by-case basis?
 // FIX: Remove hardcoded values
 // FIX:
+
+#[async_trait]
+pub trait Trackable {
+    async fn setup_checkpointing(&self, os: &Os, manager: &mut CheckpointManager) -> Result<()>;
+    async fn finish_checkpointing(&self, os: &Os, manager: &mut CheckpointManager) -> Result<()>;
+    fn get_summary(&self, os: &Os) -> Option<String>;
+}
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct CheckpointManager {
@@ -56,6 +67,7 @@ pub struct CheckpointManager {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Checkpoint {
     pub state: HashMap<PathBuf, Option<ContentHash>>,
+    pub directories: HashSet<PathBuf>,
     pub summary: String,
     pub tool_name: String,
     pub history_index: usize,
@@ -77,20 +89,6 @@ impl Display for ContentHash {
 pub enum Tag {
     TurnLevel(usize),
     ToolLevel(usize, usize),
-}
-
-#[derive(Clone)]
-pub enum CheckpointPaths {
-    Write {
-        path: PathBuf,
-    },
-    Rename {
-        old_paths: Vec<PathBuf>,
-        new_paths: Vec<PathBuf>,
-    },
-    Remove {
-        paths: Vec<PathBuf>
-    }
 }
 
 impl From<Tag> for String {
@@ -188,6 +186,8 @@ impl CheckpointManager {
     {
         let paths = paths.into();
         let datas = datas.into();
+        let directories = HashSet::from_iter(collect_absolute_dir_paths(os.env.current_dir()?).await?.iter().cloned());
+
         // Copy the previous checkpoint's state
         let mut new_map = if let Some(checkpoint) = self.checkpoints.iter().last() {
             checkpoint.state.clone()
@@ -212,6 +212,7 @@ impl CheckpointManager {
         }
         self.checkpoints.push(Checkpoint {
             state: new_map,
+            directories,
             summary: String::new(),
             tool_name: String::new(),
             history_index: 0,
@@ -244,6 +245,15 @@ impl CheckpointManager {
         if checkpoint.tag.is_none() {
             bail!("Attempting to restore an untagged checkpoint!");
         }
+
+        // Delete directories that shouldn't exist first
+        let directories = collect_absolute_dir_paths(os.env.current_dir()?).await?;
+        for dir in directories {
+            if !checkpoint.directories.contains(&dir) && os.fs.exists(&dir) {
+                os.fs.remove_dir_all(dir).await?;
+            }
+        }
+
         // If a touched file isn't in this checkpoint's state, look forward in history
         // to see the first time the file shows up.
         // This is complicated but necessary given the current design.
@@ -262,7 +272,7 @@ impl CheckpointManager {
             };
         }
 
-        for _ in checkpoint.history_index..conversation.get_history_len() {
+        for _ in checkpoint.history_index..conversation.history().len() {
             conversation
                 .pop_from_history()
                 .ok_or(eyre!("Tried to pop from empty history"))?;
@@ -290,7 +300,7 @@ impl CheckpointManager {
 
     async fn restore_file(&self, os: &Os, path: impl AsRef<Path>, hash: &ContentHash) -> Result<()> {
         let path = path.as_ref();
-        
+
         // Create parent directories if needed
         if let Some(parent) = path.parent() {
             os.fs.create_dir_all(parent).await?;
@@ -302,7 +312,13 @@ impl CheckpointManager {
         Ok(())
     }
 
-    fn tag_latest_checkpoint(&mut self, tag: String, summary: Option<String>, history_index: usize, tool_name: String) {
+    pub fn tag_latest_checkpoint(
+        &mut self,
+        tag: String,
+        summary: Option<String>,
+        history_index: usize,
+        tool_name: String,
+    ) {
         let description = if let Some(s) = summary {
             s
         } else {
@@ -358,74 +374,6 @@ impl CheckpointManager {
             self.tag_to_index.insert(tag, 0);
         }
     }
-
-    pub async fn setup_fs_write(&mut self, os: &Os, path: PathBuf) -> Result<()> {
-        let original_contents = if os.fs.exists(&path) {
-            Some(os.fs.read(&path).await?)
-        } else {
-            None
-        };
-        // Save original contents
-        self
-            .checkpoint_with_data(os, &[path], &[original_contents])
-            .await?;
-        Ok(())
-    }
-
-    pub async fn checkpoint_fs_write(&mut self, os: &Os, path: PathBuf, tag: String, summary: Option<String>, history_index: usize) -> Result<()> {
-        // Save new contents
-        self
-            .checkpoint_with_data(os, &[path.clone()], &[Some(os.fs.read(&path).await?)])
-            .await?;
-        self.tag_latest_checkpoint(tag, summary, history_index, "fs_write".to_string());
-        Ok(())
-    }
-
-    pub async fn checkpoint_fs_remove(&mut self, os: &Os, paths: Vec<PathBuf>, tag: String, summary: Option<String>, history_index: usize)  -> Result<()> {
-        let mut datas = Vec::new();
-        for path in paths.iter() {
-            datas.push(Some(os.fs.read(path).await?));
-        }
-
-        // Save all data
-        self.checkpoint_with_data(os, paths.clone(), datas.clone()).await?;
-
-        // Track files as deleted
-        self
-            .checkpoint_with_data(os, paths.clone(), vec![None; paths.len()])
-            .await?;
-
-        self.tag_latest_checkpoint(tag, summary, history_index, "fs_remove".to_string());
-
-        Ok(())
-    }
-
-    pub async fn checkpoint_fs_rename(&mut self, os: &Os, old_paths: Vec<PathBuf>, new_paths: Vec<PathBuf>, tag: String, summary: Option<String>, history_index: usize) -> Result<()> {
-        let mut datas = Vec::new();
-        for path in new_paths.iter() {
-            datas.push(Some(os.fs.read(path).await?));
-        }
-        
-        // Save old paths and data
-        self
-            .checkpoint_with_data(os, old_paths.clone(), datas.clone())
-            .await?;
-
-        // Track both original and new paths as deleted (necessary intermediate step)
-        self
-            .checkpoint_with_data(
-                os,
-                [old_paths.clone(), new_paths.clone()].concat(),
-                vec![None; old_paths.len() + new_paths.len()],
-            )
-            .await?;
-
-        // Track new paths and their contents
-        self.checkpoint_with_data(os, new_paths, datas).await?;
-        
-        self.tag_latest_checkpoint(tag, summary, history_index, "fs_rename".to_string());
-        Ok(())
-    }
 }
 
 fn hash_data(data: impl AsRef<[u8]>) -> ContentHash {
@@ -433,7 +381,7 @@ fn hash_data(data: impl AsRef<[u8]>) -> ContentHash {
     ContentHash(hash.iter().map(|b| format!("{:02x}", b)).collect())
 }
 
-pub async fn collect_paths(dir: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
+pub async fn collect_relative_file_paths(dir: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     for entry in WalkDir::new(&dir) {
         let entry = entry?;
@@ -444,3 +392,256 @@ pub async fn collect_paths(dir: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
     }
     Ok(paths)
 }
+
+pub async fn collect_absolute_dir_paths(dir: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
+    let mut paths = Vec::new();
+    for entry in WalkDir::new(&dir) {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            paths.push(path.to_path_buf());
+        }
+    }
+    Ok(paths)
+}
+
+pub async fn collect_datas(os: &Os, paths: &Vec<PathBuf>) -> Result<Vec<Vec<u8>>> {
+    let mut datas = Vec::new();
+    for path in paths.iter() {
+        datas.push(os.fs.read(path).await?);
+    }
+    Ok(datas)
+}
+
+// #[cfg(test)]
+// mod tests {
+//     use std::collections::HashMap;
+//     use std::path::{Path, PathBuf};
+//     use std::str::FromStr;
+//     use crate::cli::chat::tool_manager::ToolManager;
+//     use crate::cli::chat::checkpoint::{
+//         CheckpointManager, Tag, CHECKPOINT_DIR, CHECKPOINT_FILE
+//     };
+//     use crate::cli::agent::{Agents};
+//     use crate::cli::chat::tools::fs_remove::FsRemove;
+//     use crate::cli::chat::util::test::setup_test_directory;
+//     use crate::cli::chat::conversation::{
+//         ConversationState,
+//     };
+//     use crate::cli::chat::message::{
+//         AssistantMessage,
+//     };
+//     use crate::os::Os;
+
+//     const TEST_FILE_PATH: &str = "/test-file";
+
+//     async fn create_conversation(os: &mut Os) -> ConversationState{
+//         let agents = Agents::default();
+//         let tool_config = HashMap::new();
+//         let tool_manager = ToolManager::default();
+//         let mut conversation = ConversationState::new(
+//             "fake_id",
+//             agents.clone(),
+//             tool_config.clone(),
+//             tool_manager.clone(),
+//             None
+//         ).await;
+
+//          // Add some mock history entries
+//         let user_msg1 = "Hello, can you help me with a file?".to_string();
+//         let assistant_msg1 = AssistantMessage::new_response(
+//             None,
+//             "Sure! I can help you with file operations.".into()
+//         );
+
+//         conversation.set_next_user_message(user_msg1).await;
+//         conversation.push_assistant_message(os, assistant_msg1, None);
+
+//         let user_msg2 = "Create a test file for me".to_string();
+//         let assistant_msg2 = AssistantMessage::new_response(
+//             None,
+//             "I'll create a test file for you.".into()
+//         );
+
+//         conversation.set_next_user_message(user_msg2).await;
+//         conversation.push_assistant_message(os, assistant_msg2, None);
+
+//         // Add more
+//         // Add more history entries to simulate a longer conversation
+//         for i in 3..=5 {
+//             let user_msg = format!("User message {}", i);
+//             let assistant_msg = AssistantMessage::new_response(
+//                 None,
+//                 format!("Assistant response {}", i).into()
+//             );
+
+//             conversation.set_next_user_message(user_msg).await;
+//             conversation.push_assistant_message(os, assistant_msg, None);
+//         }
+//         conversation
+
+//     }
+
+//     async fn setup() -> (Os, ConversationState, CheckpointManager) {
+//         let mut os = setup_test_directory().await;
+//         let conversation = create_conversation(&mut os).await;
+//         os.fs.create_dir_all(CHECKPOINT_DIR).await.unwrap();
+//         os.fs.create_new(CHECKPOINT_FILE).await.unwrap();
+//         CheckpointManager::init(&os).await.unwrap();
+//         let manager = CheckpointManager::load_manager(&os).await.unwrap();
+
+//         (os, conversation, manager)
+//     }
+
+//     async fn create_and_populate_dir(os: &Os, path: impl AsRef<Path>) {
+//         let path = path.as_ref();
+//         os.fs.create_dir_all(path).await.unwrap();
+//         for i in 0..3 {
+//             let nested = path.join(format!("test_dir{i}"));
+//             os.fs.create_dir(&nested).await.unwrap();
+//             for j in 0..5 {
+//                 os.fs.create_new(nested.join(format!("test_file{j}"))).await.unwrap();
+//             }
+//         }
+//     }
+
+//     fn assert_dir_is_restored(os: &Os, path: impl AsRef<Path>) {
+//         let path = path.as_ref();
+//         assert!(os.fs.exists(path));
+//         for i in 0..3 {
+//             let nested = path.join(format!("test_dir{i}"));
+//             assert!(os.fs.exists(&nested));
+//             for j in 0..5 {
+//                 assert!(os.fs.exists(nested.join(format!("test_file{j}"))));
+//             }
+//         }
+//     }
+
+//     #[tokio::test]
+//     async fn restore_modify_file() {
+//         let (os, mut conversation, mut manager) = setup().await;
+//         let path = PathBuf::from(TEST_FILE_PATH);
+
+//         let old_contents = "original contents";
+//         let new_contents = "this is a new message!";
+
+//         // Create file
+//         os.fs.create_new(&path).await.unwrap();
+//         os.fs.write(&path, old_contents).await.unwrap();
+
+//         // Set up checkpointing and modify file
+//         manager.setup_fs_write(&os, path.clone()).await.unwrap();
+//         os.fs.write(&path, new_contents).await.unwrap();
+//         assert_eq!(os.fs.read_to_string(&path).await.unwrap(), new_contents);
+
+//         // Finish checkpointing
+//         manager.checkpoint_fs_write(&os, path.clone(), "1".to_string(), Some("test
+// checkpoint".to_string()), 0).await.unwrap();         assert_eq!(manager.checkpoints.len(), 2);
+//         assert!(manager.tag_to_index.contains_key(&Tag::from_str("1").unwrap()));
+
+//         // Tag initial checkpoint
+//         manager.tag_initial_checkpoint_if_able(0);
+
+//         // Restore checkpoint
+//         manager.restore_checkpoint(&os, &mut conversation, "0".to_string()).await.unwrap();
+
+//         // File content assertions
+//         assert_eq!(os.fs.read_to_string(&path).await.unwrap(), old_contents);
+//         assert_eq!(conversation.get_history_len(), 0);
+//     }
+
+//     #[tokio::test]
+//     async fn restore_remove_file() {
+//         let (os, mut conversation, mut manager) = setup().await;
+//         let path = PathBuf::from(TEST_FILE_PATH);
+
+//         let old_contents = "original contents";
+
+//         // Create file
+//         os.fs.create_new(&path).await.unwrap();
+//         os.fs.write(&path, old_contents).await.unwrap();
+
+//         // Set up checkpointing and delete file
+//         manager.checkpoint_fs_remove(&os, vec![path.clone()], "1".to_string(), Some("test
+// checkpoint".to_string()), 0).await.unwrap();         os.fs.remove_file(&path).await.unwrap();
+//         assert!(!os.fs.exists(&path));
+
+//         assert_eq!(manager.checkpoints.len(), 2);
+//         assert!(manager.tag_to_index.contains_key(&Tag::from_str("1").unwrap()));
+
+//         // Tag initial checkpoint
+//         manager.tag_initial_checkpoint_if_able(0);
+
+//         // Restore checkpoint
+//         manager.restore_checkpoint(&os, &mut conversation, "0".to_string()).await.unwrap();
+
+//         // File content assertions
+//         assert!(os.fs.exists(&path));
+//         assert_eq!(os.fs.read_to_string(&path).await.unwrap(), old_contents);
+//         assert_eq!(conversation.get_history_len(), 0);
+//     }
+
+//     #[tokio::test]
+//     async fn restore_rename_file() {
+//         let (os, mut conversation, mut manager) = setup().await;
+//         let old_path = PathBuf::from(TEST_FILE_PATH);
+//         let new_path = PathBuf::from("/new_path");
+
+//         let old_contents = "original contents";
+
+//         // Create and rename file
+//         os.fs.create_new(&old_path).await.unwrap();
+//         os.fs.write(&old_path, old_contents).await.unwrap();
+//         os.fs.rename(&old_path, &new_path).await.unwrap();
+
+//         // Checkpoint
+//         manager.checkpoint_fs_rename(&os, vec![old_path.clone()], vec![new_path.clone()],
+// "1".to_string(), Some("test checkpoint".to_string()), 0).await.unwrap();
+
+//         // Tag initial checkpoint
+//         manager.tag_initial_checkpoint_if_able(0);
+
+//         // Restore checkpoint
+//         manager.restore_checkpoint(&os, &mut conversation, "0".to_string()).await.unwrap();
+
+//         // File content assertions
+//         assert!(!os.fs.exists(&new_path));
+//         assert!(os.fs.exists(&old_path));
+//         assert_eq!(os.fs.read_to_string(&old_path).await.unwrap(), old_contents);
+//         assert_eq!(conversation.get_history_len(), 0);
+//     }
+
+//     #[tokio::test]
+//     async fn restore_remove_dir() {
+//         let (os, mut conversation, mut manager) = setup().await;
+//         let path = PathBuf::from("/test_dir");
+
+//         // Create dir to remove
+//         create_and_populate_dir(&os, &path).await;
+
+//         // Set up checkpointing and delete dir
+//         let tool = FsRemove::RemoveDir { path: path.display().to_string(), summary: None };
+//         let paths = tool.gather_paths_for_checkpointing(&os).await.unwrap();
+//         let CheckpointPaths::Remove { paths } = paths else { panic!("Gathered paths were not the
+// right format") };         manager.checkpoint_fs_remove(&os, paths, "1".to_string(), Some("test
+// checkpoint".to_string()), 0).await.unwrap();
+
+//         os.fs.remove_dir_all(&path).await.unwrap();
+//         assert!(!os.fs.exists(&path));
+
+//         assert_eq!(manager.checkpoints.len(), 2);
+//         assert!(manager.tag_to_index.contains_key(&Tag::from_str("1").unwrap()));
+
+//         // Tag initial checkpoint
+//         manager.tag_initial_checkpoint_if_able(0);
+
+//         // Restore checkpoint
+//         manager.restore_checkpoint(&os, &mut conversation, "0".to_string()).await.unwrap();
+
+//         // File content assertions
+//         assert!(os.fs.exists(&path));
+//         assert_dir_is_restored(&os, path);
+//         assert_eq!(conversation.get_history_len(), 0);
+//     }
+
+// }

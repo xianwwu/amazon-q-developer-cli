@@ -1,9 +1,11 @@
 use std::io::Write;
 use std::path::{
     Path,
+    PathBuf,
 };
 use std::sync::LazyLock;
 
+use async_trait::async_trait;
 use crossterm::queue;
 use crossterm::style::{
     self,
@@ -43,7 +45,10 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
-use crate::cli::chat::checkpoint::CheckpointPaths;
+use crate::cli::chat::checkpoint::{
+    CheckpointManager,
+    Trackable,
+};
 use crate::os::Os;
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
@@ -182,16 +187,6 @@ impl FsWrite {
             },
         };
         Ok(Default::default())
-    }
-
-    pub fn gather_paths_for_checkpointing(&self, os: &Os) -> Result<CheckpointPaths> {
-        let checkpoint_path = sanitize_path_tool_arg(os, match self {
-            FsWrite::Create { path, .. }
-            | FsWrite::StrReplace { path, .. }
-            | FsWrite::Insert { path, .. }
-            | FsWrite::Append { path, .. } => path,
-        });
-        Ok(CheckpointPaths::Write { path: os.env.current_dir()?.join(sanitize_path_tool_arg(os, checkpoint_path)) })
     }
 
     pub fn queue_description(&self, os: &Os, output: &mut impl Write) -> Result<()> {
@@ -435,6 +430,47 @@ impl FsWrite {
             None if is_in_allowlist => PermissionEvalResult::Allow,
             _ => PermissionEvalResult::Ask,
         }
+    }
+
+    pub fn get_path_for_checkpointing(&self, os: &Os) -> Result<PathBuf> {
+        let path = sanitize_path_tool_arg(os, match self {
+            FsWrite::Create { path, .. }
+            | FsWrite::StrReplace { path, .. }
+            | FsWrite::Insert { path, .. }
+            | FsWrite::Append { path, .. } => path,
+        });
+        let path = os.env.current_dir()?.join(sanitize_path_tool_arg(os, path));
+        Ok(path)
+    }
+}
+
+#[async_trait]
+impl Trackable for FsWrite {
+    async fn setup_checkpointing(&self, os: &Os, manager: &mut CheckpointManager) -> Result<()> {
+        let path = self.get_path_for_checkpointing(os)?;
+        let original_contents = if os.fs.exists(&path) {
+            Some(os.fs.read(&path).await?)
+        } else {
+            None
+        };
+
+        // Save original contents
+        manager.checkpoint_with_data(os, &[path], &[original_contents]).await?;
+        Ok(())
+    }
+
+    async fn finish_checkpointing(&self, os: &Os, manager: &mut CheckpointManager) -> Result<()> {
+        let path = self.get_path_for_checkpointing(os)?;
+
+        // Save new contents
+        manager
+            .checkpoint_with_data(os, &[path.clone()], &[Some(os.fs.read(&path).await?)])
+            .await?;
+        Ok(())
+    }
+
+    fn get_summary(&self, _os: &Os) -> Option<String> {
+        self.get_summary().cloned()
     }
 }
 

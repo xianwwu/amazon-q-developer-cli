@@ -41,6 +41,7 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
+use crate::cli::chat::checkpoint::Trackable;
 use crate::cli::chat::tools::fs_remove::FsRemove;
 use crate::cli::chat::tools::fs_rename::FsRename;
 use crate::os::Os;
@@ -159,6 +160,15 @@ impl Tool {
             Tool::GhIssue(gh_issue) => gh_issue.validate(os).await,
             Tool::Knowledge(knowledge) => knowledge.validate(os).await,
             Tool::Thinking(think) => think.validate(os).await,
+        }
+    }
+
+    pub fn as_trackable(&self) -> Option<&dyn Trackable> {
+        match self {
+            Tool::FsWrite(fs_write) => Some(fs_write),
+            Tool::FsRemove(fs_remove) => Some(fs_remove),
+            Tool::FsRename(fs_rename) => Some(fs_rename),
+            _ => None,
         }
     }
 }
@@ -307,7 +317,7 @@ pub fn sanitize_path_tool_arg(os: &Os, path: impl AsRef<Path>) -> PathBuf {
 }
 
 /// Converts `path` to a relative path according to the current working directory `cwd`.
-fn absolute_to_relative(cwd: impl AsRef<Path>, path: impl AsRef<Path>) -> Result<PathBuf> {
+pub fn absolute_to_relative(cwd: impl AsRef<Path>, path: impl AsRef<Path>) -> Result<PathBuf> {
     let cwd = cwd.as_ref().canonicalize()?;
     let path = path.as_ref().canonicalize()?;
     let mut cwd_parts = cwd.components().peekable();

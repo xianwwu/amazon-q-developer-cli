@@ -4,6 +4,7 @@ use std::path::{
     PathBuf,
 };
 
+use async_trait::async_trait;
 use crossterm::queue;
 use crossterm::style::{
     self,
@@ -33,7 +34,9 @@ use crate::cli::agent::{
     PermissionEvalResult,
 };
 use crate::cli::chat::checkpoint::{
-    collect_paths, CheckpointPaths
+    CheckpointManager,
+    Trackable,
+    collect_relative_file_paths,
 };
 use crate::os::Os;
 
@@ -55,29 +58,6 @@ impl FsRename {
         .await?;
 
         Ok(Default::default())
-    }
-
-    // Must be called BEFORE rename occurs because collect_paths() is called on original_dir
-    // If the ordering needs to change, replace collect_paths(&original_dir) with collect_paths(&new_dir)
-    pub async fn gather_paths_for_checkpointing(
-        &self,
-        os: &Os,
-    ) -> Result<CheckpointPaths> {
-        let cwd = os.env.current_dir()?;
-        if PathBuf::from(&self.new_path).is_file() {
-            let original_canonical = cwd.join(sanitize_path_tool_arg(os, &self.original_path));
-            let new_canonical = cwd.join(sanitize_path_tool_arg(os, &self.new_path));
-
-            Ok(CheckpointPaths::Rename { old_paths: vec![original_canonical], new_paths: vec![new_canonical] } )
-        } else {
-            let original_dir = cwd.join(sanitize_path_tool_arg(os, &self.original_path));
-            let new_dir = cwd.join(sanitize_path_tool_arg(os, &self.new_path));
-            let relative_paths = collect_paths(&original_dir).await?;
-            let old_paths: Vec<PathBuf> = relative_paths.iter().map(|p| original_dir.join(p)).collect();
-            let new_paths: Vec<PathBuf> = relative_paths.iter().map(|p| new_dir.join(p)).collect();
-
-            Ok(CheckpointPaths::Rename { old_paths, new_paths })
-        }
     }
 
     pub fn queue_description(&self, os: &Os, output: &mut impl Write) -> Result<()> {
@@ -117,11 +97,7 @@ impl FsRename {
 
     fn print_relative_paths_from_and_to(&self, os: &Os, output: &mut impl Write) -> Result<()> {
         let summary = self.get_summary(os).unwrap_or("No description provided".to_string());
-        queue!(
-            output,
-            style::Print("Renaming: "),
-            style::Print(summary.green()),
-        )?;
+        queue!(output, style::Print("Renaming: "), style::Print(summary.green()),)?;
         Ok(())
     }
 
@@ -197,6 +173,62 @@ impl FsRename {
             None if is_in_allowlist => PermissionEvalResult::Allow,
             _ => PermissionEvalResult::Ask,
         }
+    }
+}
+
+#[async_trait]
+impl Trackable for FsRename {
+    async fn setup_checkpointing(&self, os: &Os, manager: &mut CheckpointManager) -> Result<()> {
+        // Collect all paths
+        // If the path being renamed is a file, there's only one path
+        // If the path being renamed is a directory, gather all of the paths in the directory
+        let cwd = os.env.current_dir()?;
+        let (old_paths, new_paths) = if PathBuf::from(&self.original_path).is_file() {
+            let original_canonical = cwd.join(sanitize_path_tool_arg(os, &self.original_path));
+            let new_canonical = cwd.join(sanitize_path_tool_arg(os, &self.new_path));
+
+            (vec![original_canonical], vec![new_canonical])
+        } else {
+            let original_dir = cwd.join(sanitize_path_tool_arg(os, &self.original_path));
+            let new_dir = cwd.join(sanitize_path_tool_arg(os, &self.new_path));
+            let relative_paths = collect_relative_file_paths(&original_dir).await?;
+            let old_paths: Vec<PathBuf> = relative_paths.iter().map(|p| original_dir.join(p)).collect();
+            let new_paths: Vec<PathBuf> = relative_paths.iter().map(|p| new_dir.join(p)).collect();
+
+            (old_paths, new_paths)
+        };
+
+        let mut datas = Vec::new();
+        for path in old_paths.iter() {
+            datas.push(Some(os.fs.read(path).await?));
+        }
+
+        // Save old paths and data
+        manager
+            .checkpoint_with_data(os, old_paths.clone(), datas.clone())
+            .await?;
+
+        // Track both original and new paths as deleted (necessary intermediate step)
+        manager
+            .checkpoint_with_data(os, [old_paths.clone(), new_paths.clone()].concat(), vec![
+                None;
+                old_paths.len()
+                    + new_paths
+                        .len()
+            ])
+            .await?;
+
+        // Track new paths and their contents
+        manager.checkpoint_with_data(os, new_paths, datas).await?;
+        Ok(())
+    }
+
+    async fn finish_checkpointing(&self, _os: &Os, _manager: &mut CheckpointManager) -> Result<()> {
+        Ok(())
+    }
+
+    fn get_summary(&self, os: &Os) -> Option<String> {
+        self.get_summary(os)
     }
 }
 
