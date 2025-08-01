@@ -2,14 +2,23 @@ use std::io::Write;
 use std::str::FromStr;
 
 use clap::Subcommand;
-use crossterm::style::Stylize;
+use crossterm::style::{
+    StyledContent,
+    Stylize,
+};
 use crossterm::{
     execute,
     style,
 };
-use eyre::Result;
+use dialoguer::FuzzySelect;
+use eyre::{
+    OptionExt,
+    Result,
+    bail,
+};
 
 use crate::cli::chat::checkpoint::{
+    Checkpoint,
     CheckpointManager,
     Tag,
 };
@@ -23,7 +32,7 @@ use crate::os::Os;
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum CheckpointSubcommand {
     /// Revert to a specified checkpoint
-    Restore { tag: String },
+    Restore { tag: Option<String> },
     /// View all turn-level checkpoints
     List {
         #[arg(short, long)]
@@ -34,12 +43,74 @@ pub enum CheckpointSubcommand {
     Expand { tag: String },
 }
 
+pub struct CheckpointDisplayEntry {
+    pub tag: Tag,
+    pub display_parts: Vec<StyledContent<String>>,
+}
+
+impl TryFrom<&Checkpoint> for CheckpointDisplayEntry {
+    type Error = eyre::Report;
+
+    fn try_from(value: &Checkpoint) -> std::result::Result<Self, Self::Error> {
+        let tag = value
+            .tag
+            .clone()
+            .ok_or_eyre("Untagged checkpoints cannot be converted to display entries.")?;
+        let mut parts = Vec::new();
+        if tag.is_turn() {
+            parts.push(format!("[{tag}] ",).blue());
+            parts.push(format!("{} - {}", value.timestamp.format("%Y-%m-%d %H:%M:%S"), value.summary).reset());
+        } else {
+            parts.push(format!("[{tag}] ",).blue());
+            parts.push(format!("{}: ", value.tool_name).magenta());
+            parts.push(format!("{}", value.summary).reset());
+        }
+
+        Ok(Self {
+            tag,
+            display_parts: parts,
+        })
+    }
+}
+
+impl std::fmt::Display for CheckpointDisplayEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for part in self.display_parts.iter() {
+            write!(f, "{}", part)?;
+        }
+        Ok(())
+    }
+}
+
 impl CheckpointSubcommand {
     pub async fn execute(self, os: &Os, session: &mut ChatSession) -> Result<ChatState, ChatError> {
         match self {
             Self::Restore { tag } => {
-                let mut manager_option = CheckpointManager::load_manager(os).await;
-                if let Ok(manager) = &mut manager_option {
+                if let Ok(manager) = &mut CheckpointManager::load_manager(os).await {
+                    let tag = if let Some(tag) = tag {
+                        tag
+                    } else {
+                        // If the user doesn't provide a tag, allow them to fuzzy select a checkpoint
+                        let display_entries = match gather_all_turn_checkpoints(os).await {
+                            Ok(entries) => entries,
+                            Err(e) => {
+                                return Err(ChatError::Custom(format!("Error getting checkpoints: {e}\n").into()));
+                            },
+                        };
+                        if let Some(index) =
+                            fuzzy_select_checkpoints(&display_entries, "Select a checkpoint to restore:")
+                        {
+                            if index < display_entries.len() {
+                                display_entries[index].tag.to_string()
+                            } else {
+                                return Err(ChatError::Custom(
+                                    format!("Selecting checkpoint with index {index} failed\n").into(),
+                                ));
+                            }
+                        } else {
+                            return Ok(ChatState::PromptUser { skip_printing_tools: true })
+                        }
+                    };
                     let result = manager
                         .restore_checkpoint(os, &mut session.conversation, tag.clone())
                         .await;
@@ -80,35 +151,31 @@ impl CheckpointSubcommand {
 }
 
 async fn print_all_checkpoints(os: &Os, output: &mut impl Write, limit: Option<usize>) -> Result<()> {
-    let mut num_printed = 0;
+    let display_entries = gather_all_turn_checkpoints(os).await?;
+    for entry in display_entries.iter().take(limit.unwrap_or(display_entries.len())) {
+        execute!(output, style::Print(entry), style::Print("\n"))?;
+    }
+    Ok(())
+}
+
+async fn gather_all_turn_checkpoints(os: &Os) -> Result<Vec<CheckpointDisplayEntry>> {
+    let mut displays = Vec::new();
     if let Ok(manager) = CheckpointManager::load_manager(os).await {
         for checkpoint in manager.checkpoints {
             if checkpoint.tag.is_none() {
                 continue;
             }
-            match checkpoint.tag.unwrap() {
-                Tag::TurnLevel(i) => {
-                    execute!(
-                        output,
-                        style::Print(format!("[{}]", i).blue()),
-                        style::Print(format!(
-                            " {} - {}\n",
-                            checkpoint.timestamp.format("%Y-%m-%d %H:%M:%S"),
-                            checkpoint.summary
-                        )),
-                    )?;
-                    num_printed += 1;
-                    if limit.is_some() && num_printed > limit.unwrap() {
-                        break;
-                    }
+            match checkpoint.tag.clone().unwrap() {
+                Tag::TurnLevel(_) => {
+                    displays.push(CheckpointDisplayEntry::try_from(&checkpoint).unwrap());
                 },
                 Tag::ToolLevel(..) => (),
             };
         }
     } else {
-        execute!(output, style::Print("Checkpoints could not be loaded."))?;
+        bail!("Checkpoints could not be loaded.\n");
     }
-    Ok(())
+    Ok(displays)
 }
 
 async fn expand_checkpoint(os: &Os, output: &mut impl Write, tag: String) -> Result<()> {
@@ -121,15 +188,8 @@ async fn expand_checkpoint(os: &Os, output: &mut impl Write, tag: String) -> Res
             },
         };
         let checkpoint = &manager.checkpoints[*checkpoint_index];
-        execute!(
-            output,
-            style::Print(format!("[{}]", checkpoint.tag.as_ref().unwrap()).blue()),
-            style::Print(format!(
-                " {} - {}\n",
-                checkpoint.timestamp.format("%Y-%m-%d %H:%M:%S"),
-                checkpoint.summary
-            )),
-        )?;
+        let display_entry = CheckpointDisplayEntry::try_from(checkpoint)?;
+        execute!(output, style::Print(display_entry), style::Print("\n"))?;
 
         // If the user tries to expand a tool-level checkpoint, return early
         if !checkpoint.tag.as_ref().unwrap().is_turn() {
@@ -141,24 +201,32 @@ async fn expand_checkpoint(os: &Os, output: &mut impl Write, tag: String) -> Res
                 if checkpoint.tag.is_none() {
                     continue;
                 }
-                let tag = checkpoint.tag.as_ref().unwrap();
-                if tag.is_turn() {
+                if checkpoint.tag.as_ref().unwrap().is_turn() {
                     break;
                 }
-
-                // Since we're iterating backwards, append to display_vec backwards
-                display_vec.push(format!("{}\n", checkpoint.summary).reset());
-                display_vec.push(format!("{}: ", checkpoint.tool_name).magenta());
-                display_vec.push(format!("[{}] ", tag).blue());
-                display_vec.push(" └─ ".to_string().blue());
+                display_vec.push(CheckpointDisplayEntry::try_from(&manager.checkpoints[i])?);
             }
 
-            for elem in display_vec.iter().rev() {
-                execute!(output, style::Print(elem))?;
+            for entry in display_vec.iter().rev() {
+                execute!(
+                    output,
+                    style::Print(" └─ ".blue()),
+                    style::Print(entry),
+                    style::Print("\n")
+                )?;
             }
         }
     } else {
         execute!(output, style::Print("Checkpoints could not be loaded."))?;
     }
     Ok(())
+}
+
+fn fuzzy_select_checkpoints(entries: &Vec<CheckpointDisplayEntry>, prompt_str: &str) -> Option<usize> {
+    FuzzySelect::new()
+        .with_prompt(prompt_str)
+        .items(&entries)
+        .report(false)
+        .interact_opt()
+        .unwrap_or(None)
 }
