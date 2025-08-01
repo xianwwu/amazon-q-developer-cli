@@ -113,17 +113,17 @@ pub async fn default_model_id(os: &Os) -> String {
     // Check FRA region first
     if let Ok(Some(profile)) = os.database.get_auth_profile() {
         if profile.arn.split(':').nth(3) == Some("eu-central-1") {
-            return "CLAUDE_3_7_SONNET_20250219_V1_0".to_string();
+            return "claude-3.7-sonnet".to_string();
         }
     }
 
     // Check if Amazon IDC user
     if let Ok(Some(token)) = BuilderIdToken::load(&os.database).await {
         if matches!(token.token_type(), TokenType::IamIdentityCenter) && token.is_amzn_user() {
-            return "CLAUDE_3_7_SONNET_20250219_V1_0".to_string();
+            return "claude-3.7-sonnet".to_string();
         }
     }
 
     // Default to 4.0
-    "CLAUDE_SONNET_4_20250514_V1_0".to_string()
+    "claude-4-sonnet".to_string()
 }
