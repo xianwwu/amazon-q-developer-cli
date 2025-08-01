@@ -57,11 +57,10 @@ pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Opti
     let labels: Vec<String> = models
         .iter()
         .map(|model| {
-            let display_name = get_display_name(model.model_id());
             if Some(model.model_id()) == active_model_id {
-                format!("{} (active)", display_name)
+                format!("{} (active)", model.model_id())
             } else {
-                display_name.to_owned()
+                model.model_id().to_owned()
             }
         })
         .collect();
@@ -89,13 +88,12 @@ pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Opti
     if let Some(index) = selection {
         let selected = &models[index];
         let model_id_str = selected.model_id.clone();
-        session.conversation.model = Some(model_id_str);
-        let display_name = get_display_name(selected.model_id());
+        session.conversation.model = Some(model_id_str.clone());
 
         queue!(
             session.stderr,
             style::Print("\n"),
-            style::Print(format!(" Using {}\n\n", display_name)),
+            style::Print(format!(" Using {}\n\n", model_id_str)),
             style::ResetColor,
             style::SetForegroundColor(Color::Reset),
             style::SetBackgroundColor(Color::Reset),
@@ -128,16 +126,4 @@ pub async fn default_model_id(os: &Os) -> String {
 
     // Default to 4.0
     "CLAUDE_SONNET_4_20250514_V1_0".to_string()
-}
-
-pub fn get_display_name(model_id: &str) -> &str {
-    match model_id {
-        "CLAUDE_SONNET_4_20250514_V1_0" => "claude-4-sonnet",
-        "CLAUDE_3_7_SONNET_20250219_V1_0" => "claude-3.7-sonnet",
-        "CLAUDE_3_5_SONNET_20240620_V1_0" => "claude-3.5-sonnet-v1",
-        "CLAUDE_3_5_SONNET_20241022_V2_0" => "claude-3.5-sonnet-v2",
-        "CLAUDE_3_5_HAIKU_20241022_V1_0" => "claude-3.5-haiku",
-        "NOVA_PRO_V1_0" => "nova-pro",
-        _ => model_id,
-    }
 }

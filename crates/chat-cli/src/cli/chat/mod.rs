@@ -128,10 +128,7 @@ use crate::auth::AuthError;
 use crate::auth::builder_id::is_idc_user;
 use crate::cli::agent::Agents;
 use crate::cli::chat::cli::SlashCommand;
-use crate::cli::chat::cli::model::{
-    default_model_id,
-    get_display_name,
-};
+use crate::cli::chat::cli::model::default_model_id;
 use crate::cli::chat::cli::prompts::{
     GetPromptError,
     PromptsSubcommand,
@@ -298,21 +295,17 @@ impl ChatArgs {
             {
                 Some(m.model_id.clone())
             } else {
-                let available = models
-                    .iter()
-                    .map(|m| get_display_name(m.model_id()).to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let available = models.iter().map(|m| m.model_id.clone()).collect::<Vec<_>>().join(", ");
                 bail!("Model '{}' does not exist. Available models: {}", requested, available);
             }
         } else if let Some(saved) = os
             .database
             .settings
             .get_string(Setting::ChatDefaultModel)
-            .and_then(|name| {
+            .and_then(|model_id| {
                 models
                     .iter()
-                    .find(|m| get_display_name(m.model_id()) == name)
+                    .find(|m| m.model_id() == model_id)
                     .map(|m| m.model_id.clone())
             })
         {
@@ -1165,11 +1158,10 @@ impl ChatSession {
         self.stderr.flush()?;
 
         if let Some(ref id) = self.conversation.model {
-            let display_name = get_display_name(id);
             execute!(
                 self.stderr,
                 style::SetForegroundColor(Color::Cyan),
-                style::Print(format!("🤖 You are chatting with {}\n", display_name)),
+                style::Print(format!("🤖 You are chatting with {}\n", id)),
                 style::SetForegroundColor(Color::Reset),
                 style::Print("\n")
             )?;
