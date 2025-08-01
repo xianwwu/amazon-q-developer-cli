@@ -1,28 +1,65 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{
+    HashMap,
+    HashSet,
+    VecDeque,
+};
 use std::io::Write;
 use std::sync::atomic::Ordering;
 
 use crossterm::style::Color;
-use crossterm::{execute, style};
+use crossterm::{
+    execute,
+    style,
+};
 use regex::bytes::Matches;
-use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use tracing::{
+    debug,
+    warn,
+};
 
 use super::cli::compact::CompactStrategy;
-use super::consts::{DUMMY_TOOL_NAME, MAX_CHARS, MAX_CONVERSATION_STATE_HISTORY_LEN};
+use super::consts::{
+    DUMMY_TOOL_NAME,
+    MAX_CHARS,
+    MAX_CONVERSATION_STATE_HISTORY_LEN,
+};
 use super::context::ContextManager;
-use super::message::{AssistantMessage, ToolUseResult, UserMessage};
+use super::message::{
+    AssistantMessage,
+    ToolUseResult,
+    UserMessage,
+};
 use super::parser::RequestMetadata;
-use super::token_counter::{CharCount, CharCounter};
+use super::token_counter::{
+    CharCount,
+    CharCounter,
+};
 use super::tool_manager::ToolManager;
-use super::tools::{InputSchema, QueuedTool, ToolOrigin, ToolSpec};
+use super::tools::{
+    InputSchema,
+    QueuedTool,
+    ToolOrigin,
+    ToolSpec,
+};
 use super::util::serde_value_to_document;
 use crate::api_client::model::{
-    ChatMessage, ConversationState as FigConversationState, ImageBlock, Tool, ToolInputSchema, ToolSpecification,
+    ChatMessage,
+    ConversationState as FigConversationState,
+    ImageBlock,
+    Tool,
+    ToolInputSchema,
+    ToolSpecification,
     UserInputMessage,
 };
 use crate::cli::agent::Agents;
-use crate::cli::agent::hook::{Hook, HookTrigger};
+use crate::cli::agent::hook::{
+    Hook,
+    HookTrigger,
+};
 use crate::cli::chat::ChatError;
 use crate::cli::chat::message::AssistantToolUse;
 use crate::cli::user;
@@ -343,7 +380,7 @@ impl ConversationState {
         None
     }
 
-    // Returns usable hashmap that can be send to backend state given a string
+    // Returns usable tool hashmap that can be sent to backend state given a string
     fn convert_rag_to_tools(&mut self, rag_context: &str) -> Option<HashMap<ToolOrigin, Vec<Tool>>> {
         let mut enhanced_tools = HashMap::new();
 
@@ -358,44 +395,78 @@ impl ConversationState {
         let mut schema_json = String::new();
 
         for line in lines {
+            let line = line.trim();
+
             if line.starts_with("name:") {
-                tool_name = line.strip_prefix("name:").unwrap_or("").to_string();
+                // If we encounter a new name and we already have tool data, save the current tool
+                if !tool_name.is_empty() {
+                    self.add_tool_to_map(
+                        &mut enhanced_tools,
+                        &tool_name,
+                        &server_name,
+                        &description,
+                        &schema_json,
+                    );
+                }
+
+                // Start new tool
+                tool_name = line.strip_prefix("name:").unwrap_or("").trim().to_string();
+                server_name.clear();
+                description.clear();
+                schema_json.clear();
             } else if line.starts_with("server:") {
-                server_name = line.strip_prefix("server:").unwrap_or("").to_string();
+                server_name = line.strip_prefix("server:").unwrap_or("").trim().to_string();
             } else if line.starts_with("description:") {
-                description = line.strip_prefix("description:").unwrap_or("").to_string();
+                description = line.strip_prefix("description:").unwrap_or("").trim().to_string();
             } else if line.starts_with("schema:") {
-                schema_json = line.strip_prefix("schema:").unwrap_or("").to_string();
+                schema_json = line.strip_prefix("schema:").unwrap_or("").trim().to_string();
             }
         }
 
-        if tool_name.is_empty() || server_name.is_empty() {
-            return Some(enhanced_tools);
-        }
-
-        let json_value: serde_json::Value = serde_json::from_str(&schema_json)
-            .unwrap_or_else(|_| serde_json::json!({"type": "object", "properties": {}}));
-
-        // Extract the inner JSON if it's double-wrapped
-        let inner_json = if let Some(inner) = json_value.get("json") {
-            inner.clone()
-        } else {
-            json_value
-        };
-
-        let input_schema = serde_value_to_document(inner_json);
-
-        let origin = ToolOrigin::McpServer(server_name);
-        let tool = Tool::ToolSpecification(ToolSpecification {
-            name: tool_name,
-            description,
-            input_schema: ToolInputSchema {
-                json: Some(input_schema.into()),
-            },
-        });
-        enhanced_tools.entry(origin).or_insert_with(Vec::new).push(tool);
+        self.add_tool_to_map(
+            &mut enhanced_tools,
+            &tool_name,
+            &server_name,
+            &description,
+            &schema_json,
+        );
 
         Some(enhanced_tools)
+    }
+
+    // Helper function to create and add a tool to the HashMap
+    fn add_tool_to_map(
+        &self,
+        enhanced_tools: &mut HashMap<ToolOrigin, Vec<Tool>>,
+        tool_name: &str,
+        server_name: &str,
+        description: &str,
+        schema_json: &str,
+    ) {
+        if !tool_name.is_empty() && !server_name.is_empty() {
+            let json_value: serde_json::Value = serde_json::from_str(schema_json)
+                .unwrap_or_else(|_| serde_json::json!({"type": "object", "properties": {}}));
+
+            // Extract the inner JSON if it's double-wrapped
+            let inner_json = if let Some(inner) = json_value.get("json") {
+                inner.clone()
+            } else {
+                json_value
+            };
+
+            let input_schema = serde_value_to_document(inner_json);
+
+            let origin = ToolOrigin::McpServer(server_name.to_string());
+            let tool = Tool::ToolSpecification(ToolSpecification {
+                name: tool_name.to_string(),
+                description: description.to_string(),
+                input_schema: ToolInputSchema {
+                    json: Some(input_schema.into()),
+                },
+            });
+
+            enhanced_tools.entry(origin).or_insert_with(Vec::new).push(tool);
+        }
     }
 
     /// Returns a [FigConversationState] capable of being sent by [api_client::StreamingClient].
@@ -514,7 +585,7 @@ impl ConversationState {
             }
         }
 
-        let (context_messages, dropped_context_files) = self.context_messages(os, conversation_start_context).await;
+        let (context_messages, dropped_context_files) = self.context_messages(os, agent_spawn_context).await;
 
         // add top k mcp tools to description consisiting of just native
         // ensures not to remove MCP tool descriptions that have been previously used
@@ -1112,8 +1183,14 @@ fn enforce_tool_use_history_invariants(history: &mut VecDeque<HistoryEntry>, too
 mod tests {
     use super::super::message::AssistantToolUse;
     use super::*;
-    use crate::api_client::model::{AssistantResponseMessage, ToolResultStatus};
-    use crate::cli::agent::{Agent, Agents};
+    use crate::api_client::model::{
+        AssistantResponseMessage,
+        ToolResultStatus,
+    };
+    use crate::cli::agent::{
+        Agent,
+        Agents,
+    };
     use crate::cli::chat::tool_manager::ToolManager;
 
     const AMAZONQ_FILENAME: &str = "AmazonQ.md";
@@ -1262,16 +1339,12 @@ mod tests {
 
             conversation.push_assistant_message(
                 &mut os,
-                AssistantMessage::new_tool_use(
-                    None,
-                    i.to_string(),
-                    vec![AssistantToolUse {
-                        id: "tool_id".to_string(),
-                        name: "tool name".to_string(),
-                        args: serde_json::Value::Null,
-                        ..Default::default()
-                    }],
-                ),
+                AssistantMessage::new_tool_use(None, i.to_string(), vec![AssistantToolUse {
+                    id: "tool_id".to_string(),
+                    name: "tool name".to_string(),
+                    args: serde_json::Value::Null,
+                    ..Default::default()
+                }]),
                 None,
             );
             conversation.add_tool_results(vec![ToolUseResult {
@@ -1294,16 +1367,12 @@ mod tests {
             if i % 3 == 0 {
                 conversation.push_assistant_message(
                     &mut os,
-                    AssistantMessage::new_tool_use(
-                        None,
-                        i.to_string(),
-                        vec![AssistantToolUse {
-                            id: "tool_id".to_string(),
-                            name: "tool name".to_string(),
-                            args: serde_json::Value::Null,
-                            ..Default::default()
-                        }],
-                    ),
+                    AssistantMessage::new_tool_use(None, i.to_string(), vec![AssistantToolUse {
+                        id: "tool_id".to_string(),
+                        name: "tool name".to_string(),
+                        args: serde_json::Value::Null,
+                        ..Default::default()
+                    }]),
                     None,
                 );
                 conversation.add_tool_results(vec![ToolUseResult {
