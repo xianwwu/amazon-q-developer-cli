@@ -164,8 +164,8 @@ pub fn select_context_paths_with_skim(context_manager: &ContextManager) -> Resul
     let mut all_paths = Vec::new();
 
     // Get profile-specific paths
-    for path in &context_manager.profile_config.paths {
-        all_paths.push(format!("(profile: {}) {}", context_manager.current_profile, path));
+    for path in &context_manager.paths {
+        all_paths.push(format!("(agent: {}) {}", context_manager.current_profile, path));
     }
 
     if all_paths.is_empty() {

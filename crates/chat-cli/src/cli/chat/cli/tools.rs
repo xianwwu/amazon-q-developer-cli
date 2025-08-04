@@ -18,8 +18,14 @@ use crossterm::{
 };
 
 use crate::api_client::model::Tool as FigTool;
-use crate::cli::agent::Agent;
-use crate::cli::chat::consts::DUMMY_TOOL_NAME;
+use crate::cli::agent::{
+    Agent,
+    DEFAULT_AGENT_NAME,
+};
+use crate::cli::chat::consts::{
+    AGENT_FORMAT_TOOLS_DOC_URL,
+    DUMMY_TOOL_NAME,
+};
 use crate::cli::chat::tools::ToolOrigin;
 use crate::cli::chat::{
     ChatError,
@@ -57,7 +63,7 @@ impl ToolsArgs {
                 session
                     .conversation
                     .tools
-                    .get("native")
+                    .get(&ToolOrigin::Native)
                     .and_then(|tools| {
                         tools
                             .iter()
@@ -150,19 +156,19 @@ impl ToolsArgs {
             }
         }
 
-        queue!(
-            session.stderr,
-            style::Print("\nTrusted tools will run without confirmation."),
-            style::SetForegroundColor(Color::DarkGrey),
-            style::Print(format!("\n{}\n", "* Default settings")),
-            style::Print("\n💡 Use "),
-            style::SetForegroundColor(Color::Green),
-            style::Print("/tools help"),
-            style::SetForegroundColor(Color::Reset),
-            style::SetForegroundColor(Color::DarkGrey),
-            style::Print(" to edit permissions.\n\n"),
-            style::SetForegroundColor(Color::Reset),
-        )?;
+        if origin_tools.is_empty() {
+            queue!(
+                session.stderr,
+                style::Print(
+                    "\nNo tools are currently enabled.\n\nRefer to the documentation for how to add tools to your agent: "
+                ),
+                style::SetForegroundColor(Color::Green),
+                style::Print(AGENT_FORMAT_TOOLS_DOC_URL),
+                style::SetForegroundColor(Color::Reset),
+                style::Print("\n"),
+                style::SetForegroundColor(Color::Reset),
+            )?;
+        }
 
         Ok(ChatState::default())
     }
@@ -176,7 +182,9 @@ impl ToolsArgs {
 #[derive(Debug, PartialEq, Subcommand)]
 #[command(
     before_long_help = "By default, Amazon Q will ask for your permission to use certain tools. You can control which tools you
-trust so that no confirmation is required. These settings will last only for this session."
+trust so that no confirmation is required.
+
+Refer to the documentation for how to configure tools with your agent: https://github.com/aws/amazon-q-developer-cli/blob/main/docs/agent-format.md#tools-field"
 )]
 pub enum ToolsSubcommand {
     /// Show the input schema for all available tools
@@ -213,7 +221,7 @@ impl ToolsSubcommand {
         let native_tool_names = session
             .conversation
             .tools
-            .get("native")
+            .get(&ToolOrigin::Native)
             .map(|tools| {
                 tools
                     .iter()
@@ -351,7 +359,9 @@ impl ToolsSubcommand {
                 if let Some(path) = active_agent_path {
                     let result = async {
                         let content = tokio::fs::read(&path).await?;
-                        let orig_agent: Agent = serde_json::from_slice(&content)?;
+                        let orig_agent = serde_json::from_slice::<Agent>(&content)?;
+                        // since all we're doing here is swapping the tool list, it's okay if we
+                        // don't thaw it here
                         Ok::<Agent, Box<dyn std::error::Error>>(orig_agent)
                     }
                     .await;
@@ -364,7 +374,7 @@ impl ToolsSubcommand {
                     .conversation
                     .agents
                     .get_active()
-                    .is_some_and(|a| a.name.as_str() == "default")
+                    .is_some_and(|a| a.name.as_str() == DEFAULT_AGENT_NAME)
                 {
                     // We only want to reset the tool permission and nothing else
                     if let Some(active_agent) = session.conversation.agents.get_active_mut() {

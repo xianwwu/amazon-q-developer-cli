@@ -13,6 +13,7 @@ use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
+use crate::cli::chat::sanitize_unicode_tags;
 use crate::cli::chat::tools::{
     InvokeOutput,
     MAX_TOOL_RESPONSE_SIZE,
@@ -88,15 +89,23 @@ impl ExecuteCommand {
                 // against unwanted mutations
                 Some(cmd)
                     if cmd == "find"
-                        && cmd_args
-                            .iter()
-                            .any(|arg| arg.contains("-exec") || arg.contains("-delete")) =>
+                        && cmd_args.iter().any(|arg| {
+                            arg.contains("-exec") // includes -execdir
+                                || arg.contains("-delete")
+                                || arg.contains("-ok") // includes -okdir
+                        }) =>
                 {
                     return true;
                 },
                 Some(cmd) => {
                     if allowed_commands.contains(cmd) {
                         continue;
+                    }
+                    // Special casing for `grep`. -P flag for perl regexp has RCE issues, apparently
+                    // should not be supported within grep but is flagged as a possibility since this is perl
+                    // regexp.
+                    if cmd == "grep" && cmd_args.iter().any(|arg| arg.contains("-P")) {
+                        return true;
                     }
                     let is_cmd_read_only = READONLY_COMMANDS.contains(&cmd.as_str());
                     if !allow_read_only || !is_cmd_read_only {
@@ -112,10 +121,13 @@ impl ExecuteCommand {
 
     pub async fn invoke(&self, output: &mut impl Write) -> Result<InvokeOutput> {
         let output = run_command(&self.command, MAX_TOOL_RESPONSE_SIZE / 3, Some(output)).await?;
+        let clean_stdout = sanitize_unicode_tags(&output.stdout);
+        let clean_stderr = sanitize_unicode_tags(&output.stderr);
+
         let result = serde_json::json!({
             "exit_status": output.exit_status.unwrap_or(0).to_string(),
-            "stdout": output.stdout,
-            "stderr": output.stderr,
+            "stdout": clean_stdout,
+            "stderr": clean_stderr,
         });
 
         Ok(InvokeOutput {
@@ -229,6 +241,66 @@ pub fn format_output(output: &str, max_size: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_requires_acceptance_for_readonly_commands() {
+        let cmds = &[
+            // Safe commands
+            ("ls ~", false),
+            ("ls -al ~", false),
+            ("pwd", false),
+            ("echo 'Hello, world!'", false),
+            ("which aws", false),
+            // Potentially dangerous readonly commands
+            ("echo hi > myimportantfile", true),
+            ("ls -al >myimportantfile", true),
+            ("echo hi 2> myimportantfile", true),
+            ("echo hi >> myimportantfile", true),
+            ("echo $(rm myimportantfile)", true),
+            ("echo `rm myimportantfile`", true),
+            ("echo hello && rm myimportantfile", true),
+            ("echo hello&&rm myimportantfile", true),
+            ("ls nonexistantpath || rm myimportantfile", true),
+            ("echo myimportantfile | xargs rm", true),
+            ("echo myimportantfile|args rm", true),
+            ("echo <(rm myimportantfile)", true),
+            ("cat <<< 'some string here' > myimportantfile", true),
+            ("echo '\n#!/usr/bin/env bash\necho hello\n' > myscript.sh", true),
+            ("cat <<EOF > myimportantfile\nhello world\nEOF", true),
+            // Safe piped commands
+            ("find . -name '*.rs' | grep main", false),
+            ("ls -la | grep .git", false),
+            ("cat file.txt | grep pattern | head -n 5", false),
+            // Unsafe piped commands
+            ("find . -name '*.rs' | rm", true),
+            ("ls -la | grep .git | rm -rf", true),
+            ("echo hello | sudo rm -rf /", true),
+            // `find` command arguments
+            ("find important-dir/ -exec rm {} \\;", true),
+            ("find . -name '*.c' -execdir gcc -o '{}.out' '{}' \\;", true),
+            ("find important-dir/ -delete", true),
+            (
+                "echo y | find . -type f -maxdepth 1 -okdir open -a Calculator {} +",
+                true,
+            ),
+            ("find important-dir/ -name '*.txt'", false),
+            // `grep` command arguments
+            ("echo 'test data' | grep -P '(?{system(\"date\")})'", true),
+        ];
+        for (cmd, expected) in cmds {
+            let tool = serde_json::from_value::<ExecuteCommand>(serde_json::json!({
+                "command": cmd,
+            }))
+            .unwrap();
+            assert_eq!(
+                tool.requires_acceptance(None, true),
+                *expected,
+                "expected command: `{}` to have requires_acceptance: `{}`",
+                cmd,
+                expected
+            );
+        }
+    }
 
     #[test]
     fn test_requires_acceptance_for_windows_commands() {

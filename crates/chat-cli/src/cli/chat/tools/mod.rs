@@ -8,7 +8,10 @@ pub mod launch_agent;
 pub mod thinking;
 pub mod use_aws;
 
-use std::borrow::Borrow;
+use std::borrow::{
+    Borrow,
+    Cow,
+};
 use std::io::Write;
 use std::path::{
     Path,
@@ -36,6 +39,7 @@ use serde::{
     Serialize,
 };
 use thinking::Thinking;
+use tracing::error;
 use use_aws::UseAws;
 
 use super::consts::MAX_TOOL_RESPONSE_SIZE;
@@ -193,8 +197,9 @@ pub enum ToolOrigin {
 
 impl std::hash::Hash for ToolOrigin {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
         match self {
-            Self::Native => "native".hash(state),
+            Self::Native => {},
             Self::McpServer(name) => name.hash(state),
         }
     }
@@ -267,12 +272,15 @@ pub struct InvokeOutput {
 }
 
 impl InvokeOutput {
-    pub fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> Cow<'_, str> {
         match &self.output {
-            OutputKind::Text(s) => s.as_str(),
-            OutputKind::Json(j) => j.as_str().unwrap_or_default(),
-            OutputKind::Images(_) => "",
-            OutputKind::Mixed { text, .. } => text.as_str(), // Return the text part
+            OutputKind::Text(s) => s.as_str().into(),
+            OutputKind::Json(j) => serde_json::to_string(j)
+                .map_err(|err| error!(?err, "failed to serialize tool to json"))
+                .unwrap_or_default()
+                .into(),
+            OutputKind::Images(_) => "".into(),
+            OutputKind::Mixed { text, .. } => text.as_str().into(), // Return the text part
         }
     }
 }

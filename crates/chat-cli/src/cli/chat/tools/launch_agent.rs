@@ -1,7 +1,6 @@
 use std::env::current_exe;
 use std::io::Write;
 use std::process::Stdio;
-use std::time::Duration;
 
 use crossterm::style::{
     self,
