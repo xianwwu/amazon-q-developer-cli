@@ -332,7 +332,7 @@ impl ConversationState {
                 for tool in tool_list {
                     let Tool::ToolSpecification(spec) = tool;
                     tool_docs.push_str(&format!(
-                        "TOOL_START\nname:{}\nserver:{}\ndescription:{}\nschema:{}\nTOOL_END\n\n",
+                        "TOOL_START|||name:{}|||server:{}|||description:{}|||schema:{}|||TOOL_END\n\n",
                         spec.name,
                         server_name,
                         spec.description,
@@ -384,48 +384,40 @@ impl ConversationState {
             return enhanced_tools;
         }
 
-        let lines: Vec<&str> = rag_context.lines().collect();
-        let mut tool_name = String::new();
-        let mut server_name = String::new();
-        let mut description = String::new();
-        let mut schema_json = String::new();
-
-        for line in lines {
+        // Split by lines and process each tool entry
+        for line in rag_context.lines() {
             let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
 
-            if line.starts_with("name:") {
-                // If we encounter a new name and we already have tool data, save the current tool
-                if !tool_name.is_empty() {
-                    self.add_tool_to_map(
-                        &mut enhanced_tools,
-                        &tool_name,
-                        &server_name,
-                        &description,
-                        &schema_json,
-                    );
+            // Split by ||| and process each tool
+            let parts: Vec<&str> = line.split("|||").collect();
+            if parts.len() >= 4 {
+                let mut tool_name = "";
+                let mut server_name = "";
+                let mut description = "";
+                let mut schema_json = "";
+
+                // Parse each part
+                for part in &parts {
+                    let part = part.trim();
+                    if let Some(name) = part.strip_prefix("name:") {
+                        tool_name = name.trim();
+                    } else if let Some(server) = part.strip_prefix("server:") {
+                        server_name = server.trim();
+                    } else if let Some(desc) = part.strip_prefix("description:") {
+                        description = desc.trim();
+                    } else if let Some(schema) = part.strip_prefix("schema:") {
+                        schema_json = schema.trim();
+                    }
                 }
 
-                // Start new tool
-                tool_name = line.strip_prefix("name:").unwrap_or("").trim().to_string();
-                server_name.clear();
-                description.clear();
-                schema_json.clear();
-            } else if line.starts_with("server:") {
-                server_name = line.strip_prefix("server:").unwrap_or("").trim().to_string();
-            } else if line.starts_with("description:") {
-                description = line.strip_prefix("description:").unwrap_or("").trim().to_string();
-            } else if line.starts_with("schema:") {
-                schema_json = line.strip_prefix("schema:").unwrap_or("").trim().to_string();
+                if !tool_name.is_empty() && !server_name.is_empty() {
+                    self.add_tool_to_map(&mut enhanced_tools, tool_name, server_name, description, schema_json);
+                }
             }
         }
-
-        self.add_tool_to_map(
-            &mut enhanced_tools,
-            &tool_name,
-            &server_name,
-            &description,
-            &schema_json,
-        );
 
         enhanced_tools
     }
@@ -522,28 +514,30 @@ impl ConversationState {
                     .or_insert(vec![tool]);
                 acc
             });
-        let knowledge_store = KnowledgeStore::get_async_instance().await;
-        if let Ok(mut store) = knowledge_store.try_lock() {
-            let rag_mcp_uuid = KnowledgeStore::initialize_reserved_knowledge_bases();
-            match self.get_mcp_tool_descriptions(rag_mcp_uuid).await {
-                Ok(docs_file_path) => {
-                    match store
-                        .sync_mcp_tools_knowledge_base(&docs_file_path, Some(rag_mcp_uuid))
-                        .await
-                    {
-                        Ok(_) => {
-                            // Success - clean up temp file
-                            // std::fs::remove_file(&docs_file_path).ok();
-                        },
-                        Err(e) => {
-                            warn!("Failed to sync MCP tools knowledge base: {}", e);
-                            std::fs::remove_file(&docs_file_path).ok();
-                        },
-                    }
-                },
-                Err(e) => {
-                    warn!("Failed to create MCP tools documentation: {}", e);
-                },
+        if needs_update {
+            let knowledge_store = KnowledgeStore::get_async_instance().await;
+            if let Ok(mut store) = knowledge_store.try_lock() {
+                let rag_mcp_uuid = KnowledgeStore::initialize_reserved_knowledge_bases();
+                match self.get_mcp_tool_descriptions(rag_mcp_uuid).await {
+                    Ok(docs_file_path) => {
+                        match store
+                            .sync_mcp_tools_knowledge_base(&docs_file_path, Some(rag_mcp_uuid))
+                            .await
+                        {
+                            Ok(_) => {
+                                // Success - clean up temp file
+                                // std::fs::remove_file(&docs_file_path).ok();
+                            },
+                            Err(e) => {
+                                warn!("Failed to sync MCP tools knowledge base: {}", e);
+                                std::fs::remove_file(&docs_file_path).ok();
+                            },
+                        }
+                    },
+                    Err(e) => {
+                        warn!("Failed to create MCP tools documentation: {}", e);
+                    },
+                }
             }
         }
         self.tool_manager.has_new_stuff.store(false, Ordering::Release);
@@ -561,6 +555,7 @@ impl ConversationState {
         run_perprompt_hooks: bool,
         output: &mut impl Write,
     ) -> Result<BackendConversationState<'_>, ChatError> {
+        let needs_update = self.tool_manager.has_new_stuff.load(Ordering::Acquire);
         self.update_state(false).await;
         self.enforce_conversation_invariants();
 
@@ -583,48 +578,15 @@ impl ConversationState {
 
         let (context_messages, dropped_context_files) = self.context_messages(os, agent_spawn_context).await;
 
-        // add top k mcp tools to description consisiting of just native
-        // ensures not to remove MCP tool descriptions that have been previously used
-        if self.enhanced_tools_cache.is_none() {
-            let mut filtered_tools = self.tools.clone();
-            filtered_tools.retain(|origin, _| matches!(origin, ToolOrigin::Native));
-            self.enhanced_tools_cache = Some(filtered_tools);
+        // Initialize or update enhanced tools cache
+        if self.enhanced_tools_cache.is_none() || needs_update {
+            self.initialize_enhanced_tools_cache();
         }
 
-        let mut mcp_tool_hashmap = self.enhanced_tools_cache.clone().unwrap();
-        let enhanced_tools = match self.next_message.as_ref().and_then(|msg| msg.prompt()) {
-            Some(user_query) => {
-                // gets back top k relevant tools in string format
-                let mcp_tools_string = self
-                    .build_rag_enhanced_context(os, &user_query.to_string())
-                    .await
-                    .unwrap_or_default();
-
-                // converts the strings into usable self.tools hashmap format
-                // TODO: add optimization --> only persist the tool description if it was actually used.
-                let rag_mcp_tools = self.convert_rag_to_tools(&mcp_tools_string);
-
-                if let Some((origin, new_tools)) = rag_mcp_tools.into_iter().next() {
-                    let existing_tools = mcp_tool_hashmap.entry(origin).or_insert_with(Vec::new);
-
-                    // Only add tools that don't already exist
-                    for new_tool in new_tools {
-                        let Tool::ToolSpecification(new_spec) = &new_tool;
-                        let already_exists = existing_tools.iter().any(|existing_tool| {
-                                matches!(existing_tool, Tool::ToolSpecification(existing_spec) if existing_spec.name == new_spec.name)
-                            });
-
-                        if !already_exists {
-                            existing_tools.push(new_tool);
-                        }
-                    }
-                }
-
-                mcp_tool_hashmap
-            },
-            None => mcp_tool_hashmap,
-        };
-        self.enhanced_tools_cache = Some(enhanced_tools);
+        // Enhance tools with RAG if we have a user query
+        if let Some(user_query) = self.next_message.as_ref().and_then(|msg| msg.prompt()) {
+            self.enhance_tools_with_rag(os, &user_query.to_string()).await?;
+        }
 
         Ok(BackendConversationState {
             conversation_id: self.conversation_id.as_str(),
@@ -637,6 +599,59 @@ impl ConversationState {
             tools: self.enhanced_tools_cache.as_ref().unwrap(),
             model_id: self.model.as_deref(),
         })
+    }
+
+    fn initialize_enhanced_tools_cache(&mut self) {
+        let mut filtered_tools = HashMap::new();
+
+        // Add all native tools
+        for (origin, tools) in &self.tools {
+            if matches!(origin, ToolOrigin::Native) {
+                filtered_tools.insert(origin.clone(), tools.clone());
+            }
+        }
+
+        self.enhanced_tools_cache = Some(filtered_tools);
+    }
+
+    // Helper method to enhance tools with RAG, modifying the cache in place
+    async fn enhance_tools_with_rag(&mut self, os: &Os, user_query: &str) -> Result<(), ChatError> {
+        // Get RAG MCP tools in string form
+        let mcp_tools_string = self
+            .build_rag_enhanced_context(os, user_query)
+            .await
+            .unwrap_or_default();
+
+        // convert string to usable hashmap form
+        if !mcp_tools_string.is_empty() {
+            let rag_mcp_tools = self.convert_rag_to_tools(&mcp_tools_string);
+
+            // Build a global set of already cached tool names for deduplication
+            let mut existing_tool_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+            if let Some(ref cache) = self.enhanced_tools_cache {
+                for tools in cache.values() {
+                    for tool in tools {
+                        let Tool::ToolSpecification(spec) = tool;
+                        existing_tool_names.insert(spec.name.clone());
+                    }
+                }
+            }
+
+            let cache = self.enhanced_tools_cache.as_mut().unwrap();
+
+            for (origin, new_tools) in rag_mcp_tools {
+                let existing_tools = cache.entry(origin).or_insert_with(Vec::new);
+
+                for new_tool in new_tools {
+                    let Tool::ToolSpecification(new_spec) = &new_tool;
+                    // Only add if we haven't seen this tool name anywhere in the cache
+                    if existing_tool_names.insert(new_spec.name.clone()) {
+                        existing_tools.push(new_tool);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Returns a [FigConversationState] capable of replacing the history of the current
