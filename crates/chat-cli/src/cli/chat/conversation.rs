@@ -432,6 +432,11 @@ impl ConversationState {
         schema_json: &str,
     ) {
         if !tool_name.is_empty() && !server_name.is_empty() {
+            let description = if description.is_empty() {
+                "No description available"
+            } else {
+                description
+            };
             let json_value: serde_json::Value = serde_json::from_str(schema_json)
                 .unwrap_or_else(|_| serde_json::json!({"type": "object", "properties": {}}));
 
