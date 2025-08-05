@@ -9,6 +9,7 @@ use crossterm::{
 };
 use dialoguer::Select;
 
+use crate::api_client::Endpoint;
 use crate::auth::builder_id::{
     BuilderIdToken,
     TokenType,
@@ -20,19 +21,47 @@ use crate::cli::chat::{
 };
 use crate::os::Os;
 
+pub struct ModelOption {
+    /// Display name
+    pub name: &'static str,
+    /// Actual model id to send in the API
+    pub model_id: &'static str,
+    /// Size of the model's context window, in tokens
+    pub context_window_tokens: usize,
+}
+
+const MODEL_OPTIONS: [ModelOption; 2] = [
+    ModelOption {
+        name: "claude-4-sonnet",
+        model_id: "CLAUDE_SONNET_4_20250514_V1_0",
+        context_window_tokens: 200_000,
+    },
+    ModelOption {
+        name: "claude-3.7-sonnet",
+        model_id: "CLAUDE_3_7_SONNET_20250219_V1_0",
+        context_window_tokens: 200_000,
+    },
+];
+
+const GPT_OSS_120B: ModelOption = ModelOption {
+    name: "openai-gpt-oss-120b-preview",
+    model_id: "OPENAI_GPT_OSS_120B_1_0",
+    context_window_tokens: 128_000,
+};
+
 #[deny(missing_docs)]
 #[derive(Debug, PartialEq, Args)]
 pub struct ModelArgs;
 
 impl ModelArgs {
-    pub async fn execute(self, os: &mut Os, session: &mut ChatSession) -> Result<ChatState, ChatError> {
+    pub async fn execute(self, os: &Os, session: &mut ChatSession) -> Result<ChatState, ChatError> {
         Ok(select_model(os, session).await?.unwrap_or(ChatState::PromptUser {
             skip_printing_tools: false,
         }))
     }
 }
 
-pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Option<ChatState>, ChatError> {
+pub async fn select_model(os: &Os, session: &mut ChatSession) -> Result<Option<ChatState>, ChatError> {
     queue!(session.stderr, style::Print("\n"))?;
 
     // Fetch available models from service
@@ -53,8 +82,9 @@ pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Opti
     }
 
     let active_model_id = session.conversation.model.as_deref();
+    let model_options = get_model_options(os).await?;
 
-    let labels: Vec<String> = models
+    let labels: Vec<String> = model_options
         .iter()
         .map(|model| {
             if Some(model.model_id()) == active_model_id {
@@ -107,6 +137,8 @@ pub async fn select_model(os: &mut Os, session: &mut ChatSession) -> Result<Opti
     }))
 }
 
+/// Returns a default model id to use if none has been otherwise provided.
+///
 /// Returns Claude 3.7 for: Amazon IDC users, FRA region users
 /// Returns Claude 4.0 for: Builder ID users, other regions
 pub async fn default_model_id(os: &Os) -> String {
@@ -126,4 +158,62 @@ pub async fn default_model_id(os: &Os) -> String {
 
     // Default to 4.0
     "claude-4-sonnet".to_string()
+}
+
+/// Returns the available models for use.
+pub async fn get_model_options(os: &Os) -> Result<Vec<ModelOption>, ChatError> {
+    let mut model_options = MODEL_OPTIONS.into_iter().collect::<Vec<_>>();
+
+    // GPT OSS is only accessible in IAD.
+    let endpoint = Endpoint::configured_value(&os.database);
+    if endpoint.region().as_ref() != "us-east-1" {
+        return Ok(model_options);
+    }
+
+    model_options.push(GPT_OSS_120B);
+    Ok(model_options)
+}
+
+/// Returns the context window length in tokens for the given model_id.
+pub fn context_window_tokens(model_id: Option<&str>) -> usize {
+    const DEFAULT_CONTEXT_WINDOW_LENGTH: usize = 200_000;
+
+    let Some(model_id) = model_id else {
+        return DEFAULT_CONTEXT_WINDOW_LENGTH;
+    };
+
+    MODEL_OPTIONS
+        .iter()
+        .chain(std::iter::once(&GPT_OSS_120B))
+        .find(|m| m.model_id == model_id)
+        .map_or(DEFAULT_CONTEXT_WINDOW_LENGTH, |m| m.context_window_tokens)
+}
+
+/// Returns the available models for use.
+pub async fn get_model_options(os: &Os) -> Result<Vec<ModelOption>, ChatError> {
+    let mut model_options = MODEL_OPTIONS.into_iter().collect::<Vec<_>>();
+
+    // GPT OSS is only accessible in IAD.
+    let endpoint = Endpoint::configured_value(&os.database);
+    if endpoint.region().as_ref() != "us-east-1" {
+        return Ok(model_options);
+    }
+
+    model_options.push(GPT_OSS_120B);
+    Ok(model_options)
+}
+
+/// Returns the context window length in tokens for the given model_id.
+pub fn context_window_tokens(model_id: Option<&str>) -> usize {
+    const DEFAULT_CONTEXT_WINDOW_LENGTH: usize = 200_000;
+
+    let Some(model_id) = model_id else {
+        return DEFAULT_CONTEXT_WINDOW_LENGTH;
+    };
+
+    MODEL_OPTIONS
+        .iter()
+        .chain(std::iter::once(&GPT_OSS_120B))
+        .find(|m| m.model_id == model_id)
+        .map_or(DEFAULT_CONTEXT_WINDOW_LENGTH, |m| m.context_window_tokens)
 }

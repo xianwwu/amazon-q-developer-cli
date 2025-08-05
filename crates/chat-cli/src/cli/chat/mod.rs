@@ -41,7 +41,10 @@ use clap::{
     Parser,
 };
 use cli::compact::CompactStrategy;
-use cli::model::select_model;
+use cli::model::{
+    get_model_options,
+    select_model,
+};
 pub use conversation::ConversationState;
 use conversation::TokenWarningLevel;
 use crossterm::style::{
@@ -97,6 +100,7 @@ use tool_manager::{
 };
 use tools::gh_issue::GhIssueContext;
 use tools::{
+    NATIVE_TOOLS,
     OutputKind,
     QueuedTool,
     Tool,
@@ -133,6 +137,7 @@ use crate::cli::chat::cli::prompts::{
     GetPromptError,
     PromptsSubcommand,
 };
+use crate::cli::chat::util::sanitize_unicode_tags;
 use crate::database::settings::Setting;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
@@ -276,6 +281,28 @@ impl ChatArgs {
             }
 
             if let Some(trust_tools) = self.trust_tools.take() {
+                for tool in &trust_tools {
+                    if !tool.starts_with("@") && !NATIVE_TOOLS.contains(&tool.as_str()) {
+                        let _ = queue!(
+                            stderr,
+                            style::SetForegroundColor(Color::Yellow),
+                            style::Print("WARNING: "),
+                            style::SetForegroundColor(Color::Reset),
+                            style::Print("--trust-tools arg for custom tool "),
+                            style::SetForegroundColor(Color::Cyan),
+                            style::Print(tool),
+                            style::SetForegroundColor(Color::Reset),
+                            style::Print(" needs to be prepended with "),
+                            style::SetForegroundColor(Color::Green),
+                            style::Print("@{MCPSERVERNAME}/"),
+                            style::SetForegroundColor(Color::Reset),
+                            style::Print("\n"),
+                        );
+                    }
+                }
+
+                let _ = stderr.flush();
+
                 if let Some(a) = agents.get_active_mut() {
                     a.allowed_tools.extend(trust_tools);
                 }
@@ -790,7 +817,7 @@ impl ChatSession {
                 )?;
                 ("Unable to compact the conversation history", eyre!(err), true)
             },
-            ChatError::Client(err) => match *err {
+            ChatError::SendMessage(err) => match err.source {
                 // Errors from attempting to send too large of a conversation history. In
                 // this case, attempt to automatically compact the history for the user.
                 ApiClientError::ContextWindowOverflow { .. } => {
@@ -1158,13 +1185,16 @@ impl ChatSession {
         self.stderr.flush()?;
 
         if let Some(ref id) = self.conversation.model {
-            execute!(
-                self.stderr,
-                style::SetForegroundColor(Color::Cyan),
-                style::Print(format!("🤖 You are chatting with {}\n", id)),
-                style::SetForegroundColor(Color::Reset),
-                style::Print("\n")
-            )?;
+            let model_options = get_model_options(os).await?;
+            if let Some(model_option) = model_options.iter().find(|option| option.model_id == *id) {
+                execute!(
+                    self.stderr,
+                    style::SetForegroundColor(Color::Cyan),
+                    style::Print(format!("🤖 You are chatting with {}\n", model_option.name)),
+                    style::SetForegroundColor(Color::Reset),
+                    style::Print("\n")
+                )?;
+            }
         }
 
         if let Some(user_input) = self.initial_input.take() {
@@ -1293,7 +1323,9 @@ impl ChatSession {
                 // retryable according to the passed strategy.
                 let history_len = self.conversation.history().len();
                 match err {
-                    ChatError::Client(err) if matches!(*err, ApiClientError::ContextWindowOverflow { .. }) => {
+                    ChatError::SendMessage(err)
+                        if matches!(err.source, ApiClientError::ContextWindowOverflow { .. }) =>
+                    {
                         error!(?strategy, "failed to send compaction request");
                         // If there's only two messages in the history, we have no choice but to
                         // truncate it. We use two messages since it's almost guaranteed to contain:
@@ -1546,7 +1578,7 @@ impl ChatSession {
 
     async fn handle_input(&mut self, os: &mut Os, mut user_input: String) -> Result<ChatState, ChatError> {
         queue!(self.stderr, style::Print('\n'))?;
-
+        user_input = sanitize_unicode_tags(&user_input);
         let input = user_input.trim();
 
         // handle image path
