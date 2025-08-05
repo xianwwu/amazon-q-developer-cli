@@ -198,7 +198,9 @@ impl UseAws {
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Settings {
+            #[serde(default)]
             allowed_services: Vec<String>,
+            #[serde(default)]
             denied_services: Vec<String>,
         }
 
@@ -214,7 +216,7 @@ impl UseAws {
                     },
                 };
                 if settings.denied_services.contains(service_name) {
-                    return PermissionEvalResult::Deny;
+                    return PermissionEvalResult::Deny(vec![service_name.clone()]);
                 }
                 if settings.allowed_services.contains(service_name) {
                     return PermissionEvalResult::Allow;
@@ -235,7 +237,10 @@ impl UseAws {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
+    use crate::cli::agent::ToolSettingTarget;
 
     macro_rules! use_aws {
         ($value:tt) => {
@@ -355,5 +360,50 @@ mod tests {
         } else {
             panic!("Expected JSON output");
         }
+    }
+
+    #[test]
+    fn test_eval_perm() {
+        let cmd = use_aws! {{
+            "service_name": "s3",
+            "operation_name": "put-object",
+            "region": "us-west-2",
+            "profile_name": "default",
+            "label": ""
+        }};
+
+        let agent = Agent {
+            name: "test_agent".to_string(),
+            allowed_tools: {
+                let mut allowed_tools = HashSet::<String>::new();
+                allowed_tools.insert("use_aws".to_string());
+                allowed_tools
+            },
+            tools_settings: {
+                let mut map = HashMap::<ToolSettingTarget, serde_json::Value>::new();
+                map.insert(
+                    ToolSettingTarget("use_aws".to_string()),
+                    serde_json::json!({
+                        "deniedServices": ["s3"]
+                    }),
+                );
+                map
+            },
+            ..Default::default()
+        };
+
+        let res = cmd.eval_perm(&agent);
+        assert!(matches!(res, PermissionEvalResult::Deny(ref services) if services.contains(&"s3".to_string())));
+
+        let cmd = use_aws! {{
+            "service_name": "api_gateway",
+            "operation_name": "request",
+            "region": "us-west-2",
+            "profile_name": "default",
+            "label": ""
+        }};
+
+        let res = cmd.eval_perm(&agent);
+        assert!(matches!(res, PermissionEvalResult::Ask));
     }
 }

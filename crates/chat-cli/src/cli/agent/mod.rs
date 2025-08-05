@@ -317,7 +317,7 @@ impl Agent {
 pub enum PermissionEvalResult {
     Allow,
     Ask,
-    Deny,
+    Deny(Vec<String>),
 }
 
 #[derive(Clone, Default, Debug)]
