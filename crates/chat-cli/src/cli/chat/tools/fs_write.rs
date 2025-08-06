@@ -407,7 +407,7 @@ impl FsWrite {
                                     return PermissionEvalResult::Deny({
                                         denied_match_set
                                             .iter()
-                                            .filter_map(|i| sanitized_deny_list.get(*i).map(|s| s.to_string()))
+                                            .filter_map(|i| sanitized_deny_list.get(*i).map(|s| (*s).clone()))
                                             .collect::<Vec<_>>()
                                     });
                                 }
