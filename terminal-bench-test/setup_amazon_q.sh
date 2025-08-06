@@ -34,7 +34,7 @@ Q_SESSION_TOKEN=$(echo $TEMP_CREDENTIALS | jq -r '.Credentials.SessionToken')
 
 # Download specific build from S3 based on commit hash
 echo "Downloading Amazon Q CLI build from S3..."
-S3_PREFIX="main/${GIT_HASH}/x86_64-unknown-linux-musl"
+S3_PREFIX="main/${GIT_HASH}/x86_64-unknown-linux-gnu"
 echo "Downloading qchat.zip from s3://.../${S3_PREFIX}/qchat.zip"
 
 # Try download, if hash is invalid we fail.
