@@ -6,8 +6,15 @@ use crossterm::style::{
     Color,
 };
 use eyre::Result;
+use regex::Regex;
 use serde::Deserialize;
+use tracing::error;
 
+use crate::cli::agent::{
+    Agent,
+    PermissionEvalResult,
+};
+use crate::cli::chat::sanitize_unicode_tags;
 use crate::cli::chat::tools::{
     InvokeOutput,
     MAX_TOOL_RESPONSE_SIZE,
@@ -39,12 +46,25 @@ pub struct ExecuteCommand {
 }
 
 impl ExecuteCommand {
-    pub fn requires_acceptance(&self) -> bool {
+    pub fn requires_acceptance(&self, allowed_commands: Option<&Vec<String>>, allow_read_only: bool) -> bool {
+        let default_arr = vec![];
+        let allowed_commands = allowed_commands.unwrap_or(&default_arr);
+
+        let has_regex_match = allowed_commands
+            .iter()
+            .map(|cmd| Regex::new(&format!(r"\A{}\z", cmd)))
+            .filter(Result::is_ok)
+            .flatten()
+            .any(|regex| regex.is_match(&self.command));
+        if has_regex_match {
+            return false;
+        }
+
         let Some(args) = shlex::split(&self.command) else {
             return true;
         };
-
         const DANGEROUS_PATTERNS: &[&str] = &["<(", "$(", "`", ">", "&&", "||", "&", ";"];
+
         if args
             .iter()
             .any(|arg| DANGEROUS_PATTERNS.iter().any(|p| arg.contains(p)))
@@ -81,15 +101,27 @@ impl ExecuteCommand {
                 // against unwanted mutations
                 Some(cmd)
                     if cmd == "find"
-                        && cmd_args
-                            .iter()
-                            .any(|arg| arg.contains("-exec") || arg.contains("-delete")) =>
+                        && cmd_args.iter().any(|arg| {
+                            arg.contains("-exec") // includes -execdir
+                                || arg.contains("-delete")
+                                || arg.contains("-ok") // includes -okdir
+                        }) =>
                 {
                     return true;
                 },
-                Some(cmd) if !READONLY_COMMANDS.contains(&cmd.as_str()) => return true,
+                Some(cmd) => {
+                    // Special casing for `grep`. -P flag for perl regexp has RCE issues, apparently
+                    // should not be supported within grep but is flagged as a possibility since this is perl
+                    // regexp.
+                    if cmd == "grep" && cmd_args.iter().any(|arg| arg.contains("-P")) {
+                        return true;
+                    }
+                    let is_cmd_read_only = READONLY_COMMANDS.contains(&cmd.as_str());
+                    if !allow_read_only || !is_cmd_read_only {
+                        return true;
+                    }
+                },
                 None => return true,
-                _ => (),
             }
         }
 
@@ -98,10 +130,13 @@ impl ExecuteCommand {
 
     pub async fn invoke(&self, output: &mut impl Write) -> Result<InvokeOutput> {
         let output = run_command(&self.command, MAX_TOOL_RESPONSE_SIZE / 3, Some(output)).await?;
+        let clean_stdout = sanitize_unicode_tags(&output.stdout);
+        let clean_stderr = sanitize_unicode_tags(&output.stderr);
+
         let result = serde_json::json!({
             "exit_status": output.exit_status.unwrap_or(0).to_string(),
-            "stdout": output.stdout,
-            "stderr": output.stderr,
+            "stdout": clean_stdout,
+            "stderr": clean_stderr,
         });
 
         Ok(InvokeOutput {
@@ -139,6 +174,60 @@ impl ExecuteCommand {
         // TODO: probably some small amount of PATH checking
         Ok(())
     }
+
+    pub fn eval_perm(&self, agent: &Agent) -> PermissionEvalResult {
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Settings {
+            #[serde(default)]
+            allowed_commands: Vec<String>,
+            #[serde(default)]
+            denied_commands: Vec<String>,
+            #[serde(default = "default_allow_read_only")]
+            allow_read_only: bool,
+        }
+
+        fn default_allow_read_only() -> bool {
+            true
+        }
+
+        let Self { command, .. } = self;
+        let tool_name = if cfg!(windows) { "execute_cmd" } else { "execute_bash" };
+        let is_in_allowlist = agent.allowed_tools.contains("execute_bash");
+        match agent.tools_settings.get(tool_name) {
+            Some(settings) if is_in_allowlist => {
+                let Settings {
+                    allowed_commands,
+                    denied_commands,
+                    allow_read_only,
+                } = match serde_json::from_value::<Settings>(settings.clone()) {
+                    Ok(settings) => settings,
+                    Err(e) => {
+                        error!("Failed to deserialize tool settings for execute_bash: {:?}", e);
+                        return PermissionEvalResult::Ask;
+                    },
+                };
+
+                if denied_commands.iter().any(|dc| command.contains(dc)) {
+                    return PermissionEvalResult::Deny;
+                }
+
+                if self.requires_acceptance(Some(&allowed_commands), allow_read_only) {
+                    PermissionEvalResult::Ask
+                } else {
+                    PermissionEvalResult::Allow
+                }
+            },
+            None if is_in_allowlist => PermissionEvalResult::Allow,
+            _ => {
+                if self.requires_acceptance(None, default_allow_read_only()) {
+                    PermissionEvalResult::Ask
+                } else {
+                    PermissionEvalResult::Allow
+                }
+            },
+        }
+    }
 }
 
 pub struct CommandResult {
@@ -161,6 +250,66 @@ pub fn format_output(output: &str, max_size: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_requires_acceptance_for_readonly_commands() {
+        let cmds = &[
+            // Safe commands
+            ("ls ~", false),
+            ("ls -al ~", false),
+            ("pwd", false),
+            ("echo 'Hello, world!'", false),
+            ("which aws", false),
+            // Potentially dangerous readonly commands
+            ("echo hi > myimportantfile", true),
+            ("ls -al >myimportantfile", true),
+            ("echo hi 2> myimportantfile", true),
+            ("echo hi >> myimportantfile", true),
+            ("echo $(rm myimportantfile)", true),
+            ("echo `rm myimportantfile`", true),
+            ("echo hello && rm myimportantfile", true),
+            ("echo hello&&rm myimportantfile", true),
+            ("ls nonexistantpath || rm myimportantfile", true),
+            ("echo myimportantfile | xargs rm", true),
+            ("echo myimportantfile|args rm", true),
+            ("echo <(rm myimportantfile)", true),
+            ("cat <<< 'some string here' > myimportantfile", true),
+            ("echo '\n#!/usr/bin/env bash\necho hello\n' > myscript.sh", true),
+            ("cat <<EOF > myimportantfile\nhello world\nEOF", true),
+            // Safe piped commands
+            ("find . -name '*.rs' | grep main", false),
+            ("ls -la | grep .git", false),
+            ("cat file.txt | grep pattern | head -n 5", false),
+            // Unsafe piped commands
+            ("find . -name '*.rs' | rm", true),
+            ("ls -la | grep .git | rm -rf", true),
+            ("echo hello | sudo rm -rf /", true),
+            // `find` command arguments
+            ("find important-dir/ -exec rm {} \\;", true),
+            ("find . -name '*.c' -execdir gcc -o '{}.out' '{}' \\;", true),
+            ("find important-dir/ -delete", true),
+            (
+                "echo y | find . -type f -maxdepth 1 -okdir open -a Calculator {} +",
+                true,
+            ),
+            ("find important-dir/ -name '*.txt'", false),
+            // `grep` command arguments
+            ("echo 'test data' | grep -P '(?{system(\"date\")})'", true),
+        ];
+        for (cmd, expected) in cmds {
+            let tool = serde_json::from_value::<ExecuteCommand>(serde_json::json!({
+                "command": cmd,
+            }))
+            .unwrap();
+            assert_eq!(
+                tool.requires_acceptance(None, true),
+                *expected,
+                "expected command: `{}` to have requires_acceptance: `{}`",
+                cmd,
+                expected
+            );
+        }
+    }
 
     #[test]
     fn test_requires_acceptance_for_windows_commands() {
@@ -191,7 +340,43 @@ mod tests {
             }))
             .unwrap();
             assert_eq!(
-                tool.requires_acceptance(),
+                tool.requires_acceptance(None, true),
+                *expected,
+                "expected command: `{}` to have requires_acceptance: `{}`",
+                cmd,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_requires_acceptance_allowed_commands() {
+        let allowed_cmds: &[String] = &[
+            String::from("git status"),
+            String::from("root"),
+            String::from("command subcommand a=[0-9]{10} b=[0-9]{10}"),
+            String::from("command subcommand && command subcommand"),
+        ];
+        let cmds = &[
+            // Command first argument 'root' allowed (allows all subcommands)
+            ("root", false),
+            ("root subcommand", true),
+            // Valid allowed_command_regex matching
+            ("git", true),
+            ("git status", false),
+            ("command subcommand a=0123456789 b=0123456789", false),
+            ("command subcommand a=0123456789 b=012345678", true),
+            ("command subcommand alternate a=0123456789 b=0123456789", true),
+            // Control characters ignored due to direct allowed_command_regex match
+            ("command subcommand && command subcommand", false),
+        ];
+        for (cmd, expected) in cmds {
+            let tool = serde_json::from_value::<ExecuteCommand>(serde_json::json!({
+                "command": cmd,
+            }))
+            .unwrap();
+            assert_eq!(
+                tool.requires_acceptance(Option::from(&allowed_cmds.to_vec()), true),
                 *expected,
                 "expected command: `{}` to have requires_acceptance: `{}`",
                 cmd,

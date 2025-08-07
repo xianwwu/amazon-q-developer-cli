@@ -1,25 +1,35 @@
+use std::collections::HashMap;
 use std::env;
 
 use serde::{
     Deserialize,
     Serialize,
 };
-use tracing::error;
+use tracing::{
+    error,
+    warn,
+};
 
-use super::consts::MAX_CURRENT_WORKING_DIRECTORY_LEN;
+use super::consts::{
+    MAX_CURRENT_WORKING_DIRECTORY_LEN,
+    MAX_USER_MESSAGE_SIZE,
+};
 use super::tools::{
     InvokeOutput,
     OutputKind,
+    ToolOrigin,
 };
 use super::util::{
     document_to_serde_value,
     serde_value_to_document,
     truncate_safe,
+    truncate_safe_in_place,
 };
 use crate::api_client::model::{
     AssistantResponseMessage,
     EnvState,
     ImageBlock,
+    Tool,
     ToolResult,
     ToolResultContentBlock,
     ToolResultStatus,
@@ -53,6 +63,36 @@ pub enum UserMessageContent {
     ToolUseResults {
         tool_use_results: Vec<ToolUseResult>,
     },
+}
+
+impl UserMessageContent {
+    pub const TRUNCATED_SUFFIX: &str = "...content truncated due to length";
+
+    fn truncate_safe(&mut self, max_bytes: usize) {
+        match self {
+            UserMessageContent::Prompt { prompt } => {
+                truncate_safe_in_place(prompt, max_bytes, Self::TRUNCATED_SUFFIX);
+            },
+            UserMessageContent::CancelledToolUses {
+                prompt,
+                tool_use_results,
+            } => {
+                if let Some(prompt) = prompt {
+                    truncate_safe_in_place(prompt, max_bytes / 2, Self::TRUNCATED_SUFFIX);
+                    truncate_safe_tool_use_results(
+                        tool_use_results.as_mut_slice(),
+                        max_bytes / 2,
+                        Self::TRUNCATED_SUFFIX,
+                    );
+                } else {
+                    truncate_safe_tool_use_results(tool_use_results.as_mut_slice(), max_bytes, Self::TRUNCATED_SUFFIX);
+                }
+            },
+            UserMessageContent::ToolUseResults { tool_use_results } => {
+                truncate_safe_tool_use_results(tool_use_results.as_mut_slice(), max_bytes, Self::TRUNCATED_SUFFIX);
+            },
+        }
+    }
 }
 
 impl UserMessage {
@@ -112,9 +152,10 @@ impl UserMessage {
     /// Converts this message into a [UserInputMessage] to be stored in the history of
     /// [api_client::model::ConversationState].
     pub fn into_history_entry(self) -> UserInputMessage {
+        let content = self.content_with_context();
         UserInputMessage {
-            images: None,
-            content: self.prompt().unwrap_or_default().to_string(),
+            images: self.images.clone(),
+            content,
             user_input_message_context: Some(UserInputMessageContext {
                 env_state: self.env_context.env_state,
                 tool_results: match self.content {
@@ -134,18 +175,15 @@ impl UserMessage {
 
     /// Converts this message into a [UserInputMessage] to be sent as
     /// [FigConversationState::user_input_message].
-    pub fn into_user_input_message(self) -> UserInputMessage {
-        let formatted_prompt = match self.prompt() {
-            Some(prompt) if !prompt.is_empty() => {
-                format!("{}{}{}", USER_ENTRY_START_HEADER, prompt, USER_ENTRY_END_HEADER)
-            },
-            _ => String::new(),
-        };
+    pub fn into_user_input_message(
+        self,
+        model_id: Option<String>,
+        tools: &HashMap<ToolOrigin, Vec<Tool>>,
+    ) -> UserInputMessage {
+        let content = self.content_with_context();
         UserInputMessage {
             images: self.images,
-            content: format!("{} {}", self.additional_context, formatted_prompt)
-                .trim()
-                .to_string(),
+            content,
             user_input_message_context: Some(UserInputMessageContext {
                 env_state: self.env_context.env_state,
                 tool_results: match self.content {
@@ -155,11 +193,15 @@ impl UserMessage {
                     },
                     UserMessageContent::Prompt { .. } => None,
                 },
-                tools: None,
+                tools: if tools.is_empty() {
+                    None
+                } else {
+                    Some(tools.values().flatten().cloned().collect::<Vec<_>>())
+                },
                 ..Default::default()
             }),
             user_intent: None,
-            model_id: None,
+            model_id,
         }
     }
 
@@ -193,6 +235,50 @@ impl UserMessage {
             UserMessageContent::ToolUseResults { .. } => None,
         }
     }
+
+    /// Truncates the content contained in this user message to a maximum length of `max_bytes`.
+    pub fn truncate_safe(&mut self, max_bytes: usize) {
+        self.content.truncate_safe(max_bytes);
+    }
+
+    pub fn replace_content_with_tool_use_results(&mut self) {
+        if let Some(tool_results) = self.tool_use_results() {
+            let tool_content: Vec<String> = tool_results
+                .iter()
+                .flat_map(|tr| {
+                    tr.content.iter().map(|c| match c {
+                        ToolUseResultBlock::Json(document) => serde_json::to_string(&document)
+                            .map_err(|err| error!(?err, "failed to serialize tool result"))
+                            .unwrap_or_default(),
+                        ToolUseResultBlock::Text(s) => s.clone(),
+                    })
+                })
+                .collect::<_>();
+            let mut tool_content = tool_content.join(" ");
+            if tool_content.is_empty() {
+                // To avoid validation errors with empty content, we need to make sure
+                // something is set.
+                tool_content.push_str("<tool result redacted>");
+            }
+            let prompt = truncate_safe(&tool_content, MAX_USER_MESSAGE_SIZE).to_string();
+            self.content = UserMessageContent::Prompt { prompt };
+        }
+    }
+
+    /// Returns a formatted [String] containing [Self::additional_context] and [Self::prompt].
+    fn content_with_context(&self) -> String {
+        match (self.additional_context.is_empty(), self.prompt()) {
+            // Only add special delimiters if we have both a prompt and additional context
+            (false, Some(prompt)) => format!(
+                "{} {}{}{}",
+                self.additional_context, USER_ENTRY_START_HEADER, prompt, USER_ENTRY_END_HEADER
+            ),
+            (true, Some(prompt)) => prompt.to_string(),
+            _ => self.additional_context.clone(),
+        }
+        .trim()
+        .to_string()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,6 +307,31 @@ impl From<ToolUseResult> for ToolResult {
             tool_use_id: value.tool_use_id,
             content: value.content.into_iter().map(Into::into).collect(),
             status: value.status,
+        }
+    }
+}
+
+fn truncate_safe_tool_use_results(tool_use_results: &mut [ToolUseResult], max_bytes: usize, truncated_suffix: &str) {
+    let max_bytes = max_bytes / tool_use_results.len();
+    for result in tool_use_results {
+        for content in &mut result.content {
+            match content {
+                ToolUseResultBlock::Json(value) => match serde_json::to_string(value) {
+                    Ok(mut value_str) => {
+                        if value_str.len() > max_bytes {
+                            truncate_safe_in_place(&mut value_str, max_bytes, truncated_suffix);
+                            *content = ToolUseResultBlock::Text(value_str);
+                            return;
+                        }
+                    },
+                    Err(err) => {
+                        warn!(?err, "Unable to truncate JSON");
+                    },
+                },
+                ToolUseResultBlock::Text(t) => {
+                    truncate_safe_in_place(t, max_bytes, truncated_suffix);
+                },
+            }
         }
     }
 }
@@ -255,6 +366,7 @@ impl From<InvokeOutput> for ToolUseResultBlock {
             OutputKind::Text(text) => Self::Text(text),
             OutputKind::Json(value) => Self::Json(value),
             OutputKind::Images(_) => Self::Text("See images data supplied".to_string()),
+            OutputKind::Mixed { text, .. } => ToolUseResultBlock::Text(text),
         }
     }
 }
