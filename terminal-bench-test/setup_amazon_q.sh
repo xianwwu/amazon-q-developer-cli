@@ -45,15 +45,28 @@ AWS_ACCESS_KEY_ID="$QCHAT_ACCESSKEY" AWS_SECRET_ACCESS_KEY="$Q_SECRET_ACCESS_KEY
 echo "Extracting qchat.zip..."
 unzip -q qchat.zip
 
-# move it to /usr/local/bin/qchat for path as qchat may not work otherwise
-if cp qchat /usr/local/bin/ && chmod +x /usr/local/bin/qchat; then
+# Debug: Show extracted structure
+echo "Extracted contents:"
+ls -la
+
+# Extract and install mimicing the official release
+if [ -d "q" ] && [ -f "q/bin/qchat" ]; then
+    cp q/bin/qchat /usr/local/bin/qchat
+    cp q/bin/q /usr/local/bin/q 2>/dev/null || ln -sf /usr/local/bin/qchat /usr/local/bin/q
+    chmod +x /usr/local/bin/qchat /usr/local/bin/q
+    echo "qchat installed successfully"
+elif [ -f "qchat" ]; then
+    # Fallback if it's just the binary
+    cp qchat /usr/local/bin/qchat
     ln -sf /usr/local/bin/qchat /usr/local/bin/q
+    chmod +x /usr/local/bin/qchat
     echo "qchat installed successfully"
 else
-    echo "ERROR: Failed to install qchat"
+    echo "ERROR: qchat not found in expected locations"
+    ls -la
     exit 1
 fi
 
 echo "Cleaning q zip"
 rm -f qchat.zip
-rm -rf qchat
+rm -rf q qchat
