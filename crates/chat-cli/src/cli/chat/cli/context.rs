@@ -222,7 +222,8 @@ impl ContextSubcommand {
                         execute!(session.stderr, style::Print(format!("{}\n\n", "▔".repeat(3))),)?;
                     }
 
-                    let context_files_max_size = calc_max_context_files_size(session.conversation.model.as_deref());
+                    let context_files_max_size =
+                        calc_max_context_files_size(session.conversation.model.as_deref(), os).await;
                     let mut files_as_vec = profile_context_files
                         .iter()
                         .map(|(path, content, _)| (path.clone(), content.clone()))

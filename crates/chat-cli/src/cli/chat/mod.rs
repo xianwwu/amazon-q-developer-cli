@@ -42,7 +42,7 @@ use clap::{
 };
 use cli::compact::CompactStrategy;
 use cli::model::{
-    get_model_options,
+    get_available_models,
     select_model,
 };
 pub use conversation::ConversationState;
@@ -629,7 +629,7 @@ impl ChatSession {
                 cs.enforce_tool_use_history_invariants();
                 cs
             },
-            false => ConversationState::new(conversation_id, agents, tool_config, tool_manager, model_id).await,
+            false => ConversationState::new(conversation_id, agents, tool_config, tool_manager, model_id, os).await,
         };
 
         // Spawn a task for listening and broadcasting sigints.
@@ -1185,12 +1185,13 @@ impl ChatSession {
         self.stderr.flush()?;
 
         if let Some(ref id) = self.conversation.model {
-            let model_options = get_model_options(os).await?;
-            if let Some(model_option) = model_options.iter().find(|option| option.model_id == *id) {
+            let (models, _default_model) = get_available_models(os).await?;
+            if let Some(model_option) = models.iter().find(|option| option.model_id == *id) {
+                let display_name = model_option.model_name().unwrap_or_else(|| &model_option.model_id);
                 execute!(
                     self.stderr,
                     style::SetForegroundColor(Color::Cyan),
-                    style::Print(format!("🤖 You are chatting with {}\n", model_option.name)),
+                    style::Print(format!("🤖 You are chatting with {}\n", display_name)),
                     style::SetForegroundColor(Color::Reset),
                     style::Print("\n")
                 )?;

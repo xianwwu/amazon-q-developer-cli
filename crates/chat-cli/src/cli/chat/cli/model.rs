@@ -1,3 +1,4 @@
+use amzn_codewhisperer_client::types::Model;
 use clap::Args;
 use crossterm::style::{
     self,
@@ -20,35 +21,6 @@ use crate::cli::chat::{
     ChatState,
 };
 use crate::os::Os;
-
-pub struct ModelOption {
-    /// Display name
-    pub name: &'static str,
-    /// Actual model id to send in the API
-    pub model_id: &'static str,
-    /// Size of the model's context window, in tokens
-    pub context_window_tokens: usize,
-}
-
-const MODEL_OPTIONS: [ModelOption; 2] = [
-    ModelOption {
-        name: "claude-4-sonnet",
-        model_id: "CLAUDE_SONNET_4_20250514_V1_0",
-        context_window_tokens: 200_000,
-    },
-    ModelOption {
-        name: "claude-3.7-sonnet",
-        model_id: "CLAUDE_3_7_SONNET_20250219_V1_0",
-        context_window_tokens: 200_000,
-    },
-];
-
-const GPT_OSS_120B: ModelOption = ModelOption {
-    name: "openai-gpt-oss-120b-preview",
-    model_id: "OPENAI_GPT_OSS_120B_1_0",
-    context_window_tokens: 128_000,
-};
-
 #[deny(missing_docs)]
 #[derive(Debug, PartialEq, Args)]
 pub struct ModelArgs;
@@ -65,11 +37,7 @@ pub async fn select_model(os: &Os, session: &mut ChatSession) -> Result<Option<C
     queue!(session.stderr, style::Print("\n"))?;
 
     // Fetch available models from service
-    let (models, _default_model) = os
-        .client
-        .list_available_models_cached()
-        .await
-        .map_err(|e| ChatError::Custom(format!("Failed to fetch available models: {}", e).into()))?;
+    let (models, _default_model) = get_available_models(os).await?;
 
     if models.is_empty() {
         queue!(
@@ -82,15 +50,16 @@ pub async fn select_model(os: &Os, session: &mut ChatSession) -> Result<Option<C
     }
 
     let active_model_id = session.conversation.model.as_deref();
-    let model_options = get_model_options(os).await?;
 
-    let labels: Vec<String> = model_options
+    let labels: Vec<String> = models
         .iter()
         .map(|model| {
+            let display_name = model.model_name().unwrap_or(model.model_id());
+
             if Some(model.model_id()) == active_model_id {
-                format!("{} (active)", model.model_id())
+                format!("{} (active)", display_name)
             } else {
-                model.model_id().to_owned()
+                display_name.to_owned()
             }
         })
         .collect();
@@ -119,11 +88,12 @@ pub async fn select_model(os: &Os, session: &mut ChatSession) -> Result<Option<C
         let selected = &models[index];
         let model_id_str = selected.model_id.clone();
         session.conversation.model = Some(model_id_str.clone());
+        let display_name = selected.model_name().unwrap_or(selected.model_id());
 
         queue!(
             session.stderr,
             style::Print("\n"),
-            style::Print(format!(" Using {}\n\n", model_id_str)),
+            style::Print(format!(" Using {}\n\n", display_name)),
             style::ResetColor,
             style::SetForegroundColor(Color::Reset),
             style::SetBackgroundColor(Color::Reset),
@@ -160,60 +130,41 @@ pub async fn default_model_id(os: &Os) -> String {
     "claude-4-sonnet".to_string()
 }
 
-/// Returns the available models for use.
-pub async fn get_model_options(os: &Os) -> Result<Vec<ModelOption>, ChatError> {
-    let mut model_options = MODEL_OPTIONS.into_iter().collect::<Vec<_>>();
-
-    // GPT OSS is only accessible in IAD.
+/// Get available models with caching support
+pub async fn get_available_models(os: &Os) -> Result<(Vec<Model>, Option<Model>), ChatError> {
     let endpoint = Endpoint::configured_value(&os.database);
-    if endpoint.region().as_ref() != "us-east-1" {
-        return Ok(model_options);
-    }
+    let region = endpoint.region().as_ref();
 
-    model_options.push(GPT_OSS_120B);
-    Ok(model_options)
+    os.client
+        .get_available_models(region)
+        .await
+        .map_err(|e| ChatError::Custom(format!("Failed to fetch available models: {}", e).into()))
 }
 
 /// Returns the context window length in tokens for the given model_id.
-pub fn context_window_tokens(model_id: Option<&str>) -> usize {
+/// Uses cached model data when available
+pub async fn context_window_tokens(model_id: Option<&str>, os: &Os) -> usize {
     const DEFAULT_CONTEXT_WINDOW_LENGTH: usize = 200_000;
 
+    // If no model_id provided, return default
     let Some(model_id) = model_id else {
         return DEFAULT_CONTEXT_WINDOW_LENGTH;
     };
 
-    MODEL_OPTIONS
-        .iter()
-        .chain(std::iter::once(&GPT_OSS_120B))
-        .find(|m| m.model_id == model_id)
-        .map_or(DEFAULT_CONTEXT_WINDOW_LENGTH, |m| m.context_window_tokens)
-}
-
-/// Returns the available models for use.
-pub async fn get_model_options(os: &Os) -> Result<Vec<ModelOption>, ChatError> {
-    let mut model_options = MODEL_OPTIONS.into_iter().collect::<Vec<_>>();
-
-    // GPT OSS is only accessible in IAD.
-    let endpoint = Endpoint::configured_value(&os.database);
-    if endpoint.region().as_ref() != "us-east-1" {
-        return Ok(model_options);
-    }
-
-    model_options.push(GPT_OSS_120B);
-    Ok(model_options)
-}
-
-/// Returns the context window length in tokens for the given model_id.
-pub fn context_window_tokens(model_id: Option<&str>) -> usize {
-    const DEFAULT_CONTEXT_WINDOW_LENGTH: usize = 200_000;
-
-    let Some(model_id) = model_id else {
-        return DEFAULT_CONTEXT_WINDOW_LENGTH;
+    // Try to get from cached models first
+    let (models, _) = match get_available_models(os).await {
+        Ok(models) => models,
+        Err(_) => {
+            // If we can't get models, return default
+            return DEFAULT_CONTEXT_WINDOW_LENGTH;
+        },
     };
 
-    MODEL_OPTIONS
+    models
         .iter()
-        .chain(std::iter::once(&GPT_OSS_120B))
-        .find(|m| m.model_id == model_id)
-        .map_or(DEFAULT_CONTEXT_WINDOW_LENGTH, |m| m.context_window_tokens)
+        .find(|m| m.model_id() == model_id)
+        .and_then(|m| m.token_limits())
+        .and_then(|limits| limits.max_input_tokens())
+        .map(|tokens| tokens as usize)
+        .unwrap_or(DEFAULT_CONTEXT_WINDOW_LENGTH)
 }

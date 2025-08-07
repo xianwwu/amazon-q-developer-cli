@@ -6,7 +6,6 @@ pub mod model;
 mod opt_out;
 pub mod profile;
 pub mod send_message_output;
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -18,6 +17,7 @@ use amzn_codewhisperer_client::types::{
     OptOutPreference,
     SubscriptionStatus,
     TelemetryEvent,
+    TokenLimits,
     UserContext,
 };
 use amzn_codewhisperer_streaming_client::Client as CodewhispererStreamingClient;
@@ -275,9 +275,7 @@ impl ApiClient {
             models.extend(models_output.models().iter().cloned());
 
             if default_model.is_none() {
-                if let Some(model) = models_output.default_model().cloned() {
-                    default_model = Some(model);
-                }
+                default_model = Some(models_output.default_model().clone());
             }
         }
 
@@ -306,6 +304,23 @@ impl ApiClient {
         let mut cache = self.model_cache.write().await;
         *cache = None;
         tracing::info!("Model cache invalidated");
+    }
+
+    pub async fn get_available_models(&self, region: &str) -> Result<(Vec<Model>, Option<Model>), ApiClientError> {
+        let (mut models, default_model) = self.list_available_models_cached().await?;
+
+        if region == "us-east-1" {
+            let gpt_oss = Model::builder()
+                .model_id("OPENAI_GPT_OSS_120B_1_0")
+                .model_name("openai-gpt-oss-120b-preview")
+                .token_limits(TokenLimits::builder().max_input_tokens(128_000).build())
+                .build()
+                .map_err(ApiClientError::from)?;
+
+            models.push(gpt_oss);
+        }
+
+        Ok((models, default_model))
     }
 
     pub async fn create_subscription_token(&self) -> Result<CreateSubscriptionTokenOutput, ApiClientError> {
