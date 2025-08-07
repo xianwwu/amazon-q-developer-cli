@@ -17,7 +17,6 @@ use amzn_codewhisperer_client::types::{
     OptOutPreference,
     SubscriptionStatus,
     TelemetryEvent,
-    TokenLimits,
     UserContext,
 };
 use amzn_codewhisperer_streaming_client::Client as CodewhispererStreamingClient;
@@ -304,19 +303,20 @@ impl ApiClient {
         tracing::info!("Model cache invalidated");
     }
 
-    pub async fn get_available_models(&self, region: &str) -> Result<(Vec<Model>, Model), ApiClientError> {
-        let (mut models, default_model) = self.list_available_models_cached().await?;
+    pub async fn get_available_models(&self, _region: &str) -> Result<(Vec<Model>, Model), ApiClientError> {
+        let (models, default_model) = self.list_available_models_cached().await?;
 
-        if region == "us-east-1" {
-            let gpt_oss = Model::builder()
-                .model_id("OPENAI_GPT_OSS_120B_1_0")
-                .model_name("openai-gpt-oss-120b-preview")
-                .token_limits(TokenLimits::builder().max_input_tokens(128_000).build())
-                .build()
-                .map_err(ApiClientError::from)?;
+        // TODO: Once we have access to gpt-oss, add back.
+        // if region == "us-east-1" {
+        //     let gpt_oss = Model::builder()
+        //         .model_id("OPENAI_GPT_OSS_120B_1_0")
+        //         .model_name("openai-gpt-oss-120b-preview")
+        //         .token_limits(TokenLimits::builder().max_input_tokens(128_000).build())
+        //         .build()
+        //         .map_err(ApiClientError::from)?;
 
-            models.push(gpt_oss);
-        }
+        //     models.push(gpt_oss);
+        // }
 
         Ok((models, default_model))
     }
