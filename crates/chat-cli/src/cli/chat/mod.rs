@@ -337,7 +337,7 @@ impl ChatArgs {
         {
             Some(saved)
         } else {
-            Some(default_model_opt.model_id.to_owned())
+            Some(default_model_opt.model_id.clone())
         };
 
         let (prompt_request_sender, prompt_request_receiver) = std::sync::mpsc::channel::<Option<String>>();

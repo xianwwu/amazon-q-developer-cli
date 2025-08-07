@@ -48,7 +48,7 @@ impl ModelInfo {
         }
     }
 
-    /// create a defualt model with only model_id（be compatoble with old stored model data）
+    /// create a default model with only valid model_id（be compatoble with old stored model data）
     pub fn from_id(model_id: String) -> Self {
         Self {
             model_id,
@@ -239,7 +239,7 @@ pub async fn get_available_models(os: &Os) -> Result<(Vec<ModelInfo>, ModelInfo)
 /// Returns the context window length in tokens for the given model_id.
 /// Uses cached model data when available
 pub fn context_window_tokens(model_info: Option<&ModelInfo>) -> usize {
-    model_info.map(|m| m.context_window_tokens).unwrap_or(200_000)
+    model_info.map_or_else(default_context_window, |m| m.context_window_tokens)
 }
 
 fn default_context_window() -> usize {
