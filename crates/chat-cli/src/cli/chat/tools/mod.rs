@@ -107,6 +107,7 @@ impl Tool {
             Tool::GhIssue(_) => PermissionEvalResult::Allow,
             Tool::Thinking(_) => PermissionEvalResult::Allow,
             Tool::Knowledge(knowledge) => knowledge.eval_perm(agent),
+            Tool::Todo(todo) => todo.eval_perm(agent),
         }
     }
 

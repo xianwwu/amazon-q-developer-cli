@@ -19,6 +19,11 @@ use serde::{
     Serialize,
 };
 
+use crate::cli::agent::{
+    Agent,
+    PermissionEvalResult,
+};
+
 use super::InvokeOutput;
 use crate::os::Os;
 
@@ -179,11 +184,11 @@ impl TodoInput {
                 state.save(os, &current_id)?;
 
                 let last_completed = completed_indices.iter().max().unwrap();
-                if *last_completed == state.tasks.len() - 1 {
+                if *last_completed == state.tasks.len() - 1 || state.completed.iter().all(|c| *c){
                     // Display the whole list only at the end
                     state.display_list(output)?;
                 } else {
-                    // Display only completed tasks and next task
+                    // Display only newly completed tasks and next task
                     let mut display_list= TodoState::default();
                     display_list.tasks = completed_indices.iter().map(|i| state.tasks[*i].clone()).collect();  
                     display_list.tasks.push(state.tasks[*last_completed + 1].clone());
@@ -231,7 +236,11 @@ impl TodoInput {
                     None => bail!("No to-do list currently loaded"),
                 };
                 let mut state = TodoState::load(os, &current_id)?;
-                for i in remove_indices.iter() {
+
+                // Remove entries in reverse order so indices aren't mismatched
+                let mut remove_indices = remove_indices.clone();
+                remove_indices.sort();
+                for i in remove_indices.iter().rev() {
                     state.tasks.remove(*i);
                     state.completed.remove(*i);
                 }
@@ -331,6 +340,14 @@ impl TodoInput {
             },
         }
         Ok(())
+    }
+
+    pub fn eval_perm(&self, agent: &Agent) -> PermissionEvalResult {
+        let is_in_allowlist = agent.allowed_tools.contains("todo_list");
+        match agent.tools_settings.get("todo_list") {
+            None if is_in_allowlist => PermissionEvalResult::Allow,
+            _ => PermissionEvalResult::Ask,
+        }
     }
 }
 

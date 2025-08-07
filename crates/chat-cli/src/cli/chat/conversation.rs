@@ -13,7 +13,6 @@ use crossterm::{
 };
 use eyre::{
     Result,
-    bail,
 };
 use serde::{
     Deserialize,
@@ -672,6 +671,56 @@ impl ConversationState {
             self.transcript.pop_front();
         }
         self.transcript.push_back(message);
+    }
+
+    pub async fn create_todo_request(&mut self, os: &Os, id: &str) -> Result<FigConversationState, ChatError> {
+        let todo_list_option = match os.database.get_todo(id) {
+            Ok(option) => option,
+            Err(e) => return Err(ChatError::Custom(format!("Error getting todo list from database: {e}").into())),
+        };
+        let todo_list = match todo_list_option {
+            Some(todo_list) => todo_list,
+            None => return Err(ChatError::Custom(format!("No todo list with id {}", id).into())),
+        };
+        let contents = match serde_json::to_string(&todo_list) {
+            Ok(s) => s,
+            Err(e) => return Err(ChatError::Custom(format!("Error deserializing todo list: {e}").into())),
+        };
+        let summary_content = format!(
+            "[SYSTEM NOTE: This is an automated request, not from the user]\n
+            Read the TODO list contents below and understand the task description, completed tasks, and provided context.\n 
+            Call the `load` command of the todo_list tool with the given ID as an argument to display the TODO list to the user and officially resume execution of the TODO list tasks.\n
+            You do not need to display the tasks to the user yourself. You can begin completing the tasks after calling the `load` command.\n
+            TODO LIST CONTENTS: {}\n
+            ID: {}\n",
+            contents,
+            id
+        );
+
+        let mut conv_state = self.backend_conversation_state(os, false, &mut vec![]).await?;
+        let summary_message = UserMessage::new_prompt(summary_content.clone());
+
+        // Create the history according to the passed compact strategy.
+        let history = conv_state.history.next_back().cloned();
+
+        // Only send the dummy tool spec in order to prevent the model from ever attempting a tool
+        // use.
+        let mut tools = self.tools.clone();
+        tools.retain(|k, v| match k {
+            ToolOrigin::Native => {
+                v.retain(|tool| match tool {
+                    Tool::ToolSpecification(tool_spec) => tool_spec.name == DUMMY_TOOL_NAME,
+                });
+                true
+            },
+            ToolOrigin::McpServer(_) => false,
+        });
+
+        Ok(FigConversationState {
+            conversation_id: Some(self.conversation_id.clone()),
+            user_input_message: summary_message.into_user_input_message(self.model.clone(), &tools),
+            history: Some(flatten_history(history.iter())),
+        })
     }
 }
 

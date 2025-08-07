@@ -1,8 +1,12 @@
 use clap::Subcommand;
-use crossterm::execute;
+use crossterm::{execute, terminal};
 use crossterm::style::{
     self,
     Stylize,
+};
+use crossterm::{
+    cursor,
+    queue
 };
 use dialoguer::FuzzySelect;
 use eyre::Result;
@@ -14,6 +18,10 @@ use crate::cli::chat::{
     ChatState,
 };
 use crate::os::Os;
+use spinners::{
+    Spinner,
+    Spinners,
+};
 
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum TodoSubcommand {
@@ -99,12 +107,33 @@ impl TodoSubcommand {
                     } else {
                         if let Some(index) = fuzzy_select_todos(&entries, "Select a to-do list to resume:") {
                             if index < entries.len() {
-                                execute!(
-                                    session.stderr,
-                                    style::Print("⟳ Resuming: ".magenta()),
-                                    style::Print(format!("{}\n", entries[index].description.clone())),
-                                )?;
-                                return session.resume_todo(os, &entries[index].id).await;
+                                // Create spinner for long wait
+                                // Can't use with_spinner because of mutable references?? bchm
+                                execute!(session.stderr, cursor::Hide)?;
+                                let spinner = if session.interactive {
+                                    Some(Spinner::new(Spinners::Dots, format!("{} {}", "Resuming:".magenta(), entries[index].description.clone())))
+                                } else {
+                                    None
+                                };
+
+                                let todo_result = session.resume_todo(os, &entries[index].id).await;
+
+                                // Remove spinner; summarizing takes the longest
+                                if let Some(mut s) = spinner {
+                                    s.stop();
+                                    queue!(
+                                        session.stderr,
+                                        terminal::Clear(terminal::ClearType::CurrentLine),
+                                        cursor::MoveToColumn(0),
+                                        style::Print(format!("{} {}\n", "⟳ Resuming:".magenta(), entries[index].description.clone())),
+                                        cursor::Show,
+                                        style::SetForegroundColor(style::Color::Reset)
+                                    )?;
+                                }
+
+                                if let Err(e) = todo_result {
+                                    return Err(ChatError::Custom(format!("Could not resume todo list: {e}").into()));
+                                }
                             }
                         }
                     }
