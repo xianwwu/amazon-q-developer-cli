@@ -69,7 +69,7 @@ pub const X_AMZN_CODEWHISPERER_OPT_OUT_HEADER: &str = "x-amzn-codewhisperer-opto
 // TODO(bskiser): confirm timeout is updated to an appropriate value?
 const DEFAULT_TIMEOUT_DURATION: Duration = Duration::from_secs(60 * 5);
 
-type ModelListResult = (Vec<Model>, Option<Model>);
+type ModelListResult = (Vec<Model>, Model);
 type ModelCache = Arc<RwLock<Option<ModelListResult>>>;
 
 #[derive(Clone, Debug)]
@@ -241,7 +241,7 @@ impl ApiClient {
         Ok(profiles)
     }
 
-    pub async fn list_available_models(&self) -> Result<(Vec<Model>, Option<Model>), ApiClientError> {
+    pub async fn list_available_models(&self) -> Result<(Vec<Model>, Model), ApiClientError> {
         if cfg!(test) {
             return Ok((
                 vec![
@@ -251,13 +251,11 @@ impl ApiClient {
                         .build()
                         .unwrap(),
                 ],
-                Some(
-                    Model::builder()
-                        .model_id("model-1")
-                        .description("Test Model 1")
-                        .build()
-                        .unwrap(),
-                ),
+                Model::builder()
+                    .model_id("model-1")
+                    .description("Test Model 1")
+                    .build()
+                    .unwrap(),
             ));
         }
 
@@ -278,11 +276,11 @@ impl ApiClient {
                 default_model = Some(models_output.default_model().clone());
             }
         }
-
+        let default_model = default_model.ok_or_else(|| ApiClientError::DefaultModelNotFound)?;
         Ok((models, default_model))
     }
 
-    pub async fn list_available_models_cached(&self) -> Result<(Vec<Model>, Option<Model>), ApiClientError> {
+    pub async fn list_available_models_cached(&self) -> Result<(Vec<Model>, Model), ApiClientError> {
         {
             let cache = self.model_cache.read().await;
             if let Some(cached) = cache.as_ref() {
@@ -306,7 +304,7 @@ impl ApiClient {
         tracing::info!("Model cache invalidated");
     }
 
-    pub async fn get_available_models(&self, region: &str) -> Result<(Vec<Model>, Option<Model>), ApiClientError> {
+    pub async fn get_available_models(&self, region: &str) -> Result<(Vec<Model>, Model), ApiClientError> {
         let (mut models, default_model) = self.list_available_models_cached().await?;
 
         if region == "us-east-1" {

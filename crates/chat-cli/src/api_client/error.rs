@@ -97,6 +97,9 @@ pub enum ApiClientError {
 
     #[error(transparent)]
     ListAvailableModelsError(#[from] SdkError<ListAvailableModelsError, HttpResponse>),
+
+    #[error("No default model found in the ListAvailableModels API response")]
+    DefaultModelNotFound,
 }
 
 impl ApiClientError {
@@ -121,6 +124,7 @@ impl ApiClientError {
             Self::MonthlyLimitReached { status_code } => *status_code,
             Self::Credentials(_e) => None,
             Self::ListAvailableModelsError(e) => sdk_status_code(e),
+            Self::DefaultModelNotFound => None,
         }
     }
 }
@@ -147,6 +151,7 @@ impl ReasonCode for ApiClientError {
             Self::MonthlyLimitReached { .. } => "MonthlyLimitReached".to_string(),
             Self::Credentials(_) => "CredentialsError".to_string(),
             Self::ListAvailableModelsError(e) => sdk_error_code(e),
+            Self::DefaultModelNotFound => "DefaultModelNotFound".to_string(),
         }
     }
 }

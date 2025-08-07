@@ -132,7 +132,6 @@ use crate::auth::AuthError;
 use crate::auth::builder_id::is_idc_user;
 use crate::cli::agent::Agents;
 use crate::cli::chat::cli::SlashCommand;
-use crate::cli::chat::cli::model::default_model_id;
 use crate::cli::chat::cli::prompts::{
     GetPromptError,
     PromptsSubcommand,
@@ -313,7 +312,7 @@ impl ChatArgs {
 
         // If modelId is specified, verify it exists before starting the chat
         // Otherwise, CLI will use a default model when starting chat
-        let (models, default_model_opt) = os.client.list_available_models_cached().await?;
+        let (models, default_model_opt) = get_available_models(os).await?;
         let model_id: Option<String> = if let Some(requested) = self.model.as_ref() {
             let requested_lower = requested.to_lowercase();
             if let Some(m) = models
@@ -337,11 +336,8 @@ impl ChatArgs {
             })
         {
             Some(saved)
-        } else if let Some(default_model) = default_model_opt {
-            Some(default_model.model_id().to_owned())
         } else {
-            // should not use this fallback method when service return a required default model in response
-            Some(default_model_id(os).await)
+            Some(default_model_opt.model_id().to_owned())
         };
 
         let (prompt_request_sender, prompt_request_receiver) = std::sync::mpsc::channel::<Option<String>>();

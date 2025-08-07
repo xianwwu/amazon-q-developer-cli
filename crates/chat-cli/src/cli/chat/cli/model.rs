@@ -11,10 +11,6 @@ use crossterm::{
 use dialoguer::Select;
 
 use crate::api_client::Endpoint;
-use crate::auth::builder_id::{
-    BuilderIdToken,
-    TokenType,
-};
 use crate::cli::chat::{
     ChatError,
     ChatSession,
@@ -107,31 +103,8 @@ pub async fn select_model(os: &Os, session: &mut ChatSession) -> Result<Option<C
     }))
 }
 
-/// Returns a default model id to use if none has been otherwise provided.
-///
-/// Returns Claude 3.7 for: Amazon IDC users, FRA region users
-/// Returns Claude 4.0 for: Builder ID users, other regions
-pub async fn default_model_id(os: &Os) -> String {
-    // Check FRA region first
-    if let Ok(Some(profile)) = os.database.get_auth_profile() {
-        if profile.arn.split(':').nth(3) == Some("eu-central-1") {
-            return "claude-3.7-sonnet".to_string();
-        }
-    }
-
-    // Check if Amazon IDC user
-    if let Ok(Some(token)) = BuilderIdToken::load(&os.database).await {
-        if matches!(token.token_type(), TokenType::IamIdentityCenter) && token.is_amzn_user() {
-            return "claude-3.7-sonnet".to_string();
-        }
-    }
-
-    // Default to 4.0
-    "claude-4-sonnet".to_string()
-}
-
 /// Get available models with caching support
-pub async fn get_available_models(os: &Os) -> Result<(Vec<Model>, Option<Model>), ChatError> {
+pub async fn get_available_models(os: &Os) -> Result<(Vec<Model>, Model), ChatError> {
     let endpoint = Endpoint::configured_value(&os.database);
     let region = endpoint.region().as_ref();
 
