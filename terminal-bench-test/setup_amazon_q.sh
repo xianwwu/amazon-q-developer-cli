@@ -45,24 +45,16 @@ AWS_ACCESS_KEY_ID="$QCHAT_ACCESSKEY" AWS_SECRET_ACCESS_KEY="$Q_SECRET_ACCESS_KEY
 echo "Extracting qchat.zip..."
 unzip -q qchat.zip
 
-# Debug: Show extracted structure
-echo "Extracted contents:"
-ls -la
+# Extract and install - the executable is named chat_cli
+# qchat → runs /usr/local/bin/qchat directly → which is the chat_cli binary
 
-# Extract and install mimicing the official release
-if [ -d "q" ] && [ -f "q/bin/qchat" ]; then
-    cp q/bin/qchat /usr/local/bin/qchat
-    cp q/bin/q /usr/local/bin/q 2>/dev/null || ln -sf /usr/local/bin/qchat /usr/local/bin/q
-    chmod +x /usr/local/bin/qchat /usr/local/bin/q
-    echo "qchat installed successfully"
-elif [ -f "qchat" ]; then
-    # Fallback if it's just the binary
-    cp qchat /usr/local/bin/qchat
+if [ -f "chat_cli" ]; then
+    cp chat_cli /usr/local/bin/qchat
     ln -sf /usr/local/bin/qchat /usr/local/bin/q
     chmod +x /usr/local/bin/qchat
     echo "qchat installed successfully"
 else
-    echo "ERROR: qchat not found in expected locations"
+    echo "ERROR: chat_cli executable not found"
     ls -la
     exit 1
 fi
