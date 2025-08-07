@@ -9,6 +9,11 @@ use crossterm::{
     queue,
 };
 use dialoguer::Select;
+use serde::{
+    Deserialize,
+    Deserializer,
+    Serialize,
+};
 
 use crate::api_client::Endpoint;
 use crate::cli::chat::{
@@ -17,6 +22,110 @@ use crate::cli::chat::{
     ChatState,
 };
 use crate::os::Os;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelInfo {
+    /// Display name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_name: Option<String>,
+    /// Actual model id to send in the API
+    pub model_id: String,
+    /// Size of the model's context window, in tokens
+    #[serde(default = "default_context_window")]
+    pub context_window_tokens: usize,
+}
+
+impl ModelInfo {
+    pub fn from_api_model(model: &Model) -> Self {
+        let context_window_tokens = model
+            .token_limits()
+            .and_then(|limits| limits.max_input_tokens())
+            .map_or(default_context_window(), |tokens| tokens as usize);
+        Self {
+            model_id: model.model_id().to_string(),
+            model_name: model.model_name().map(|s| s.to_string()),
+            context_window_tokens,
+        }
+    }
+
+    /// create a defualt model with only model_id（be compatoble with old stored model data）
+    pub fn from_id(model_id: String) -> Self {
+        Self {
+            model_id,
+            model_name: None,
+            context_window_tokens: 200_000,
+        }
+    }
+
+    pub fn display_name(&self) -> &str {
+        self.model_name.as_deref().unwrap_or(&self.model_id)
+    }
+}
+impl<'de> Deserialize<'de> for ModelInfo {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use std::fmt;
+
+        use serde::de::{
+            self,
+            MapAccess,
+            Visitor,
+        };
+
+        struct ModelInfoVisitor;
+
+        impl<'de> Visitor<'de> for ModelInfoVisitor {
+            type Value = ModelInfo;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a string or a ModelInfo object")
+            }
+
+            // old version: modelid string
+            fn visit_str<E>(self, value: &str) -> Result<ModelInfo, E>
+            where
+                E: de::Error,
+            {
+                Ok(ModelInfo {
+                    model_id: value.to_string(),
+                    model_name: None,
+                    context_window_tokens: default_context_window(),
+                })
+            }
+
+            // new version: modelInfo object
+            fn visit_map<M>(self, mut map: M) -> Result<ModelInfo, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut model_id = None;
+                let mut model_name = None;
+                let mut context_window_tokens = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "model_id" => model_id = Some(map.next_value()?),
+                        "model_name" => model_name = map.next_value()?,
+                        "context_window_tokens" => context_window_tokens = Some(map.next_value()?),
+                        _ => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
+                        },
+                    }
+                }
+
+                Ok(ModelInfo {
+                    model_id: model_id.ok_or_else(|| de::Error::missing_field("model_id"))?,
+                    model_name,
+                    context_window_tokens: context_window_tokens.unwrap_or_else(default_context_window),
+                })
+            }
+        }
+
+        deserializer.deserialize_any(ModelInfoVisitor)
+    }
+}
 #[deny(missing_docs)]
 #[derive(Debug, PartialEq, Args)]
 pub struct ModelArgs;
@@ -45,14 +154,13 @@ pub async fn select_model(os: &Os, session: &mut ChatSession) -> Result<Option<C
         return Ok(None);
     }
 
-    let active_model_id = session.conversation.model.as_deref();
+    let active_model_id = session.conversation.model.as_ref().map(|m| m.model_id.as_str());
 
     let labels: Vec<String> = models
         .iter()
         .map(|model| {
-            let display_name = model.model_name().unwrap_or(model.model_id());
-
-            if Some(model.model_id()) == active_model_id {
+            let display_name = model.display_name();
+            if Some(model.model_id.as_str()) == active_model_id {
                 format!("{} (active)", display_name)
             } else {
                 display_name.to_owned()
@@ -81,10 +189,9 @@ pub async fn select_model(os: &Os, session: &mut ChatSession) -> Result<Option<C
     queue!(session.stderr, style::ResetColor)?;
 
     if let Some(index) = selection {
-        let selected = &models[index];
-        let model_id_str = selected.model_id.clone();
-        session.conversation.model = Some(model_id_str.clone());
-        let display_name = selected.model_name().unwrap_or(selected.model_id());
+        let selected = models[index].clone();
+        session.conversation.model = Some(selected.clone());
+        let display_name = selected.display_name();
 
         queue!(
             session.stderr,
@@ -103,41 +210,38 @@ pub async fn select_model(os: &Os, session: &mut ChatSession) -> Result<Option<C
     }))
 }
 
+pub async fn get_model_info(model_id: &str, os: &Os) -> Result<ModelInfo, ChatError> {
+    let (models, _) = get_available_models(os).await?;
+
+    models
+        .into_iter()
+        .find(|m| m.model_id == model_id)
+        .ok_or_else(|| ChatError::Custom(format!("Model '{}' not found", model_id).into()))
+}
+
 /// Get available models with caching support
-pub async fn get_available_models(os: &Os) -> Result<(Vec<Model>, Model), ChatError> {
+pub async fn get_available_models(os: &Os) -> Result<(Vec<ModelInfo>, ModelInfo), ChatError> {
     let endpoint = Endpoint::configured_value(&os.database);
     let region = endpoint.region().as_ref();
 
-    os.client
+    let (api_models, api_default) = os
+        .client
         .get_available_models(region)
         .await
-        .map_err(|e| ChatError::Custom(format!("Failed to fetch available models: {}", e).into()))
+        .map_err(|e| ChatError::Custom(format!("Failed to fetch available models: {}", e).into()))?;
+
+    let models: Vec<ModelInfo> = api_models.iter().map(ModelInfo::from_api_model).collect();
+    let default_model = ModelInfo::from_api_model(&api_default);
+
+    Ok((models, default_model))
 }
 
 /// Returns the context window length in tokens for the given model_id.
 /// Uses cached model data when available
-pub async fn context_window_tokens(model_id: Option<&str>, os: &Os) -> usize {
-    const DEFAULT_CONTEXT_WINDOW_LENGTH: usize = 200_000;
+pub fn context_window_tokens(model_info: Option<&ModelInfo>) -> usize {
+    model_info.map(|m| m.context_window_tokens).unwrap_or(200_000)
+}
 
-    // If no model_id provided, return default
-    let Some(model_id) = model_id else {
-        return DEFAULT_CONTEXT_WINDOW_LENGTH;
-    };
-
-    // Try to get from cached models first
-    let (models, _) = match get_available_models(os).await {
-        Ok(models) => models,
-        Err(_) => {
-            // If we can't get models, return default
-            return DEFAULT_CONTEXT_WINDOW_LENGTH;
-        },
-    };
-
-    models
-        .iter()
-        .find(|m| m.model_id() == model_id)
-        .and_then(|m| m.token_limits())
-        .and_then(|limits| limits.max_input_tokens())
-        .map(|tokens| tokens as usize)
-        .unwrap_or(DEFAULT_CONTEXT_WINDOW_LENGTH)
+fn default_context_window() -> usize {
+    200_000
 }

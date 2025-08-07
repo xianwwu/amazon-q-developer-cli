@@ -331,13 +331,13 @@ impl ChatArgs {
             .and_then(|model_id| {
                 models
                     .iter()
-                    .find(|m| m.model_id() == model_id)
+                    .find(|m| m.model_id == model_id)
                     .map(|m| m.model_id.clone())
             })
         {
             Some(saved)
         } else {
-            Some(default_model_opt.model_id().to_owned())
+            Some(default_model_opt.model_id.to_owned())
         };
 
         let (prompt_request_sender, prompt_request_receiver) = std::sync::mpsc::channel::<Option<String>>();
@@ -1180,10 +1180,10 @@ impl ChatSession {
         }
         self.stderr.flush()?;
 
-        if let Some(ref id) = self.conversation.model {
+        if let Some(ref model_info) = self.conversation.model {
             let (models, _default_model) = get_available_models(os).await?;
-            if let Some(model_option) = models.iter().find(|option| option.model_id == *id) {
-                let display_name = model_option.model_name().unwrap_or_else(|| &model_option.model_id);
+            if let Some(model_option) = models.iter().find(|option| option.model_id == model_info.model_id) {
+                let display_name = model_option.model_name.as_deref().unwrap_or(&model_option.model_id);
                 execute!(
                     self.stderr,
                     style::SetForegroundColor(Color::Cyan),
@@ -2322,11 +2322,14 @@ impl ChatSession {
         for tool_use in tool_uses {
             let tool_use_id = tool_use.id.clone();
             let tool_use_name = tool_use.name.clone();
-            let mut tool_telemetry =
-                ToolUseEventBuilder::new(conv_id.clone(), tool_use.id.clone(), self.conversation.model.clone())
-                    .set_tool_use_id(tool_use_id.clone())
-                    .set_tool_name(tool_use.name.clone())
-                    .utterance_id(self.conversation.message_id().map(|s| s.to_string()));
+            let mut tool_telemetry = ToolUseEventBuilder::new(
+                conv_id.clone(),
+                tool_use.id.clone(),
+                self.conversation.model.as_ref().map(|m| m.model_id.clone()),
+            )
+            .set_tool_use_id(tool_use_id.clone())
+            .set_tool_name(tool_use.name.clone())
+            .utterance_id(self.conversation.message_id().map(|s| s.to_string()));
             match self.conversation.tool_manager.get_tool_from_tool_use(tool_use) {
                 Ok(mut tool) => {
                     // Apply non-Q-generated context to tools

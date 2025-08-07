@@ -64,6 +64,10 @@ use crate::cli::agent::hook::{
     HookTrigger,
 };
 use crate::cli::chat::ChatError;
+use crate::cli::chat::cli::model::{
+    ModelInfo,
+    get_model_info,
+};
 use crate::mcp_client::Prompt;
 use crate::os::Os;
 
@@ -108,7 +112,7 @@ pub struct ConversationState {
     pub agents: Agents,
     /// Model explicitly selected by the user in this conversation state via `/model`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: Option<ModelInfo>,
 }
 
 impl ConversationState {
@@ -120,12 +124,20 @@ impl ConversationState {
         current_model_id: Option<String>,
         os: &Os,
     ) -> Self {
+        let model = if let Some(model_id) = current_model_id {
+            match get_model_info(&model_id, os).await {
+                Ok(info) => Some(info),
+                Err(e) => {
+                    tracing::warn!("Failed to get model info for {}: {}, using default", model_id, e);
+                    Some(ModelInfo::from_id(model_id))
+                },
+            }
+        } else {
+            None
+        };
+
         let context_manager = if let Some(agent) = agents.get_active() {
-            ContextManager::from_agent(
-                agent,
-                calc_max_context_files_size(current_model_id.as_deref(), os).await,
-            )
-            .ok()
+            ContextManager::from_agent(agent, calc_max_context_files_size(model.as_ref())).ok()
         } else {
             None
         };
@@ -154,7 +166,7 @@ impl ConversationState {
             context_message_length: None,
             latest_summary: None,
             agents,
-            model: current_model_id,
+            model,
         }
     }
 
@@ -432,7 +444,7 @@ impl ConversationState {
             context_messages,
             dropped_context_files,
             tools: &self.tools,
-            model_id: self.model.as_deref(),
+            model_id: self.model.as_ref().map(|m| m.model_id.as_str()),
         })
     }
 
@@ -530,7 +542,7 @@ impl ConversationState {
             conversation_id: Some(self.conversation_id.clone()),
             user_input_message: summary_message
                 .unwrap_or(UserMessage::new_prompt(summary_content)) // should not happen
-                .into_user_input_message(self.model.clone(), &tools),
+                .into_user_input_message(self.model.as_ref().map(|m| m.model_id.clone()), &tools),
             history: Some(flatten_history(history.iter())),
         })
     }
@@ -643,7 +655,7 @@ impl ConversationState {
     /// Get the current token warning level
     pub async fn get_token_warning_level(&mut self, os: &Os) -> Result<TokenWarningLevel, ChatError> {
         let total_chars = self.calculate_char_count(os).await?;
-        let max_chars = TokenCounter::token_to_chars(context_window_tokens(self.model.as_deref(), os).await);
+        let max_chars = TokenCounter::token_to_chars(context_window_tokens(self.model.as_ref()));
 
         Ok(if *total_chars >= max_chars {
             TokenWarningLevel::Critical
@@ -1066,7 +1078,7 @@ mod tests {
             tool_manager.load_tools(&mut os, &mut output).await.unwrap(),
             tool_manager,
             None,
-            os,
+            &os,
         )
         .await;
 
@@ -1098,7 +1110,7 @@ mod tests {
             tool_config.clone(),
             tool_manager.clone(),
             None,
-            os,
+            &os,
         )
         .await;
         conversation.set_next_user_message("start".to_string()).await;
@@ -1133,7 +1145,7 @@ mod tests {
             tool_config.clone(),
             tool_manager.clone(),
             None,
-            os,
+            &os,
         )
         .await;
         conversation.set_next_user_message("start".to_string()).await;
@@ -1187,7 +1199,7 @@ mod tests {
             tool_manager.load_tools(&mut os, &mut output).await.unwrap(),
             tool_manager,
             None,
-            os,
+            &os,
         )
         .await;
 
