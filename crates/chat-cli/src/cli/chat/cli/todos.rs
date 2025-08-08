@@ -170,7 +170,6 @@ impl TodoSubcommand {
                             }
                             execute!(session.stderr, style::Print("\n"),)?;
                         }
-
                     }
                 },
                 Err(_) => return Err(ChatError::Custom("Could not show to-do lists".into())),
@@ -184,9 +183,7 @@ impl TodoSubcommand {
                             match os.database.delete_todo(&entries[index].id) {
                                 Ok(_) => {},
                                 Err(_) => {
-                                    return Err(ChatError::Custom(
-                                        "Could not delete the selected to-do list".into(),
-                                    ));
+                                    return Err(ChatError::Custom("Could not delete the selected to-do list".into()));
                                 },
                             };
                             execute!(

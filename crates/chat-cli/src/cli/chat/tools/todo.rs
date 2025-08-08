@@ -183,7 +183,10 @@ impl TodoInput {
                 if *last_completed == state.tasks.len() - 1 || state.completed.iter().all(|c| *c) {
                     state.display_list(output)?;
                 } else {
-                    let mut display_list = TodoState { tasks: completed_indices.iter().map(|i| state.tasks[*i].clone()).collect(), ..Default::default() };
+                    let mut display_list = TodoState {
+                        tasks: completed_indices.iter().map(|i| state.tasks[*i].clone()).collect(),
+                        ..Default::default()
+                    };
                     for _ in 0..completed_indices.len() {
                         display_list.completed.push(true);
                     }
