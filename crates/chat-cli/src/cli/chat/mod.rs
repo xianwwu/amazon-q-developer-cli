@@ -2776,19 +2776,14 @@ impl ChatSession {
 
         // Since this is an internal tool call, manually handle the tool requests from Q
         let mut tool_uses = Vec::new();
-        loop {
-            match response.recv().await {
-                Some(res) => {
-                    let res = res?;
-                    match res {
-                        parser::ResponseEvent::AssistantText(_) => (),
-                        parser::ResponseEvent::EndStream { .. } => break,
-                        parser::ResponseEvent::ToolUse(e) => tool_uses.push(e),
-                        parser::ResponseEvent::ToolUseStart { .. } => (),
-                    }
-                },
-                None => break,
-            };
+        while let Some(res) = response.recv().await {
+            let res = res?;
+            match res {
+                parser::ResponseEvent::AssistantText(_) => (),
+                parser::ResponseEvent::EndStream { .. } => break,
+                parser::ResponseEvent::ToolUse(e) => tool_uses.push(e),
+                parser::ResponseEvent::ToolUseStart { .. } => (),
+            }
         }
         if !tool_uses.is_empty() {
             self.validate_tools(os, tool_uses).await?;

@@ -20,10 +20,6 @@ use serde::{
 };
 
 use super::InvokeOutput;
-use crate::cli::agent::{
-    Agent,
-    PermissionEvalResult,
-};
 use crate::os::Os;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -187,8 +183,7 @@ impl TodoInput {
                 if *last_completed == state.tasks.len() - 1 || state.completed.iter().all(|c| *c) {
                     state.display_list(output)?;
                 } else {
-                    let mut display_list = TodoState::default();
-                    display_list.tasks = completed_indices.iter().map(|i| state.tasks[*i].clone()).collect();
+                    let mut display_list = TodoState { tasks: completed_indices.iter().map(|i| state.tasks[*i].clone()).collect(), ..Default::default() };
                     for _ in 0..completed_indices.len() {
                         display_list.completed.push(true);
                     }
@@ -260,12 +255,6 @@ impl TodoInput {
         })
     }
 
-    pub fn queue_description(&self, _os: &Os, _output: &mut impl Write) -> Result<()> {
-        // NOTE: All of our display logic is within the invoke method because
-        // it requires loading state, modifying the list, and then displaying
-        Ok(())
-    }
-
     pub async fn validate(&mut self, os: &Os) -> Result<()> {
         match self {
             TodoInput::Create {
@@ -316,7 +305,7 @@ impl TodoInput {
                 let state = TodoState::load(os, &current_id)?;
                 if new_tasks.iter().any(|task| task.trim().is_empty()) {
                     bail!("New tasks cannot be empty");
-                } else if has_duplicates(&insert_indices) {
+                } else if has_duplicates(insert_indices) {
                     bail!("Insertion indices must be unique")
                 } else if new_tasks.len() != insert_indices.len() {
                     bail!("Must provide an index for every new task");
@@ -335,7 +324,7 @@ impl TodoInput {
                     None => bail!("No todo list is currently loaded"),
                 };
                 let state = TodoState::load(os, &current_id)?;
-                if has_duplicates(&remove_indices) {
+                if has_duplicates(remove_indices) {
                     bail!("Removal indices must be unique")
                 } else if remove_indices.iter().any(|i| *i > state.tasks.len()) {
                     bail!("Index is out of bounds");
@@ -345,14 +334,6 @@ impl TodoInput {
             },
         }
         Ok(())
-    }
-
-    pub fn eval_perm(&self, agent: &Agent) -> PermissionEvalResult {
-        let is_in_allowlist = agent.allowed_tools.contains("todo_list");
-        match agent.tools_settings.get("todo_list") {
-            None if is_in_allowlist => PermissionEvalResult::Allow,
-            _ => PermissionEvalResult::Ask,
-        }
     }
 }
 

@@ -107,7 +107,7 @@ impl Tool {
             Tool::GhIssue(_) => PermissionEvalResult::Allow,
             Tool::Thinking(_) => PermissionEvalResult::Allow,
             Tool::Knowledge(knowledge) => knowledge.eval_perm(agent),
-            Tool::Todo(todo) => todo.eval_perm(agent),
+            Tool::Todo(_) => PermissionEvalResult::Allow,
         }
     }
 
@@ -137,7 +137,7 @@ impl Tool {
             Tool::GhIssue(gh_issue) => gh_issue.queue_description(output),
             Tool::Knowledge(knowledge) => knowledge.queue_description(os, output).await,
             Tool::Thinking(thinking) => thinking.queue_description(output),
-            Tool::Todo(todo) => todo.queue_description(os, output),
+            Tool::Todo(_) => Ok(()),
         }
     }
 
