@@ -67,8 +67,8 @@ use crate::cli::chat::ChatError;
 use crate::mcp_client::Prompt;
 use crate::os::Os;
 
-const CONTEXT_ENTRY_START_HEADER: &str = "--- CONTEXT ENTRY BEGIN ---\n";
-const CONTEXT_ENTRY_END_HEADER: &str = "--- CONTEXT ENTRY END ---\n\n";
+pub const CONTEXT_ENTRY_START_HEADER: &str = "--- CONTEXT ENTRY BEGIN ---\n";
+pub const CONTEXT_ENTRY_END_HEADER: &str = "--- CONTEXT ENTRY END ---\n\n";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
