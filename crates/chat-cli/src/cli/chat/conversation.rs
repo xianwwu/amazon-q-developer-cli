@@ -11,9 +11,7 @@ use crossterm::{
     execute,
     style,
 };
-use eyre::{
-    Result,
-};
+use eyre::Result;
 use serde::{
     Deserialize,
     Serialize,
@@ -673,10 +671,18 @@ impl ConversationState {
         self.transcript.push_back(message);
     }
 
+    /// Create a request that prompts Q to use the `load` command of the
+    /// todo_list tool
     pub async fn create_todo_request(&mut self, os: &Os, id: &str) -> Result<FigConversationState, ChatError> {
+        // Have to unpack each value separately since Reports can't be converted to
+        // ChatError
         let todo_list_option = match os.database.get_todo(id) {
             Ok(option) => option,
-            Err(e) => return Err(ChatError::Custom(format!("Error getting todo list from database: {e}").into())),
+            Err(e) => {
+                return Err(ChatError::Custom(
+                    format!("Error getting todo list from database: {e}").into(),
+                ));
+            },
         };
         let todo_list = match todo_list_option {
             Some(todo_list) => todo_list,
@@ -699,17 +705,14 @@ impl ConversationState {
 
         let mut conv_state = self.backend_conversation_state(os, false, &mut vec![]).await?;
         let summary_message = UserMessage::new_prompt(summary_content.clone());
-
-        // Create the history according to the passed compact strategy.
         let history = conv_state.history.next_back().cloned();
 
-        // Only send the dummy tool spec in order to prevent the model from ever attempting a tool
-        // use.
+        // Only send the todo_list tool
         let mut tools = self.tools.clone();
         tools.retain(|k, v| match k {
             ToolOrigin::Native => {
                 v.retain(|tool| match tool {
-                    Tool::ToolSpecification(tool_spec) => tool_spec.name == DUMMY_TOOL_NAME,
+                    Tool::ToolSpecification(tool_spec) => tool_spec.name == "todo_list",
                 });
                 true
             },

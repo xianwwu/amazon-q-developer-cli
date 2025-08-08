@@ -181,7 +181,7 @@ impl SlashCommand {
                 PersistSubcommand::Save { .. } => "save",
                 PersistSubcommand::Load { .. } => "load",
             },
-            Self::Todos(_) => "todos"
+            Self::Todos(_) => "todos",
         }
     }
 

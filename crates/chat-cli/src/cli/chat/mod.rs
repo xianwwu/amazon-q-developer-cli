@@ -2747,8 +2747,9 @@ impl ChatSession {
         }
     }
 
+    /// Prompts Q to resume a to-do list with the given id by calling the load
+    /// command of the todo_list tool
     pub async fn resume_todo(&mut self, os: &mut Os, id: &str) -> Result<()> {
-
         let request_state = self.conversation.create_todo_request(os, id).await;
         match request_state {
             Ok(state) => {
@@ -2772,7 +2773,7 @@ impl ChatSession {
             Ok(res) => res,
             Err(_) => bail!("Turn summary could not be created"),
         };
-        
+
         // Since this is an internal tool call, manually handle the tool requests from Q
         let mut tool_uses = Vec::new();
         loop {

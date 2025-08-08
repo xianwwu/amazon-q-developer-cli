@@ -5,6 +5,7 @@ use std::time::{
     UNIX_EPOCH,
 };
 
+use crossterm::style::Stylize;
 use crossterm::{
     queue,
     style,
@@ -13,18 +14,16 @@ use eyre::{
     Result,
     bail,
 };
-
 use serde::{
     Deserialize,
     Serialize,
 };
 
+use super::InvokeOutput;
 use crate::cli::agent::{
     Agent,
     PermissionEvalResult,
 };
-
-use super::InvokeOutput;
 use crate::os::Os;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -86,7 +85,7 @@ impl TodoState {
 
     /// Displays the TodoState as a to-do list
     pub fn display_list(&self, output: &mut impl Write) -> Result<()> {
-        queue!(output, style::Print("TODO:\n"),)?;
+        queue!(output, style::Print("TODO:\n".yellow()))?;
         for (index, (task, completed)) in self.tasks.iter().zip(self.completed.iter()).enumerate() {
             TodoState::queue_next_without_newline(output, task.clone(), *completed)?;
             if index < self.tasks.len() - 1 {
@@ -106,9 +105,7 @@ impl TodoState {
                 style::SetForegroundColor(style::Color::Green),
                 style::Print(" ■ "),
                 style::SetForegroundColor(style::Color::DarkGrey),
-                // style::SetAttribute(style::Attribute::CrossedOut),
                 style::Print(task),
-                // style::SetAttribute(style::Attribute::NotCrossedOut),
                 style::SetAttribute(style::Attribute::NoItalic),
             )?;
         } else {
@@ -130,7 +127,7 @@ impl TodoState {
         Ok(())
     }
 
-    /// Generates a new unique filename to be used for new to-do lists
+    /// Generates a new unique id be used for new to-do lists
     pub fn generate_new_id() -> String {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -148,6 +145,7 @@ impl TodoInput {
                 tasks,
                 task_description,
             } => {
+                // Create a new todo list with the given tasks and save state to databases
                 let state = TodoState {
                     tasks: tasks.clone(),
                     completed: vec![false; tasks.len()],
@@ -183,26 +181,30 @@ impl TodoInput {
                 }
                 state.save(os, &current_id)?;
 
+                // As tasks are being completed, display only the newly completed tasks
+                // and the next. Only display the whole list when all tasks are completed
                 let last_completed = completed_indices.iter().max().unwrap();
-                if *last_completed == state.tasks.len() - 1 || state.completed.iter().all(|c| *c){
-                    // Display the whole list only at the end
+                if *last_completed == state.tasks.len() - 1 || state.completed.iter().all(|c| *c) {
                     state.display_list(output)?;
                 } else {
-                    // Display only newly completed tasks and next task
-                    let mut display_list= TodoState::default();
-                    display_list.tasks = completed_indices.iter().map(|i| state.tasks[*i].clone()).collect();  
-                    display_list.tasks.push(state.tasks[*last_completed + 1].clone());
+                    let mut display_list = TodoState::default();
+                    display_list.tasks = completed_indices.iter().map(|i| state.tasks[*i].clone()).collect();
                     for _ in 0..completed_indices.len() {
                         display_list.completed.push(true);
                     }
-                    display_list.completed.push(false);
+
+                    // For next state, mark it true/false depending on actual completion state
+                    // This only matters when the model skips around tasks
+                    display_list.tasks.push(state.tasks[*last_completed + 1].clone());
+                    display_list.completed.push(state.completed[*last_completed + 1]);
+
                     display_list.display_list(output)?;
                 }
                 state
             },
             TodoInput::Load { id } => {
                 TodoState::set_current_todo_id(os, id)?;
-                let state= TodoState::load(os, id)?;
+                let state = TodoState::load(os, id)?;
                 state.display_list(output)?;
                 state
             },
@@ -252,12 +254,15 @@ impl TodoInput {
                 state
             },
         };
-        
 
-        Ok(InvokeOutput { output: super::OutputKind::Json(serde_json::to_value(state)?) })
+        Ok(InvokeOutput {
+            output: super::OutputKind::Json(serde_json::to_value(state)?),
+        })
     }
 
     pub fn queue_description(&self, _os: &Os, _output: &mut impl Write) -> Result<()> {
+        // NOTE: All of our display logic is within the invoke method because
+        // it requires loading state, modifying the list, and then displaying
         Ok(())
     }
 

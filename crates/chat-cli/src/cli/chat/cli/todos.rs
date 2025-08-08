@@ -1,15 +1,20 @@
 use clap::Subcommand;
-use crossterm::{execute, terminal};
 use crossterm::style::{
     self,
     Stylize,
 };
 use crossterm::{
     cursor,
-    queue
+    execute,
+    queue,
+    terminal,
 };
 use dialoguer::FuzzySelect;
 use eyre::Result;
+use spinners::{
+    Spinner,
+    Spinners,
+};
 
 use crate::cli::chat::tools::todo::TodoState;
 use crate::cli::chat::{
@@ -18,14 +23,9 @@ use crate::cli::chat::{
     ChatState,
 };
 use crate::os::Os;
-use spinners::{
-    Spinner,
-    Spinners,
-};
 
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum TodoSubcommand {
-
     /// Delete all completed to-do lists
     ClearFinished,
 
@@ -39,7 +39,7 @@ pub enum TodoSubcommand {
     Delete,
 
     /// Display current to-do list
-    Show
+    Show,
 }
 
 /// Used for displaying completed and in-progress todo lists
@@ -111,21 +111,28 @@ impl TodoSubcommand {
                                 // Can't use with_spinner because of mutable references?? bchm
                                 execute!(session.stderr, cursor::Hide)?;
                                 let spinner = if session.interactive {
-                                    Some(Spinner::new(Spinners::Dots, format!("{} {}", "Resuming:".magenta(), entries[index].description.clone())))
+                                    Some(Spinner::new(
+                                        Spinners::Dots,
+                                        format!("{} {}", "Resuming:".magenta(), entries[index].description.clone()),
+                                    ))
                                 } else {
                                     None
                                 };
 
                                 let todo_result = session.resume_todo(os, &entries[index].id).await;
 
-                                // Remove spinner; summarizing takes the longest
+                                // Remove spinner
                                 if let Some(mut s) = spinner {
                                     s.stop();
                                     queue!(
                                         session.stderr,
                                         terminal::Clear(terminal::ClearType::CurrentLine),
                                         cursor::MoveToColumn(0),
-                                        style::Print(format!("{} {}\n", "⟳ Resuming:".magenta(), entries[index].description.clone())),
+                                        style::Print(format!(
+                                            "{} {}\n",
+                                            "⟳ Resuming:".magenta(),
+                                            entries[index].description.clone()
+                                        )),
                                         cursor::Show,
                                         style::SetForegroundColor(style::Color::Reset)
                                     )?;
@@ -161,14 +168,9 @@ impl TodoSubcommand {
                                         entries[index].description.clone()
                                     ))
                                 )?;
-                                match list.display_list(&mut session.stderr) {
-                                    Ok(_) => {},
-                                    Err(_) => {
-                                        return Err(ChatError::Custom(
-                                            "Could not display the selected to-do list".into(),
-                                        ));
-                                    },
-                                };
+                                if let Err(_) = list.display_list(&mut session.stderr) {
+                                    return Err(ChatError::Custom("Could not display the selected to-do list".into()));
+                                }
                                 execute!(session.stderr, style::Print("\n"),)?;
                             }
                         }
@@ -204,7 +206,7 @@ impl TodoSubcommand {
             },
             Self::Show => {
                 if let Some(id) = TodoState::get_current_todo_id(os).unwrap_or(None) {
-                   let state =  match TodoState::load(os, &id) {
+                    let state = match TodoState::load(os, &id) {
                         Ok(s) => s,
                         Err(_) => {
                             return Err(ChatError::Custom("Could not load current to-do list".into()));
@@ -219,9 +221,7 @@ impl TodoSubcommand {
                 } else {
                     execute!(session.stderr, style::Print("No to-do list currently loaded\n"))?;
                 }
-
-            }
-
+            },
         }
         Ok(ChatState::PromptUser {
             skip_printing_tools: true,
@@ -240,13 +240,6 @@ impl TodoSubcommand {
                 },
                 None => continue,
             };
-            // For some reason this doesn't work
-            // Has to do with the Value::String wrapping in os.database.all_entries() rather than
-            // Value::from_str()
-            // let temp_struct = match
-            // serde_json::from_value::<TodoState>(value.clone()) {     Ok(state) => state,
-            //     Err(_) => continue,
-            // };
 
             out.push(TodoDisplayEntry {
                 num_completed: temp_struct.completed.iter().filter(|b| **b).count(),
@@ -267,43 +260,3 @@ fn fuzzy_select_todos(entries: &Vec<TodoDisplayEntry>, prompt_str: &str) -> Opti
         .interact_opt()
         .unwrap_or(None)
 }
-
-// const MAX_LINE_LENGTH: usize = 80;
-
-// // FIX: Hacky workaround for cleanly wrapping lines
-// /// Insert newlines every n characters, not within a word and not at the end.
-// /// This function is very hacky and barely works (do not use).
-// ///
-// /// Generated by Q
-// ///
-// fn _prewrap(text: &str) -> String {
-//     if text.is_empty() || MAX_LINE_LENGTH == 0 {
-//         return text.to_string();
-//     }
-
-//     let mut result = String::new();
-//     let mut current_line_length = 0;
-//     let words: Vec<&str> = text.split_whitespace().collect();
-
-//     for word in words.iter() {
-//         let word_length = word.len();
-
-//         // If adding this word would exceed the line length and we're not at the start of a line
-//         if current_line_length > 0 && current_line_length + 1 + word_length > MAX_LINE_LENGTH {
-//             result.push('\n');
-//             result.push_str(&" ".repeat("> ".len()));
-//             current_line_length = 0;
-//         }
-
-//         // Add space before word if not at start of line
-//         if current_line_length > 0 {
-//             result.push(' ');
-//             current_line_length += 1;
-//         }
-
-//         result.push_str(word);
-//         current_line_length += word_length;
-//     }
-
-//     result
-// }
