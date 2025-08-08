@@ -224,16 +224,24 @@ pub async fn get_available_models(os: &Os) -> Result<(Vec<ModelInfo>, ModelInfo)
     let endpoint = Endpoint::configured_value(&os.database);
     let region = endpoint.region().as_ref();
 
-    let (api_models, api_default) = os
-        .client
-        .get_available_models(region)
-        .await
-        .map_err(|e| ChatError::Custom(format!("Failed to fetch available models: {}", e).into()))?;
+    match os.client.get_available_models(region).await {
+        Ok((api_models, api_default)) => {
+            let models: Vec<ModelInfo> = api_models.iter().map(ModelInfo::from_api_model).collect();
+            let default_model = ModelInfo::from_api_model(&api_default);
 
-    let models: Vec<ModelInfo> = api_models.iter().map(ModelInfo::from_api_model).collect();
-    let default_model = ModelInfo::from_api_model(&api_default);
+            tracing::debug!("Successfully fetched {} models from API", models.len());
+            Ok((models, default_model))
+        },
+        // In case of API throttling or other errors, fall back to hardcoded models
+        Err(e) => {
+            tracing::error!("Failed to fetch models from API: {}, using fallback list", e);
 
-    Ok((models, default_model))
+            let models = get_fallback_models();
+            let default_model = models[0].clone();
+
+            Ok((models, default_model))
+        },
+    }
 }
 
 /// Returns the context window length in tokens for the given model_id.
@@ -244,4 +252,19 @@ pub fn context_window_tokens(model_info: Option<&ModelInfo>) -> usize {
 
 fn default_context_window() -> usize {
     200_000
+}
+
+fn get_fallback_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            model_name: Some("claude-3.7-sonnet".to_string()),
+            model_id: "claude-3.7-sonnet".to_string(),
+            context_window_tokens: 200_000,
+        },
+        ModelInfo {
+            model_name: Some("claude-4-sonnet".to_string()),
+            model_id: "claude-4-sonnet".to_string(),
+            context_window_tokens: 200_000,
+        },
+    ]
 }
