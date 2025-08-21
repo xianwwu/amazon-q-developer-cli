@@ -363,6 +363,7 @@ impl TelemetryThread {
         number_of_tools: usize,
         all_tool_names: Option<String>,
         loaded_tool_names: Option<String>,
+        all_tools_count: usize
     ) -> Result<(), TelemetryError> {
         let mut telemetry_event = Event::new(crate::telemetry::EventType::McpServerInit {
             conversation_id,
@@ -371,6 +372,7 @@ impl TelemetryThread {
             number_of_tools,
             all_tool_names,
             loaded_tool_names,
+            all_tools_count
         });
         set_event_metadata(database, &mut telemetry_event).await;
 

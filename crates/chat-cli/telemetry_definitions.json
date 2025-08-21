@@ -163,7 +163,12 @@
     {
       "name": "codewhispererterminal_toolsPerMcpServer",
       "type": "int",
-      "description": "The number of tools provided by a mcp server"
+      "description": "The number of tools loaded into the conversation by the mcp server"
+    },
+    {
+      "name": "codewhispererterminal_mcpServerAllToolsCount",
+      "type": "int",
+      "description": "The number of tools available in the MCP server."
     },
     {
       "name": "codewhispererterminal_isCustomTool",
@@ -466,7 +471,8 @@
         { "type": "codewhispererterminal_toolsPerMcpServer" },
         { "type": "codewhispererterminal_clientApplication" },
         { "type": "codewhispererterminal_mcpServerAllToolNames" },
-        { "type": "codewhispererterminal_mcpServerLoadedToolNames" }
+        { "type": "codewhispererterminal_mcpServerLoadedToolNames" },
+        { "type": "codewhispererterminal_mcpServerAllToolsCount" }
       ]
     },
     {
