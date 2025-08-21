@@ -34,12 +34,12 @@ use crate::telemetry::definitions::types::{
     CodewhispererterminalCustomToolLatency,
     CodewhispererterminalCustomToolOutputTokenSize,
     CodewhispererterminalIsToolValid,
+    CodewhispererterminalMcpServerAllToolsCount,
     CodewhispererterminalMcpServerInitFailureReason,
     CodewhispererterminalToolName,
     CodewhispererterminalToolUseId,
     CodewhispererterminalToolUseIsSuccess,
     CodewhispererterminalToolsPerMcpServer,
-    CodewhispererterminalMcpServerAllToolsCount,
     CodewhispererterminalUserInputId,
     CodewhispererterminalUtteranceId,
 };
@@ -369,7 +369,7 @@ impl Event {
                 number_of_tools,
                 all_tool_names,
                 loaded_tool_names,
-                all_tools_count
+                all_tools_count,
             } => Some(
                 CodewhispererterminalMcpServerInit {
                     create_time: self.created_time,
@@ -385,8 +385,9 @@ impl Event {
                     codewhispererterminal_client_application: self.client_application.map(Into::into),
                     codewhispererterminal_mcp_server_all_tool_names: all_tool_names.map(Into::into),
                     codewhispererterminal_mcp_server_loaded_tool_names: loaded_tool_names.map(Into::into),
-                    codewhispererterminal_mcp_server_all_tools_count: Some(CodewhispererterminalMcpServerAllToolsCount(all_tools_count as i64)),
-
+                    codewhispererterminal_mcp_server_all_tools_count: Some(
+                        CodewhispererterminalMcpServerAllToolsCount(all_tools_count as i64),
+                    ),
                 }
                 .into_metric_datum(),
             ),
@@ -625,7 +626,7 @@ pub enum EventType {
         number_of_tools: usize,
         all_tool_names: Option<String>,
         loaded_tool_names: Option<String>,
-        all_tools_count: usize
+        all_tools_count: usize,
     },
     AgentConfigInit {
         conversation_id: String,

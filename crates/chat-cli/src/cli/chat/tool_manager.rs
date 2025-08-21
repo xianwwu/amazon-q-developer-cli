@@ -382,7 +382,7 @@ impl ToolManagerBuilder {
                             0,
                             Some("".to_string()),
                             Some("".to_string()),
-                            0
+                            0,
                         )
                         .await
                         .ok();
@@ -1321,11 +1321,6 @@ fn spawn_orchestrator_task(
                         Err(_) => vec![],
                     };
 
-                    let all_tool_names = if !result_tools.is_empty() {
-                        Some(result_tools.join(","))
-                    } else {
-                        None
-                    };
                     let (tool_filter, alias_list) = {
                         let agent_lock = agent.lock().await;
 
@@ -1390,7 +1385,7 @@ fn spawn_orchestrator_task(
                                 &alias_list,
                                 regex,
                                 telemetry_clone,
-                                all_tool_names,
+                                &result_tools,
                             )
                             .await;
                             if let Some(sender) = &loading_status_sender {
@@ -1625,7 +1620,7 @@ async fn process_tool_specs(
     alias_list: &HashMap<HostToolName, ModelToolName>,
     regex: &Regex,
     telemetry: &TelemetryThread,
-    all_tool_names: Option<String>,
+    result_tools: &[String],
 ) -> eyre::Result<()> {
     // Tools are subjected to the following validations:
     // 1. ^[a-zA-Z][a-zA-Z0-9_]*$,
@@ -1637,15 +1632,14 @@ async fn process_tool_specs(
     let mut out_of_spec_tool_names = Vec::<OutOfSpecName>::new();
     let mut hasher = DefaultHasher::new();
     let mut number_of_tools = 0_usize;
-    let mut number_of_tools_in_mcp_server = 0_usize;
 
-    if let Some(all_tools_str) = &all_tool_names {
-        // Split by comma and count non-empty items
-        number_of_tools_in_mcp_server = all_tools_str
-            .split(',')
-            .filter(|s| !s.trim().is_empty())
-            .count();
-    }
+    let number_of_tools_in_mcp_server = result_tools.len();
+
+    let all_tool_names = if !result_tools.is_empty() {
+        Some(result_tools.join(","))
+    } else {
+        None
+    };
 
     for spec in specs.iter_mut() {
         let model_tool_name = alias_list.get(&spec.name).cloned().unwrap_or({
@@ -1693,7 +1687,7 @@ async fn process_tool_specs(
             number_of_tools,
             all_tool_names,
             loaded_tool_names,
-            number_of_tools_in_mcp_server
+            number_of_tools_in_mcp_server,
         )
         .await;
     // Tool name translation. This is beyond of the scope of what is
