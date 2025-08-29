@@ -254,17 +254,21 @@ impl AgentSubcommand {
                         sel
                     },
                     // Ctrl‑C -> Err(Interrupted)
-                    Err(dialoguer::Error::IO(ref e)) if e.kind() == std::io::ErrorKind::Interrupted => return Ok(ChatState::PromptUser {
-                        skip_printing_tools: true,
-                    }),
+                    Err(dialoguer::Error::IO(ref e)) if e.kind() == std::io::ErrorKind::Interrupted => {
+                        return Ok(ChatState::PromptUser {
+                            skip_printing_tools: true,
+                        });
+                    },
                     Err(e) => return Err(ChatError::Custom(format!("Failed to get scope selection: {e}").into())),
                 };
 
                 let scope_selection = match scope_selection {
                     Some(selection) => selection,
-                    None => return Ok(ChatState::PromptUser {
-                        skip_printing_tools: true,
-                    }),
+                    None => {
+                        return Ok(ChatState::PromptUser {
+                            skip_printing_tools: true,
+                        });
+                    },
                 };
 
                 let is_global = scope_selection == 1;
